@@ -28,3 +28,23 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+// Если база пустая (например, сервер только что перезапустился на бесплатном
+// тарифе хостинга и потерял данные) — наполняем её тестовыми мастерами и услугами.
+const mastersCount = (
+  db.prepare("SELECT COUNT(*) as count FROM masters").get() as { count: number }
+).count;
+
+if (mastersCount === 0) {
+  const insertMaster = db.prepare("INSERT INTO masters (name) VALUES (?)");
+  insertMaster.run("Анна Иванова");
+  insertMaster.run("Мария Петрова");
+
+  const insertService = db.prepare(
+    "INSERT INTO services (name, duration_minutes, price) VALUES (?, ?, ?)"
+  );
+  insertService.run("Стрижка", 30, 1500);
+  insertService.run("Окрашивание", 120, 4500);
+  insertService.run("Маникюр", 60, 2000);
+  insertService.run("Укладка", 45, 1800);
+}
