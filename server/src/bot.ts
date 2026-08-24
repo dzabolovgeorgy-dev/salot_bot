@@ -7,16 +7,19 @@ if (!token) {
 }
 
 // Адрес сайта записи (webapp) на GitHub Pages. Пока не опубликован — кнопка не показывается.
-// К адресу добавляем метку времени запуска сервера — иначе Telegram может
-// закэшировать старую версию мини-приложения и не подгружать новую после деплоя.
 const webAppBaseUrl = process.env.WEBAPP_URL;
-const webAppUrl = webAppBaseUrl
-  ? `${webAppBaseUrl}${webAppBaseUrl.includes("?") ? "&" : "?"}v=${Date.now()}`
-  : undefined;
+
+// К адресу каждый раз добавляем свежую метку времени — иначе Telegram может
+// закэшировать старую версию мини-приложения и не подгружать новую после обновления сайта.
+function getWebAppUrl(): string | undefined {
+  if (!webAppBaseUrl) return undefined;
+  return `${webAppBaseUrl}${webAppBaseUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
+}
 
 export const bot = new Telegraf(token);
 
 bot.start((ctx) => {
+  const webAppUrl = getWebAppUrl();
   if (webAppUrl) {
     ctx.reply(
       "Привет! Я помогу записаться в салон красоты.",
