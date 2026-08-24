@@ -7,7 +7,12 @@ if (!token) {
 }
 
 // Адрес сайта записи (webapp) на GitHub Pages. Пока не опубликован — кнопка не показывается.
-const webAppUrl = process.env.WEBAPP_URL;
+// К адресу добавляем метку времени запуска сервера — иначе Telegram может
+// закэшировать старую версию мини-приложения и не подгружать новую после деплоя.
+const webAppBaseUrl = process.env.WEBAPP_URL;
+const webAppUrl = webAppBaseUrl
+  ? `${webAppBaseUrl}${webAppBaseUrl.includes("?") ? "&" : "?"}v=${Date.now()}`
+  : undefined;
 
 export const bot = new Telegraf(token);
 
