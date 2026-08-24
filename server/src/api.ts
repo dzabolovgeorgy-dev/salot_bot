@@ -15,6 +15,49 @@ api.get("/services", (_req, res) => {
   res.json(services);
 });
 
+api.get("/bookings", (req, res) => {
+  const clientTelegramId = Number(req.query.client_telegram_id);
+  if (!clientTelegramId) {
+    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    return;
+  }
+
+  const bookings = db
+    .prepare(
+      `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
+              b.service_id, s.name AS service_name, s.duration_minutes, s.price
+       FROM bookings b
+       JOIN masters m ON m.id = b.master_id
+       JOIN services s ON s.id = b.service_id
+       WHERE b.client_telegram_id = ?
+         AND datetime(b.starts_at) >= datetime('now')
+       ORDER BY datetime(b.starts_at) ASC`
+    )
+    .all(clientTelegramId);
+
+  res.json(bookings);
+});
+
+api.delete("/bookings/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const clientTelegramId = Number(req.query.client_telegram_id);
+  if (!id || !clientTelegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const booking = db
+    .prepare("SELECT id FROM bookings WHERE id = ? AND client_telegram_id = ?")
+    .get(id, clientTelegramId);
+  if (!booking) {
+    res.status(404).json({ error: "Запись не найдена" });
+    return;
+  }
+
+  db.prepare("DELETE FROM bookings WHERE id = ?").run(id);
+  res.json({ ok: true });
+});
+
 interface CreateBookingBody {
   client_telegram_id: number;
   master_id: number;

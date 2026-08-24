@@ -13,11 +13,23 @@ interface Service {
   price: number
 }
 
-type Step = 'service' | 'master' | 'time' | 'confirm' | 'done'
+interface Booking {
+  id: number
+  starts_at: string
+  master_id: number
+  master_name: string
+  service_id: number
+  service_name: string
+  duration_minutes: number
+  price: number
+}
+
+type Step = 'home' | 'service' | 'master' | 'time' | 'confirm' | 'done'
 
 const STEP_ORDER: Step[] = ['service', 'master', 'time', 'confirm']
 
 const STEP_TITLES: Record<Step, string> = {
+  home: 'Мои записи',
   service: 'Выберите услугу',
   master: 'Выберите мастера',
   time: 'Дата и время',
@@ -52,10 +64,21 @@ function initials(name: string): string {
     .join('')
 }
 
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function App() {
-  const [step, setStep] = useState<Step>('service')
+  const [step, setStep] = useState<Step>('home')
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -73,10 +96,16 @@ function App() {
     tg?.expand?.()
   }, [])
 
+  const fetchBookings = () =>
+    fetch(`${API_URL}/api/bookings?client_telegram_id=${clientTelegramId}`)
+      .then((r) => r.json())
+      .then(setBookings)
+
   useEffect(() => {
     Promise.all([
       fetch(`${API_URL}/api/services`).then((r) => r.json()),
       fetch(`${API_URL}/api/masters`).then((r) => r.json()),
+      fetchBookings(),
     ])
       .then(([servicesData, mastersData]) => {
         setServices(servicesData)
@@ -91,14 +120,31 @@ function App() {
     setSelectedMaster(null)
     setStartsAt('')
     setError(null)
-    setStep('service')
+    setStep('home')
   }
 
   const goBack = () => {
     setError(null)
-    if (step === 'master') setStep('service')
+    if (step === 'service') setStep('home')
+    else if (step === 'master') setStep('service')
     else if (step === 'time') setStep('master')
     else if (step === 'confirm') setStep('time')
+  }
+
+  const cancelBooking = async (id: number) => {
+    if (!window.confirm('Отменить эту запись?')) return
+    setCancellingId(id)
+    try {
+      await fetch(
+        `${API_URL}/api/bookings/${id}?client_telegram_id=${clientTelegramId}`,
+        { method: 'DELETE' }
+      )
+      setBookings((prev) => prev.filter((b) => b.id !== id))
+    } catch {
+      setError('Не удалось отменить запись')
+    } finally {
+      setCancellingId(null)
+    }
   }
 
   const submitBooking = async () => {
@@ -121,6 +167,7 @@ function App() {
         setError(data.error ?? 'Не удалось создать запись')
         return
       }
+      await fetchBookings()
       setStep('done')
     } catch {
       setError('Не удалось связаться с сервером')
@@ -143,7 +190,7 @@ function App() {
         </div>
         <div className="footer">
           <button className="primary" onClick={reset}>
-            Записаться ещё
+            К моим записям
           </button>
         </div>
       </div>
@@ -155,7 +202,7 @@ function App() {
   return (
     <div className="app">
       <div className="topbar">
-        {step !== 'service' && (
+        {step !== 'home' && (
           <button className="icon-back" onClick={goBack} aria-label="Назад">
             ←
           </button>
@@ -164,12 +211,45 @@ function App() {
         {isTestUser && <div className="test-badge">тест</div>}
       </div>
 
-      <div className="progress">
-        <div className="progress-fill" style={{ width: `${progress}%` }} />
-      </div>
+      {step !== 'home' && (
+        <div className="progress">
+          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+      )}
 
       <div className="content">
         {error && <p className="error">{error}</p>}
+
+        {step === 'home' &&
+          (bookings.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🗓️</div>
+              <p>У вас пока нет записей</p>
+            </div>
+          ) : (
+            <div className="list">
+              {bookings.map((b) => (
+                <div key={b.id} className="booking-card">
+                  <div className="booking-row">
+                    <div className="badge">{serviceIcon(b.service_name)}</div>
+                    <div className="card-body">
+                      <div className="card-title">{b.service_name}</div>
+                      <div className="card-sub">
+                        {b.master_name} · {formatDateTime(b.starts_at)}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className="cancel-link"
+                    disabled={cancellingId === b.id}
+                    onClick={() => cancelBooking(b.id)}
+                  >
+                    {cancellingId === b.id ? 'Отменяем…' : 'Отменить запись'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
 
         {step === 'service' && (
           <div className="list">
@@ -246,6 +326,14 @@ function App() {
           </div>
         )}
       </div>
+
+      {step === 'home' && (
+        <div className="footer">
+          <button className="primary" onClick={() => setStep('service')}>
+            Записаться
+          </button>
+        </div>
+      )}
 
       {step === 'time' && (
         <div className="footer">
