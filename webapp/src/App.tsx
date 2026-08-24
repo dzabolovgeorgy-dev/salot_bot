@@ -15,11 +15,41 @@ interface Service {
 
 type Step = 'service' | 'master' | 'time' | 'confirm' | 'done'
 
+const STEP_ORDER: Step[] = ['service', 'master', 'time', 'confirm']
+
+const STEP_TITLES: Record<Step, string> = {
+  service: 'Выберите услугу',
+  master: 'Выберите мастера',
+  time: 'Дата и время',
+  confirm: 'Подтвердите запись',
+  done: 'Готово',
+}
+
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 function getTelegramUserId(): number {
   const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user
   return tgUser?.id ?? 111111
+}
+
+function serviceIcon(name: string): string {
+  const n = name.toLowerCase()
+  if (n.includes('стриж')) return '✂️'
+  if (n.includes('окраш') || n.includes('цвет')) return '🎨'
+  if (n.includes('маник') || n.includes('педик')) return '💅'
+  if (n.includes('уклад') || n.includes('причёск') || n.includes('прическ')) return '💇‍♀️'
+  if (n.includes('брит') || n.includes('бород')) return '🪒'
+  if (n.includes('масс')) return '💆'
+  return '✨'
+}
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('')
 }
 
 function App() {
@@ -36,6 +66,12 @@ function App() {
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
+
+  useEffect(() => {
+    const tg = (window as any).Telegram?.WebApp
+    tg?.ready?.()
+    tg?.expand?.()
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -56,6 +92,13 @@ function App() {
     setStartsAt('')
     setError(null)
     setStep('service')
+  }
+
+  const goBack = () => {
+    setError(null)
+    if (step === 'master') setStep('service')
+    else if (step === 'time') setStep('master')
+    else if (step === 'confirm') setStep('time')
   }
 
   const submitBooking = async () => {
@@ -87,17 +130,48 @@ function App() {
   }
 
   if (loading) {
-    return <div className="screen">Загрузка…</div>
+    return <div className="loading-screen">Загрузка…</div>
   }
 
-  return (
-    <div className="screen">
-      {isTestUser && <div className="test-badge">тестовый пользователь</div>}
+  if (step === 'done') {
+    return (
+      <div className="app">
+        <div className="done-screen">
+          <div className="done-icon">🎉</div>
+          <h1>Готово!</h1>
+          <p>Вы записаны. Ждём вас в салоне.</p>
+        </div>
+        <div className="footer">
+          <button className="primary" onClick={reset}>
+            Записаться ещё
+          </button>
+        </div>
+      </div>
+    )
+  }
 
-      {step === 'service' && (
-        <>
-          <h1>Выберите услугу</h1>
-          {error && <p className="error">{error}</p>}
+  const progress = ((STEP_ORDER.indexOf(step) + 1) / STEP_ORDER.length) * 100
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        {step !== 'service' && (
+          <button className="icon-back" onClick={goBack} aria-label="Назад">
+            ←
+          </button>
+        )}
+        <div className="topbar-title">{STEP_TITLES[step]}</div>
+        {isTestUser && <div className="test-badge">тест</div>}
+      </div>
+
+      <div className="progress">
+        <div className="progress-fill" style={{ width: `${progress}%` }} />
+      </div>
+
+      <div className="content">
+        {error && <p className="error">{error}</p>}
+
+        {step === 'service' && (
           <div className="list">
             {services.map((s) => (
               <button
@@ -108,19 +182,20 @@ function App() {
                   setStep('master')
                 }}
               >
-                <div className="card-title">{s.name}</div>
-                <div className="card-sub">
-                  {s.duration_minutes} мин · {s.price} ₽
+                <div className="badge">{serviceIcon(s.name)}</div>
+                <div className="card-body">
+                  <div className="card-title">{s.name}</div>
+                  <div className="card-sub">
+                    {s.duration_minutes} мин · {s.price} ₽
+                  </div>
                 </div>
+                <div className="card-arrow">›</div>
               </button>
             ))}
           </div>
-        </>
-      )}
+        )}
 
-      {step === 'master' && (
-        <>
-          <h1>Выберите мастера</h1>
+        {step === 'master' && (
           <div className="list">
             {masters.map((m) => (
               <button
@@ -131,73 +206,61 @@ function App() {
                   setStep('time')
                 }}
               >
-                <div className="card-title">{m.name}</div>
+                <div className="avatar">{initials(m.name)}</div>
+                <div className="card-body">
+                  <div className="card-title">{m.name}</div>
+                </div>
+                <div className="card-arrow">›</div>
               </button>
             ))}
           </div>
-          <button className="back" onClick={() => setStep('service')}>
-            Назад
-          </button>
-        </>
-      )}
+        )}
 
-      {step === 'time' && (
-        <>
-          <h1>Выберите дату и время</h1>
+        {step === 'time' && (
           <input
             type="datetime-local"
             value={startsAt}
             onChange={(e) => setStartsAt(e.target.value)}
             className="datetime-input"
           />
-          <button
-            className="primary"
-            disabled={!startsAt}
-            onClick={() => setStep('confirm')}
-          >
-            Далее
-          </button>
-          <button className="back" onClick={() => setStep('master')}>
-            Назад
-          </button>
-        </>
-      )}
+        )}
 
-      {step === 'confirm' && selectedService && selectedMaster && (
-        <>
-          <h1>Подтвердите запись</h1>
+        {step === 'confirm' && selectedService && selectedMaster && (
           <div className="summary">
-            <div>
-              <strong>Услуга:</strong> {selectedService.name}
+            <div className="summary-row">
+              <span className="summary-label">Услуга</span>
+              <span className="summary-value">{selectedService.name}</span>
             </div>
-            <div>
-              <strong>Мастер:</strong> {selectedMaster.name}
+            <div className="summary-row">
+              <span className="summary-label">Мастер</span>
+              <span className="summary-value">{selectedMaster.name}</span>
             </div>
-            <div>
-              <strong>Время:</strong> {startsAt.replace('T', ' ')}
+            <div className="summary-row">
+              <span className="summary-label">Время</span>
+              <span className="summary-value">{startsAt.replace('T', ' ')}</span>
             </div>
-            <div>
-              <strong>Цена:</strong> {selectedService.price} ₽
+            <div className="summary-row">
+              <span className="summary-label">Цена</span>
+              <span className="summary-value">{selectedService.price} ₽</span>
             </div>
           </div>
-          {error && <p className="error">{error}</p>}
+        )}
+      </div>
+
+      {step === 'time' && (
+        <div className="footer">
+          <button className="primary" disabled={!startsAt} onClick={() => setStep('confirm')}>
+            Далее
+          </button>
+        </div>
+      )}
+
+      {step === 'confirm' && (
+        <div className="footer">
           <button className="primary" disabled={submitting} onClick={submitBooking}>
             {submitting ? 'Записываем…' : 'Записаться'}
           </button>
-          <button className="back" onClick={() => setStep('time')}>
-            Назад
-          </button>
-        </>
-      )}
-
-      {step === 'done' && (
-        <>
-          <h1>Готово!</h1>
-          <p>Вы записаны. Ждём вас в салоне.</p>
-          <button className="primary" onClick={reset}>
-            Записаться ещё
-          </button>
-        </>
+        </div>
       )}
     </div>
   )
