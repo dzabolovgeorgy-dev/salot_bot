@@ -155,6 +155,16 @@ function App() {
     setFlowIndex(0)
   }
 
+  const bookFromProfile = (master: Master, service: Service) => {
+    setError(null)
+    setSelectedMaster(master)
+    setSelectedService(service)
+    setMasterProfile(null)
+    setFlowOrigin('masters')
+    // и услуга, и мастер уже известны — сразу переходим к выбору времени
+    setFlowIndex(FLOW_STEPS.masters.indexOf('time'))
+  }
+
   const exitFlow = () => {
     setSelectedService(null)
     setSelectedMaster(null)
@@ -304,7 +314,11 @@ function App() {
               {services
                 .filter((s) => masterProfile.service_ids.includes(s.id))
                 .map((s) => (
-                  <div key={s.id} className="card card-static">
+                  <button
+                    key={s.id}
+                    className="card"
+                    onClick={() => bookFromProfile(masterProfile, s)}
+                  >
                     <div className="badge">{serviceIcon(s.name)}</div>
                     <div className="card-body">
                       <div className="card-title">{s.name}</div>
@@ -312,7 +326,8 @@ function App() {
                         {s.duration_minutes} мин · {s.price} ₽
                       </div>
                     </div>
-                  </div>
+                    <div className="card-arrow">›</div>
+                  </button>
                 ))}
             </div>
           </>
@@ -475,21 +490,6 @@ function App() {
           </div>
         )}
       </div>
-
-      {masterProfile && (
-        <div className="footer">
-          <button
-            className="primary"
-            onClick={() => {
-              setSelectedMaster(masterProfile)
-              setMasterProfile(null)
-              startFlow('masters')
-            }}
-          >
-            Записаться
-          </button>
-        </div>
-      )}
 
       {!inFlow && !masterProfile && activeTab === 'bookings' && (
         <div className="footer">

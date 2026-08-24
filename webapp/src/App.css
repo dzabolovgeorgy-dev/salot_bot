@@ -143,14 +143,6 @@
   flex-shrink: 0;
 }
 
-.card-static {
-  cursor: default;
-}
-
-.card-static:active {
-  transform: none;
-}
-
 .card-body {
   flex: 1;
   min-width: 0;
