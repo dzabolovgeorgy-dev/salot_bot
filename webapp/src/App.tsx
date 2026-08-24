@@ -28,16 +28,19 @@ interface Booking {
   price: number
 }
 
-type Tab = 'services' | 'masters' | 'bookings'
+type Tab = 'home' | 'services' | 'masters' | 'bookings'
+type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
+  { key: 'home', label: 'Главная', icon: '🏠' },
   { key: 'services', label: 'Услуги', icon: '✨' },
   { key: 'masters', label: 'Мастера', icon: '💇' },
-  { key: 'bookings', label: 'Мои записи', icon: '🗓️' },
+  { key: 'bookings', label: 'Записи', icon: '🗓️' },
 ]
 
 const TAB_TITLES: Record<Tab, string> = {
+  home: 'Главная',
   services: 'Услуги',
   masters: 'Мастера',
   bookings: 'Мои записи',
@@ -45,7 +48,7 @@ const TAB_TITLES: Record<Tab, string> = {
 
 // Какие шаги остаются пройти в зависимости от того, откуда начали запись
 // (если зашли через конкретную услугу/мастера — этот выбор уже сделан)
-const FLOW_STEPS: Record<Tab, FlowStep[]> = {
+const FLOW_STEPS: Record<FlowOrigin, FlowStep[]> = {
   services: ['master', 'time', 'confirm'],
   masters: ['service', 'time', 'confirm'],
   bookings: ['service', 'master', 'time', 'confirm'],
@@ -103,8 +106,8 @@ function pluralizeYears(n: number): string {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('services')
-  const [flowOrigin, setFlowOrigin] = useState<Tab | null>(null)
+  const [activeTab, setActiveTab] = useState<Tab>('home')
+  const [flowOrigin, setFlowOrigin] = useState<FlowOrigin | null>(null)
   const [flowIndex, setFlowIndex] = useState(0)
   const [isDone, setIsDone] = useState(false)
   const [masterProfile, setMasterProfile] = useState<Master | null>(null)
@@ -149,7 +152,7 @@ function App() {
       .finally(() => setLoading(false))
   }, [])
 
-  const startFlow = (origin: Tab) => {
+  const startFlow = (origin: FlowOrigin) => {
     setError(null)
     setFlowOrigin(origin)
     setFlowIndex(0)
@@ -264,7 +267,7 @@ function App() {
         <div className="content">
           {error && <p className="error">{error}</p>}
           {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
-          <div className="profile-section-title">Что делает</div>
+          <div className="section-title">Что делает</div>
           <div className="list">
             {masterServices.map((s) => (
               <button key={s.id} className="card" onClick={() => bookFromProfile(masterProfile, s)}>
@@ -336,6 +339,51 @@ function App() {
 
       <div className="content">
         {error && <p className="error">{error}</p>}
+
+        {!inFlow && activeTab === 'home' && (
+          <>
+            <p className="hub-greeting">
+              Добро пожаловать! Запишитесь на услугу в пару кликов или посмотрите наших мастеров.
+            </p>
+
+            {bookings.length > 0 && (
+              <>
+                <div className="section-title">Ближайшая запись</div>
+                <div className="booking-card">
+                  <div className="booking-row">
+                    <div className="badge">{serviceIcon(bookings[0].service_name)}</div>
+                    <div className="card-body">
+                      <div className="card-title">{bookings[0].service_name}</div>
+                      <div className="card-sub">
+                        {bookings[0].master_name} · {formatDateTime(bookings[0].starts_at)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="section-title">Быстрые действия</div>
+            <div className="list">
+              <button className="card" onClick={() => setActiveTab('services')}>
+                <div className="badge">✨</div>
+                <div className="card-body">
+                  <div className="card-title">Все услуги</div>
+                  <div className="card-sub">Стрижки, окрашивание, маникюр и другое</div>
+                </div>
+                <div className="card-arrow">›</div>
+              </button>
+              <button className="card" onClick={() => setActiveTab('masters')}>
+                <div className="badge">💇</div>
+                <div className="card-body">
+                  <div className="card-title">Наши мастера</div>
+                  <div className="card-sub">Фото, опыт и специализация</div>
+                </div>
+                <div className="card-arrow">›</div>
+              </button>
+            </div>
+          </>
+        )}
 
         {!inFlow && activeTab === 'services' && (
           <div className="list">

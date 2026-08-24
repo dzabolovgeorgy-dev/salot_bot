@@ -325,7 +325,13 @@
   line-height: 1.5;
 }
 
-.profile-section-title {
+.hub-greeting {
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 15px;
+}
+
+.section-title {
   font-family: var(--serif);
   color: var(--text-h);
   font-size: 20px;
