@@ -4,6 +4,10 @@ import './App.css'
 interface Master {
   id: number
   name: string
+  bio: string | null
+  experience_years: number | null
+  photo_url: string | null
+  service_ids: number[]
 }
 
 interface Service {
@@ -90,11 +94,20 @@ function formatDateTime(iso: string): string {
   })
 }
 
+function pluralizeYears(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return `${n} год`
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return `${n} года`
+  return `${n} лет`
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('services')
   const [flowOrigin, setFlowOrigin] = useState<Tab | null>(null)
   const [flowIndex, setFlowIndex] = useState(0)
   const [isDone, setIsDone] = useState(false)
+  const [masterProfile, setMasterProfile] = useState<Master | null>(null)
 
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
@@ -153,6 +166,10 @@ function App() {
 
   const goBack = () => {
     setError(null)
+    if (masterProfile) {
+      setMasterProfile(null)
+      return
+    }
     if (flowIndex === 0) exitFlow()
     else setFlowIndex((i) => i - 1)
   }
@@ -233,17 +250,29 @@ function App() {
   const flowSteps = flowOrigin ? FLOW_STEPS[flowOrigin] : null
   const flowStep = flowSteps ? flowSteps[flowIndex] : null
   const progress = flowSteps ? ((flowIndex + 1) / flowSteps.length) * 100 : 0
+  const showChrome = !inFlow && !masterProfile
+
+  const flowServices = selectedMaster
+    ? services.filter((s) => selectedMaster.service_ids.includes(s.id))
+    : services
+  const flowMasters = selectedService
+    ? masters.filter((m) => m.service_ids.includes(selectedService.id))
+    : masters
 
   return (
     <div className="app">
       <div className="topbar">
-        {inFlow && (
+        {(inFlow || masterProfile) && (
           <button className="icon-back" onClick={goBack} aria-label="Назад">
             ←
           </button>
         )}
         <div className="topbar-title">
-          {inFlow && flowStep ? STEP_TITLES[flowStep] : TAB_TITLES[activeTab]}
+          {masterProfile
+            ? masterProfile.name
+            : inFlow && flowStep
+              ? STEP_TITLES[flowStep]
+              : TAB_TITLES[activeTab]}
         </div>
         {isTestUser && <div className="test-badge">тест</div>}
       </div>
@@ -257,7 +286,39 @@ function App() {
       <div className="content">
         {error && <p className="error">{error}</p>}
 
-        {!inFlow && activeTab === 'services' && (
+        {masterProfile && (
+          <>
+            {masterProfile.photo_url ? (
+              <img className="profile-photo" src={masterProfile.photo_url} alt={masterProfile.name} />
+            ) : (
+              <div className="profile-photo profile-photo-fallback">{initials(masterProfile.name)}</div>
+            )}
+            {masterProfile.experience_years != null && (
+              <div className="profile-experience">
+                {pluralizeYears(masterProfile.experience_years)} опыта
+              </div>
+            )}
+            {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
+            <div className="profile-section-title">Что делает</div>
+            <div className="list">
+              {services
+                .filter((s) => masterProfile.service_ids.includes(s.id))
+                .map((s) => (
+                  <div key={s.id} className="card card-static">
+                    <div className="badge">{serviceIcon(s.name)}</div>
+                    <div className="card-body">
+                      <div className="card-title">{s.name}</div>
+                      <div className="card-sub">
+                        {s.duration_minutes} мин · {s.price} ₽
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
+
+        {!inFlow && !masterProfile && activeTab === 'services' && (
           <div className="list">
             {services.map((s) => (
               <button
@@ -281,20 +342,20 @@ function App() {
           </div>
         )}
 
-        {!inFlow && activeTab === 'masters' && (
+        {!inFlow && !masterProfile && activeTab === 'masters' && (
           <div className="list">
             {masters.map((m) => (
-              <button
-                key={m.id}
-                className="card"
-                onClick={() => {
-                  setSelectedMaster(m)
-                  startFlow('masters')
-                }}
-              >
-                <div className="avatar">{initials(m.name)}</div>
+              <button key={m.id} className="card" onClick={() => setMasterProfile(m)}>
+                {m.photo_url ? (
+                  <img className="avatar-photo" src={m.photo_url} alt={m.name} />
+                ) : (
+                  <div className="avatar">{initials(m.name)}</div>
+                )}
                 <div className="card-body">
                   <div className="card-title">{m.name}</div>
+                  {m.experience_years != null && (
+                    <div className="card-sub">{pluralizeYears(m.experience_years)} опыта</div>
+                  )}
                 </div>
                 <div className="card-arrow">›</div>
               </button>
@@ -303,6 +364,7 @@ function App() {
         )}
 
         {!inFlow &&
+          !masterProfile &&
           activeTab === 'bookings' &&
           (bookings.length === 0 ? (
             <div className="empty-state">
@@ -336,7 +398,7 @@ function App() {
 
         {inFlow && flowStep === 'service' && (
           <div className="list">
-            {services.map((s) => (
+            {flowServices.map((s) => (
               <button
                 key={s.id}
                 className="card"
@@ -360,7 +422,7 @@ function App() {
 
         {inFlow && flowStep === 'master' && (
           <div className="list">
-            {masters.map((m) => (
+            {flowMasters.map((m) => (
               <button
                 key={m.id}
                 className="card"
@@ -369,7 +431,11 @@ function App() {
                   setFlowIndex((i) => i + 1)
                 }}
               >
-                <div className="avatar">{initials(m.name)}</div>
+                {m.photo_url ? (
+                  <img className="avatar-photo" src={m.photo_url} alt={m.name} />
+                ) : (
+                  <div className="avatar">{initials(m.name)}</div>
+                )}
                 <div className="card-body">
                   <div className="card-title">{m.name}</div>
                 </div>
@@ -410,7 +476,22 @@ function App() {
         )}
       </div>
 
-      {!inFlow && activeTab === 'bookings' && (
+      {masterProfile && (
+        <div className="footer">
+          <button
+            className="primary"
+            onClick={() => {
+              setSelectedMaster(masterProfile)
+              setMasterProfile(null)
+              startFlow('masters')
+            }}
+          >
+            Записаться
+          </button>
+        </div>
+      )}
+
+      {!inFlow && !masterProfile && activeTab === 'bookings' && (
         <div className="footer">
           <button className="primary" onClick={() => startFlow('bookings')}>
             Записаться
@@ -438,7 +519,7 @@ function App() {
         </div>
       )}
 
-      {!inFlow && (
+      {showChrome && (
         <div className="tabbar">
           {TABS.map((t) => (
             <button

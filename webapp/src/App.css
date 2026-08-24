@@ -135,6 +135,22 @@
   flex-shrink: 0;
 }
 
+.avatar-photo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.card-static {
+  cursor: default;
+}
+
+.card-static:active {
+  transform: none;
+}
+
 .card-body {
   flex: 1;
   min-width: 0;
@@ -210,6 +226,47 @@
 .cancel-link:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.profile-photo {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  align-self: center;
+  box-shadow: var(--shadow);
+}
+
+.profile-photo-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.profile-experience {
+  text-align: center;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.profile-bio {
+  color: var(--text);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.profile-section-title {
+  color: var(--text-h);
+  font-weight: 600;
+  margin-top: 4px;
 }
 
 .datetime-input {

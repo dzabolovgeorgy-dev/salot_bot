@@ -4,8 +4,19 @@ import { db } from "./db.js";
 export const api = Router();
 
 api.get("/masters", (_req, res) => {
-  const masters = db.prepare("SELECT id, name FROM masters").all();
-  res.json(masters);
+  const masters = db
+    .prepare("SELECT id, name, bio, experience_years, photo_url FROM masters")
+    .all() as { id: number }[];
+  const relations = db
+    .prepare("SELECT master_id, service_id FROM master_services")
+    .all() as { master_id: number; service_id: number }[];
+
+  const result = masters.map((m) => ({
+    ...m,
+    service_ids: relations.filter((r) => r.master_id === m.id).map((r) => r.service_id),
+  }));
+
+  res.json(result);
 });
 
 api.get("/services", (_req, res) => {
