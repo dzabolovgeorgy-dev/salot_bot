@@ -5,13 +5,15 @@
   --text-h: #3b2a26;
   --text: #8a746e;
   --border: #f0ddd3;
-  --accent: #c2705c;
-  --accent-dark: #a8563f;
-  --accent-soft: #f3ddd4;
+  --accent: #f2664f;
+  --accent-dark: #d6503b;
+  --accent-soft: #fbe0da;
+  --soft-white: #fdf7f4;
   --danger: #c0392b;
   --shadow: 0 8px 20px -8px rgba(90, 55, 40, 0.25);
 
   --sans: 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --serif: 'Playfair Display', Georgia, serif;
 
   font: 16px/1.45 var(--sans);
   color-scheme: light dark;
@@ -29,9 +31,9 @@
     --text-h: #f5e9e4;
     --text: #b7a29b;
     --border: #423029;
-    --accent: #e0917c;
-    --accent-dark: #c2705c;
-    --accent-soft: rgba(224, 145, 124, 0.18);
+    --accent: #ff8770;
+    --accent-dark: #f2664f;
+    --accent-soft: rgba(255, 135, 112, 0.18);
     --shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
   }
 }

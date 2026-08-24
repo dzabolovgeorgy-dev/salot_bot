@@ -239,6 +239,51 @@ function App() {
     return <div className="loading-screen">Загрузка…</div>
   }
 
+  if (masterProfile) {
+    const masterServices = services.filter((s) => masterProfile.service_ids.includes(s.id))
+    return (
+      <div className="app app-hero">
+        <div className="hero">
+          {masterProfile.photo_url ? (
+            <img className="hero-photo" src={masterProfile.photo_url} alt={masterProfile.name} />
+          ) : (
+            <div className="hero-photo hero-photo-fallback">{initials(masterProfile.name)}</div>
+          )}
+          <div className="hero-scrim" />
+          <button className="hero-back" onClick={goBack} aria-label="Назад">
+            ←
+          </button>
+          {isTestUser && <div className="hero-badge">тест</div>}
+          <div className="hero-text">
+            <div className="hero-name">{masterProfile.name}</div>
+            {masterProfile.experience_years != null && (
+              <div className="hero-sub">{pluralizeYears(masterProfile.experience_years)} опыта</div>
+            )}
+          </div>
+        </div>
+        <div className="content">
+          {error && <p className="error">{error}</p>}
+          {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
+          <div className="profile-section-title">Что делает</div>
+          <div className="list">
+            {masterServices.map((s) => (
+              <button key={s.id} className="card" onClick={() => bookFromProfile(masterProfile, s)}>
+                <div className="badge">{serviceIcon(s.name)}</div>
+                <div className="card-body">
+                  <div className="card-title">{s.name}</div>
+                  <div className="card-sub">
+                    {s.duration_minutes} мин · {s.price} ₽
+                  </div>
+                </div>
+                <div className="card-arrow">›</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (isDone) {
     return (
       <div className="app">
@@ -260,7 +305,7 @@ function App() {
   const flowSteps = flowOrigin ? FLOW_STEPS[flowOrigin] : null
   const flowStep = flowSteps ? flowSteps[flowIndex] : null
   const progress = flowSteps ? ((flowIndex + 1) / flowSteps.length) * 100 : 0
-  const showChrome = !inFlow && !masterProfile
+  const showChrome = !inFlow
 
   const flowServices = selectedMaster
     ? services.filter((s) => selectedMaster.service_ids.includes(s.id))
@@ -272,17 +317,13 @@ function App() {
   return (
     <div className="app">
       <div className="topbar">
-        {(inFlow || masterProfile) && (
+        {inFlow && (
           <button className="icon-back" onClick={goBack} aria-label="Назад">
             ←
           </button>
         )}
         <div className="topbar-title">
-          {masterProfile
-            ? masterProfile.name
-            : inFlow && flowStep
-              ? STEP_TITLES[flowStep]
-              : TAB_TITLES[activeTab]}
+          {inFlow && flowStep ? STEP_TITLES[flowStep] : TAB_TITLES[activeTab]}
         </div>
         {isTestUser && <div className="test-badge">тест</div>}
       </div>
@@ -296,44 +337,7 @@ function App() {
       <div className="content">
         {error && <p className="error">{error}</p>}
 
-        {masterProfile && (
-          <>
-            {masterProfile.photo_url ? (
-              <img className="profile-photo" src={masterProfile.photo_url} alt={masterProfile.name} />
-            ) : (
-              <div className="profile-photo profile-photo-fallback">{initials(masterProfile.name)}</div>
-            )}
-            {masterProfile.experience_years != null && (
-              <div className="profile-experience">
-                {pluralizeYears(masterProfile.experience_years)} опыта
-              </div>
-            )}
-            {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
-            <div className="profile-section-title">Что делает</div>
-            <div className="list">
-              {services
-                .filter((s) => masterProfile.service_ids.includes(s.id))
-                .map((s) => (
-                  <button
-                    key={s.id}
-                    className="card"
-                    onClick={() => bookFromProfile(masterProfile, s)}
-                  >
-                    <div className="badge">{serviceIcon(s.name)}</div>
-                    <div className="card-body">
-                      <div className="card-title">{s.name}</div>
-                      <div className="card-sub">
-                        {s.duration_minutes} мин · {s.price} ₽
-                      </div>
-                    </div>
-                    <div className="card-arrow">›</div>
-                  </button>
-                ))}
-            </div>
-          </>
-        )}
-
-        {!inFlow && !masterProfile && activeTab === 'services' && (
+        {!inFlow && activeTab === 'services' && (
           <div className="list">
             {services.map((s) => (
               <button
@@ -357,7 +361,7 @@ function App() {
           </div>
         )}
 
-        {!inFlow && !masterProfile && activeTab === 'masters' && (
+        {!inFlow && activeTab === 'masters' && (
           <div className="list">
             {masters.map((m) => (
               <button key={m.id} className="card" onClick={() => setMasterProfile(m)}>
@@ -379,7 +383,6 @@ function App() {
         )}
 
         {!inFlow &&
-          !masterProfile &&
           activeTab === 'bookings' &&
           (bookings.length === 0 ? (
             <div className="empty-state">
@@ -491,7 +494,7 @@ function App() {
         )}
       </div>
 
-      {!inFlow && !masterProfile && activeTab === 'bookings' && (
+      {!inFlow && activeTab === 'bookings' && (
         <div className="footer">
           <button className="primary" onClick={() => startFlow('bookings')}>
             Записаться
