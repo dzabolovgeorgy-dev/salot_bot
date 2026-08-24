@@ -25,8 +25,23 @@ app.listen(port, () => {
   console.log(`Сервер запущен на порту ${port}`);
 });
 
-bot.launch();
-console.log("Бот запущен");
+// При деплое старая копия бота ещё пару секунд не отключена, и Telegram
+// отвечает ошибкой 409 (getUpdates conflict) — пробуем ещё раз, пока она не освободится
+async function startBot(attemptsLeft = 8) {
+  try {
+    await bot.launch();
+    console.log("Бот запущен");
+  } catch (err) {
+    if (attemptsLeft <= 0) {
+      console.error("Не удалось запустить бота:", err);
+      return;
+    }
+    console.warn(`Бот не смог запуститься (осталось попыток: ${attemptsLeft}), повтор через 3с`);
+    setTimeout(() => startBot(attemptsLeft - 1), 3000);
+  }
+}
+
+startBot();
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
