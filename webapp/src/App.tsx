@@ -24,17 +24,34 @@ interface Booking {
   price: number
 }
 
-type Step = 'home' | 'service' | 'master' | 'time' | 'confirm' | 'done'
+type Tab = 'services' | 'masters' | 'bookings'
+type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
-const STEP_ORDER: Step[] = ['service', 'master', 'time', 'confirm']
+const TABS: { key: Tab; label: string; icon: string }[] = [
+  { key: 'services', label: 'Услуги', icon: '✨' },
+  { key: 'masters', label: 'Мастера', icon: '💇' },
+  { key: 'bookings', label: 'Мои записи', icon: '🗓️' },
+]
 
-const STEP_TITLES: Record<Step, string> = {
-  home: 'Мои записи',
+const TAB_TITLES: Record<Tab, string> = {
+  services: 'Услуги',
+  masters: 'Мастера',
+  bookings: 'Мои записи',
+}
+
+// Какие шаги остаются пройти в зависимости от того, откуда начали запись
+// (если зашли через конкретную услугу/мастера — этот выбор уже сделан)
+const FLOW_STEPS: Record<Tab, FlowStep[]> = {
+  services: ['master', 'time', 'confirm'],
+  masters: ['service', 'time', 'confirm'],
+  bookings: ['service', 'master', 'time', 'confirm'],
+}
+
+const STEP_TITLES: Record<FlowStep, string> = {
   service: 'Выберите услугу',
   master: 'Выберите мастера',
   time: 'Дата и время',
   confirm: 'Подтвердите запись',
-  done: 'Готово',
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -74,7 +91,11 @@ function formatDateTime(iso: string): string {
 }
 
 function App() {
-  const [step, setStep] = useState<Step>('home')
+  const [activeTab, setActiveTab] = useState<Tab>('services')
+  const [flowOrigin, setFlowOrigin] = useState<Tab | null>(null)
+  const [flowIndex, setFlowIndex] = useState(0)
+  const [isDone, setIsDone] = useState(false)
+
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -115,20 +136,31 @@ function App() {
       .finally(() => setLoading(false))
   }, [])
 
-  const reset = () => {
+  const startFlow = (origin: Tab) => {
+    setError(null)
+    setFlowOrigin(origin)
+    setFlowIndex(0)
+  }
+
+  const exitFlow = () => {
     setSelectedService(null)
     setSelectedMaster(null)
     setStartsAt('')
     setError(null)
-    setStep('home')
+    setFlowOrigin(null)
+    setFlowIndex(0)
   }
 
   const goBack = () => {
     setError(null)
-    if (step === 'service') setStep('home')
-    else if (step === 'master') setStep('service')
-    else if (step === 'time') setStep('master')
-    else if (step === 'confirm') setStep('time')
+    if (flowIndex === 0) exitFlow()
+    else setFlowIndex((i) => i - 1)
+  }
+
+  const goToBookings = () => {
+    setIsDone(false)
+    exitFlow()
+    setActiveTab('bookings')
   }
 
   const cancelBooking = async (id: number) => {
@@ -168,7 +200,7 @@ function App() {
         return
       }
       await fetchBookings()
-      setStep('done')
+      setIsDone(true)
     } catch {
       setError('Не удалось связаться с сервером')
     } finally {
@@ -180,7 +212,7 @@ function App() {
     return <div className="loading-screen">Загрузка…</div>
   }
 
-  if (step === 'done') {
+  if (isDone) {
     return (
       <div className="app">
         <div className="done-screen">
@@ -189,7 +221,7 @@ function App() {
           <p>Вы записаны. Ждём вас в салоне.</p>
         </div>
         <div className="footer">
-          <button className="primary" onClick={reset}>
+          <button className="primary" onClick={goToBookings}>
             К моим записям
           </button>
         </div>
@@ -197,21 +229,26 @@ function App() {
     )
   }
 
-  const progress = ((STEP_ORDER.indexOf(step) + 1) / STEP_ORDER.length) * 100
+  const inFlow = flowOrigin !== null
+  const flowSteps = flowOrigin ? FLOW_STEPS[flowOrigin] : null
+  const flowStep = flowSteps ? flowSteps[flowIndex] : null
+  const progress = flowSteps ? ((flowIndex + 1) / flowSteps.length) * 100 : 0
 
   return (
     <div className="app">
       <div className="topbar">
-        {step !== 'home' && (
+        {inFlow && (
           <button className="icon-back" onClick={goBack} aria-label="Назад">
             ←
           </button>
         )}
-        <div className="topbar-title">{STEP_TITLES[step]}</div>
+        <div className="topbar-title">
+          {inFlow && flowStep ? STEP_TITLES[flowStep] : TAB_TITLES[activeTab]}
+        </div>
         {isTestUser && <div className="test-badge">тест</div>}
       </div>
 
-      {step !== 'home' && (
+      {inFlow && (
         <div className="progress">
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
@@ -220,7 +257,53 @@ function App() {
       <div className="content">
         {error && <p className="error">{error}</p>}
 
-        {step === 'home' &&
+        {!inFlow && activeTab === 'services' && (
+          <div className="list">
+            {services.map((s) => (
+              <button
+                key={s.id}
+                className="card"
+                onClick={() => {
+                  setSelectedService(s)
+                  startFlow('services')
+                }}
+              >
+                <div className="badge">{serviceIcon(s.name)}</div>
+                <div className="card-body">
+                  <div className="card-title">{s.name}</div>
+                  <div className="card-sub">
+                    {s.duration_minutes} мин · {s.price} ₽
+                  </div>
+                </div>
+                <div className="card-arrow">›</div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!inFlow && activeTab === 'masters' && (
+          <div className="list">
+            {masters.map((m) => (
+              <button
+                key={m.id}
+                className="card"
+                onClick={() => {
+                  setSelectedMaster(m)
+                  startFlow('masters')
+                }}
+              >
+                <div className="avatar">{initials(m.name)}</div>
+                <div className="card-body">
+                  <div className="card-title">{m.name}</div>
+                </div>
+                <div className="card-arrow">›</div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!inFlow &&
+          activeTab === 'bookings' &&
           (bookings.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">🗓️</div>
@@ -251,7 +334,7 @@ function App() {
             </div>
           ))}
 
-        {step === 'service' && (
+        {inFlow && flowStep === 'service' && (
           <div className="list">
             {services.map((s) => (
               <button
@@ -259,7 +342,7 @@ function App() {
                 className="card"
                 onClick={() => {
                   setSelectedService(s)
-                  setStep('master')
+                  setFlowIndex((i) => i + 1)
                 }}
               >
                 <div className="badge">{serviceIcon(s.name)}</div>
@@ -275,7 +358,7 @@ function App() {
           </div>
         )}
 
-        {step === 'master' && (
+        {inFlow && flowStep === 'master' && (
           <div className="list">
             {masters.map((m) => (
               <button
@@ -283,7 +366,7 @@ function App() {
                 className="card"
                 onClick={() => {
                   setSelectedMaster(m)
-                  setStep('time')
+                  setFlowIndex((i) => i + 1)
                 }}
               >
                 <div className="avatar">{initials(m.name)}</div>
@@ -296,7 +379,7 @@ function App() {
           </div>
         )}
 
-        {step === 'time' && (
+        {inFlow && flowStep === 'time' && (
           <input
             type="datetime-local"
             value={startsAt}
@@ -305,7 +388,7 @@ function App() {
           />
         )}
 
-        {step === 'confirm' && selectedService && selectedMaster && (
+        {inFlow && flowStep === 'confirm' && selectedService && selectedMaster && (
           <div className="summary">
             <div className="summary-row">
               <span className="summary-label">Услуга</span>
@@ -327,27 +410,49 @@ function App() {
         )}
       </div>
 
-      {step === 'home' && (
+      {!inFlow && activeTab === 'bookings' && (
         <div className="footer">
-          <button className="primary" onClick={() => setStep('service')}>
+          <button className="primary" onClick={() => startFlow('bookings')}>
             Записаться
           </button>
         </div>
       )}
 
-      {step === 'time' && (
+      {inFlow && flowStep === 'time' && (
         <div className="footer">
-          <button className="primary" disabled={!startsAt} onClick={() => setStep('confirm')}>
+          <button
+            className="primary"
+            disabled={!startsAt}
+            onClick={() => setFlowIndex((i) => i + 1)}
+          >
             Далее
           </button>
         </div>
       )}
 
-      {step === 'confirm' && (
+      {inFlow && flowStep === 'confirm' && (
         <div className="footer">
           <button className="primary" disabled={submitting} onClick={submitBooking}>
             {submitting ? 'Записываем…' : 'Записаться'}
           </button>
+        </div>
+      )}
+
+      {!inFlow && (
+        <div className="tabbar">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              className={`tab-item${activeTab === t.key ? ' active' : ''}`}
+              onClick={() => {
+                setError(null)
+                setActiveTab(t.key)
+              }}
+            >
+              <span className="tab-icon">{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
