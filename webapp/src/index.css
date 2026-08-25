@@ -1,18 +1,35 @@
 :root {
-  --bg: #f6f6f8;
+  --bg: #fffdfc;
   --surface: #ffffff;
-  --surface-muted: #eeedf2;
-  --text-h: #17161b;
-  --text: #6f6d78;
-  --border: #e5e3ea;
-  --accent: #6d5ef5;
-  --accent-dark: #5646d6;
-  --accent-soft: #ece9fe;
-  --soft-white: #ffffff;
-  --danger: #e5484d;
-  --shadow: 0 1px 2px rgba(20, 18, 30, 0.05);
+  --surface-muted: #f2eeee;
+  --text-h: #211e1d;
+  --text: #746d6b;
+  --border: #e8e1df;
 
-  --sans: 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --primary: #211e1d;
+  --primary-foreground: #fffdfc;
+
+  --accent: #f6d9db;
+  --accent-foreground: #9c4e55;
+  --accent-dark: #9c4e55;
+  --accent-soft: #f6d9db;
+
+  --success: #407457;
+  --success-foreground: #ffffff;
+
+  --soft-white: #fffdfc;
+  --danger: #c0392b;
+  --shadow: 0 8px 28px rgba(33, 30, 29, 0.06);
+
+  --radius-sm: 0.45rem;
+  --radius-md: 0.6rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1.05rem;
+  --radius-2xl: 1.35rem;
+  --radius-3xl: 1.65rem;
+
+  --sans: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --serif: 'Cormorant', Georgia, serif;
 
   font: 16px/1.45 var(--sans);
   color-scheme: light dark;
@@ -24,17 +41,26 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121116;
-    --surface: #1c1b21;
-    --surface-muted: #242229;
-    --text-h: #f3f2f6;
-    --text: #9a97a3;
-    --border: #2c2a32;
-    --accent: #8677ff;
-    --accent-dark: #6d5ef5;
-    --accent-soft: rgba(134, 119, 255, 0.16);
-    --soft-white: #ffffff;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --bg: #1c1a19;
+    --surface: #262322;
+    --surface-muted: #2d2a29;
+    --text-h: #fbf5f4;
+    --text: #a89e9b;
+    --border: #3a3634;
+
+    --primary: #fbf5f4;
+    --primary-foreground: #211e1d;
+
+    --accent: #4a3336;
+    --accent-foreground: #f0b7bd;
+    --accent-dark: #f0b7bd;
+    --accent-soft: #4a3336;
+
+    --success: #5fa87d;
+    --success-foreground: #12251a;
+
+    --soft-white: #fffdfc;
+    --shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -56,7 +82,7 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--sans);
+  font-family: var(--serif);
   font-weight: 700;
   color: var(--text-h);
   margin: 0;

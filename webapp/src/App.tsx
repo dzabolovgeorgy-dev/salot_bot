@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowLeft, CalendarDays, Home, Sparkles, UserRound } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import './App.css'
 
 interface Master {
@@ -32,11 +35,11 @@ type Tab = 'home' | 'services' | 'masters' | 'bookings'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
-const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'home', label: 'Главная', icon: '🏠' },
-  { key: 'services', label: 'Услуги', icon: '✨' },
-  { key: 'masters', label: 'Мастера', icon: '💇' },
-  { key: 'bookings', label: 'Записи', icon: '🗓️' },
+const TABS: { key: Tab; label: string; Icon: LucideIcon }[] = [
+  { key: 'home', label: 'Главная', Icon: Home },
+  { key: 'services', label: 'Услуги', Icon: Sparkles },
+  { key: 'masters', label: 'Мастера', Icon: UserRound },
+  { key: 'bookings', label: 'Записи', Icon: CalendarDays },
 ]
 
 const TAB_TITLES: Record<Tab, string> = {
@@ -255,7 +258,12 @@ function App() {
   if (masterProfile) {
     const masterServices = services.filter((s) => masterProfile.service_ids.includes(s.id))
     return (
-      <div className="app app-hero">
+      <motion.div
+        className="app app-hero"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
         <div className="hero">
           {masterProfile.photo_url ? (
             <img className="hero-photo" src={masterProfile.photo_url} alt={masterProfile.name} />
@@ -264,7 +272,7 @@ function App() {
           )}
           <div className="hero-scrim" />
           <button className="hero-back" onClick={goBack} aria-label="Назад">
-            ←
+            <ArrowLeft size={18} />
           </button>
           {isTestUser && <div className="hero-badge">тест</div>}
           <div className="hero-text">
@@ -293,13 +301,18 @@ function App() {
             ))}
           </div>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
   if (isDone) {
     return (
-      <div className="app">
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
         <div className="done-screen">
           <div className="done-icon">🎉</div>
           <h1>Готово!</h1>
@@ -310,7 +323,7 @@ function App() {
             К моим записям
           </button>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
@@ -327,12 +340,14 @@ function App() {
     ? masters.filter((m) => m.service_ids.includes(selectedService.id))
     : masters
 
+  const screenKey = inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
+
   return (
     <div className="app">
       <div className="topbar">
         {inFlow && (
           <button className="icon-back" onClick={goBack} aria-label="Назад">
-            ←
+            <ArrowLeft size={18} />
           </button>
         )}
         <div className="topbar-title">
@@ -347,7 +362,15 @@ function App() {
         </div>
       )}
 
-      <div className="content">
+      <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={screenKey}
+        className="content"
+        initial={{ opacity: 0, x: 16 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -16 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+      >
         {error && <p className="error">{error}</p>}
 
         {!inFlow && activeTab === 'home' && (
@@ -551,7 +574,8 @@ function App() {
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
+      </AnimatePresence>
 
       {!inFlow && activeTab === 'bookings' && (
         <div className="footer">
@@ -592,7 +616,7 @@ function App() {
                 setActiveTab(t.key)
               }}
             >
-              <span className="tab-icon">{t.icon}</span>
+              <t.Icon className="tab-icon" size={20} strokeWidth={1.75} />
               <span>{t.label}</span>
             </button>
           ))}
