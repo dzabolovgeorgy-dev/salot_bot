@@ -197,10 +197,14 @@ function App() {
     if (!window.confirm('Отменить эту запись?')) return
     setCancellingId(id)
     try {
-      await fetch(
+      const res = await fetch(
         `${API_URL}/api/bookings/${id}?client_telegram_id=${clientTelegramId}`,
         { method: 'DELETE' }
       )
+      if (!res.ok) {
+        setError('Не удалось отменить запись')
+        return
+      }
       setBookings((prev) => prev.filter((b) => b.id !== id))
     } catch {
       setError('Не удалось отменить запись')
