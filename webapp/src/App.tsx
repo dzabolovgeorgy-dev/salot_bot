@@ -341,20 +341,39 @@ function App() {
     : masters
 
   const screenKey = inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
+  const isHomeHero = !inFlow && activeTab === 'home'
+  const heroBooking = bookings[0] ?? null
+  const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
 
   return (
     <div className="app">
-      <div className="topbar">
-        {inFlow && (
-          <button className="icon-back" onClick={goBack} aria-label="Назад">
-            <ArrowLeft size={18} />
-          </button>
-        )}
-        <div className="topbar-title">
-          {inFlow && flowStep ? STEP_TITLES[flowStep] : TAB_TITLES[activeTab]}
+      {isHomeHero ? (
+        <div className="hero hero-compact">
+          {heroMaster?.photo_url ? (
+            <img className="hero-photo" src={heroMaster.photo_url} alt="" />
+          ) : (
+            <div className="hero-photo hero-photo-fallback">✨</div>
+          )}
+          <div className="hero-scrim" />
+          {isTestUser && <div className="hero-badge">тест</div>}
+          <div className="hero-text">
+            <p className="hero-eyebrow">{heroBooking ? 'ВАША ЗАПИСЬ' : 'САЛОН КРАСОТЫ'}</p>
+            <div className="hero-name">{heroBooking ? heroBooking.service_name : 'Добро пожаловать'}</div>
+          </div>
         </div>
-        {isTestUser && <div className="test-badge">тест</div>}
-      </div>
+      ) : (
+        <div className="topbar">
+          {inFlow && (
+            <button className="icon-back" onClick={goBack} aria-label="Назад">
+              <ArrowLeft size={18} />
+            </button>
+          )}
+          <div className="topbar-title">
+            {inFlow && flowStep ? STEP_TITLES[flowStep] : TAB_TITLES[activeTab]}
+          </div>
+          {isTestUser && <div className="test-badge">тест</div>}
+        </div>
+      )}
 
       {inFlow && (
         <div className="progress">
@@ -365,7 +384,7 @@ function App() {
       <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={screenKey}
-        className="content"
+        className={`content${isHomeHero ? ' sheet' : ''}`}
         initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -16 }}
@@ -373,50 +392,66 @@ function App() {
       >
         {error && <p className="error">{error}</p>}
 
-        {!inFlow && activeTab === 'home' && (
-          <>
-            <p className="hub-greeting">
-              Добро пожаловать! Запишитесь на услугу в пару кликов или посмотрите наших мастеров.
-            </p>
-
-            {bookings.length > 0 && (
-              <>
-                <div className="section-title">Ближайшая запись</div>
-                <div className="booking-card">
-                  <div className="booking-row">
-                    <div className="badge">{serviceIcon(bookings[0].service_name)}</div>
-                    <div className="card-body">
-                      <div className="card-title">{bookings[0].service_name}</div>
-                      <div className="card-sub">
-                        {bookings[0].master_name} · {formatDateTime(bookings[0].starts_at)}
-                      </div>
-                    </div>
+        {isHomeHero &&
+          (heroBooking && heroMaster ? (
+            <>
+              <article className="confirm-card">
+                <div className="confirm-card-media">{serviceIcon(heroBooking.service_name)}</div>
+                <div className="confirm-card-body">
+                  <div>
+                    <p className="confirm-eyebrow">Подтверждено</p>
+                    <h2 className="confirm-title">{heroBooking.service_name}</h2>
+                  </div>
+                  <div className="confirm-master-row">
+                    {heroMaster.photo_url ? (
+                      <img className="avatar-photo" src={heroMaster.photo_url} alt={heroMaster.name} />
+                    ) : (
+                      <div className="avatar">{initials(heroMaster.name)}</div>
+                    )}
+                    <span className="confirm-master-name">{heroMaster.name}</span>
                   </div>
                 </div>
-              </>
-            )}
+              </article>
 
-            <div className="section-title">Быстрые действия</div>
-            <div className="list">
-              <button className="card" onClick={() => setActiveTab('services')}>
-                <div className="badge">✨</div>
-                <div className="card-body">
-                  <div className="card-title">Все услуги</div>
-                  <div className="card-sub">Стрижки, окрашивание, маникюр и другое</div>
+              <div className="details-grid">
+                <div className="details-col">
+                  <p className="eyebrow-label">Быстрые действия</p>
+                  <button className="text-link" onClick={() => setActiveTab('services')}>
+                    Все услуги
+                  </button>
+                  <button className="text-link" onClick={() => setActiveTab('masters')}>
+                    Наши мастера
+                  </button>
                 </div>
-                <div className="card-arrow">›</div>
-              </button>
-              <button className="card" onClick={() => setActiveTab('masters')}>
-                <div className="badge">💇</div>
-                <div className="card-body">
-                  <div className="card-title">Наши мастера</div>
-                  <div className="card-sub">Фото, опыт и специализация</div>
+                <div className="details-col">
+                  <p className="eyebrow-label">Дата и время</p>
+                  <div className="detail-row">
+                    <span>Дата</span>
+                    <strong>{formatDateTime(heroBooking.starts_at)}</strong>
+                  </div>
                 </div>
-                <div className="card-arrow">›</div>
+              </div>
+
+              <button className="primary" onClick={() => setActiveTab('bookings')}>
+                Мои записи
               </button>
-            </div>
-          </>
-        )}
+              <button className="link-button" onClick={() => setActiveTab('services')}>
+                Смотреть все услуги <Sparkles size={14} />
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="hub-greeting">
+                У вас пока нет записи. Выберите услугу или мастера, чтобы записаться в пару кликов.
+              </p>
+              <button className="primary" onClick={() => setActiveTab('services')}>
+                Записаться
+              </button>
+              <button className="link-button" onClick={() => setActiveTab('masters')}>
+                Смотреть мастеров <Sparkles size={14} />
+              </button>
+            </>
+          ))}
 
         {!inFlow && activeTab === 'services' && (
           <div className="list">
@@ -443,21 +478,21 @@ function App() {
         )}
 
         {!inFlow && activeTab === 'masters' && (
-          <div className="list">
+          <div className="masters-grid">
             {masters.map((m) => (
-              <button key={m.id} className="card" onClick={() => setMasterProfile(m)}>
+              <button key={m.id} className="master-tile" onClick={() => setMasterProfile(m)}>
                 {m.photo_url ? (
-                  <img className="avatar-photo" src={m.photo_url} alt={m.name} />
+                  <img src={m.photo_url} alt={m.name} />
                 ) : (
-                  <div className="avatar">{initials(m.name)}</div>
+                  <div className="master-tile-fallback">{initials(m.name)}</div>
                 )}
-                <div className="card-body">
-                  <div className="card-title">{m.name}</div>
+                <div className="master-tile-scrim" />
+                <div className="master-tile-caption">
+                  <div className="master-tile-name">{m.name}</div>
                   {m.experience_years != null && (
-                    <div className="card-sub">{pluralizeYears(m.experience_years)} опыта</div>
+                    <div className="master-tile-sub">{pluralizeYears(m.experience_years)} опыта</div>
                   )}
                 </div>
-                <div className="card-arrow">›</div>
               </button>
             ))}
           </div>
