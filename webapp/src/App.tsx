@@ -97,6 +97,12 @@ function formatDateTime(iso: string): string {
   })
 }
 
+function nowForDateTimeInput(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+}
+
 function pluralizeYears(n: number): string {
   const mod10 = n % 10
   const mod100 = n % 100
@@ -519,6 +525,7 @@ function App() {
           <input
             type="datetime-local"
             value={startsAt}
+            min={nowForDateTimeInput()}
             onChange={(e) => setStartsAt(e.target.value)}
             className="datetime-input"
           />

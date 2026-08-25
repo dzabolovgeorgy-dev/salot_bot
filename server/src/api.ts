@@ -99,6 +99,14 @@ api.post("/bookings", (req, res) => {
     return;
   }
 
+  const isPast = db
+    .prepare("SELECT datetime(@startsAt) < datetime('now') AS value")
+    .get({ startsAt: starts_at }) as { value: number };
+  if (isPast.value) {
+    res.status(400).json({ error: "Нельзя записаться на прошедшее время" });
+    return;
+  }
+
   const conflict = db
     .prepare(
       `SELECT b.id FROM bookings b
