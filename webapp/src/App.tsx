@@ -188,6 +188,15 @@ function App() {
     const tg = (window as any).Telegram?.WebApp
     tg?.ready?.()
     tg?.expand?.()
+    // Цвет шапки/фона самого Telegram вокруг мини-приложения — подгоняем под
+    // палитру дизайна (без этого Telegram красит их своим цветом темы)
+    try {
+      tg?.setHeaderColor?.('#fffaf6')
+      tg?.setBackgroundColor?.('#fffaf6')
+      tg?.setBottomBarColor?.('#fffaf6')
+    } catch {
+      // старые версии Telegram могут не поддерживать эти методы — не критично
+    }
   }, [])
 
   const fetchBookings = () =>
