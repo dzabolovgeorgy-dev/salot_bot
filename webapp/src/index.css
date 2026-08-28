@@ -1,32 +1,35 @@
 :root {
-  --bg: #fffdfc;
+  --bg: #fffaf6;
   --surface: #ffffff;
-  --surface-muted: #f2eeee;
-  --text-h: #211e1d;
-  --text: #746d6b;
-  --border: #e8e1df;
+  --surface-muted: #f5e8de;
+  --text-h: #62493a;
+  --text: #91786a;
+  --border: #ead9cd;
 
-  --primary: #211e1d;
-  --primary-foreground: #fffdfc;
+  --primary: #76513b;
+  --primary-foreground: #fffaf6;
 
-  --accent: #f6d9db;
-  --accent-foreground: #9c4e55;
-  --accent-dark: #9c4e55;
-  --accent-soft: #f6d9db;
+  --secondary: #edc6aa;
+  --secondary-foreground: #62493a;
 
-  --success: #407457;
+  --accent: #f2d5c2;
+  --accent-foreground: #76513b;
+  --accent-dark: #76513b;
+  --accent-soft: #f2d5c2;
+
+  --success: #657452;
   --success-foreground: #ffffff;
 
-  --soft-white: #fffdfc;
-  --danger: #c0392b;
-  --shadow: 0 8px 28px rgba(33, 30, 29, 0.06);
+  --soft-white: #fffaf6;
+  --danger: #b3413a;
+  --shadow: 0 8px 24px rgba(33, 30, 29, 0.06);
 
-  --radius-sm: 0.45rem;
-  --radius-md: 0.6rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1.05rem;
-  --radius-2xl: 1.35rem;
-  --radius-3xl: 1.65rem;
+  --radius-sm: 0.6rem;
+  --radius-md: 0.8rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.4rem;
+  --radius-2xl: 1.8rem;
+  --radius-3xl: 2.2rem;
 
   --sans: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
   --serif: 'Cormorant', Georgia, serif;
@@ -41,26 +44,29 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1a19;
-    --surface: #262322;
-    --surface-muted: #2d2a29;
-    --text-h: #fbf5f4;
-    --text: #a89e9b;
-    --border: #3a3634;
+    --bg: #211a15;
+    --surface: #2b231d;
+    --surface-muted: #332921;
+    --text-h: #f6ece4;
+    --text: #c3ac9d;
+    --border: #40332a;
 
-    --primary: #fbf5f4;
-    --primary-foreground: #211e1d;
+    --primary: #f6ece4;
+    --primary-foreground: #3a2c22;
 
-    --accent: #4a3336;
-    --accent-foreground: #f0b7bd;
-    --accent-dark: #f0b7bd;
-    --accent-soft: #4a3336;
+    --secondary: #4a3a2c;
+    --secondary-foreground: #f6ece4;
 
-    --success: #5fa87d;
-    --success-foreground: #12251a;
+    --accent: #4a3a2c;
+    --accent-foreground: #edc6aa;
+    --accent-dark: #edc6aa;
+    --accent-soft: #4a3a2c;
 
-    --soft-white: #fffdfc;
-    --shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+    --success: #93a97a;
+    --success-foreground: #182013;
+
+    --soft-white: #fffaf6;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   }
 }
 

@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, CalendarDays, Home, Sparkles, UserRound } from 'lucide-react'
+import {
+  ArrowLeft,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  Clock3,
+  Home,
+  Palette,
+  Scissors,
+  Sparkles,
+  UserRound,
+  Wind,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
 
@@ -50,7 +62,7 @@ const TAB_TITLES: Record<Tab, string> = {
 }
 
 // Какие шаги остаются пройти в зависимости от того, откуда начали запись
-// (если зашли через конкретную услугу/мастера — этот выбор уже сделан)
+// (если зашли через конкретную услугу/мастера — этот выбор уже сделано)
 const FLOW_STEPS: Record<FlowOrigin, FlowStep[]> = {
   services: ['master', 'time', 'confirm'],
   masters: ['service', 'time', 'confirm'],
@@ -64,6 +76,10 @@ const STEP_TITLES: Record<FlowStep, string> = {
   confirm: 'Подтвердите запись',
 }
 
+const TIME_SLOTS = ['10:00', '11:30', '13:00', '15:00', '16:30', '18:00']
+const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 function getTelegramUserId(): number {
@@ -71,15 +87,14 @@ function getTelegramUserId(): number {
   return tgUser?.id ?? 111111
 }
 
-function serviceIcon(name: string): string {
+function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
   const n = name.toLowerCase()
-  if (n.includes('стриж')) return '✂️'
-  if (n.includes('окраш') || n.includes('цвет')) return '🎨'
-  if (n.includes('маник') || n.includes('педик')) return '💅'
-  if (n.includes('уклад') || n.includes('причёск') || n.includes('прическ')) return '💇‍♀️'
-  if (n.includes('брит') || n.includes('бород')) return '🪒'
-  if (n.includes('масс')) return '💆'
-  return '✨'
+  if (n.includes('стриж')) return <Scissors size={size} />
+  if (n.includes('окраш') || n.includes('цвет')) return <Palette size={size} />
+  if (n.includes('маник') || n.includes('педик')) return <Sparkles size={size} />
+  if (n.includes('уклад') || n.includes('причёск') || n.includes('прическ')) return <Wind size={size} />
+  if (n.includes('брит') || n.includes('бород')) return <UserRound size={size} />
+  return <Sparkles size={size} />
 }
 
 function initials(name: string): string {
@@ -100,18 +115,49 @@ function formatDateTime(iso: string): string {
   })
 }
 
-function nowForDateTimeInput(): string {
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
-}
-
 function pluralizeYears(n: number): string {
   const mod10 = n % 10
   const mod100 = n % 100
   if (mod10 === 1 && mod100 !== 11) return `${n} год`
   if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return `${n} года`
   return `${n} лет`
+}
+
+function dateKeyOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function buildUpcomingDates(count = 7): { key: string; label: string }[] {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const result: { key: string; label: string }[] = []
+  for (let i = 0; i < count; i++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() + i)
+    const dayLabel = i === 0 ? 'Сегодня' : i === 1 ? 'Завтра' : WEEKDAYS[d.getDay()]
+    const label = `${dayLabel}, ${d.getDate()} ${MONTHS[d.getMonth()]}`
+    result.push({ key: dateKeyOf(d), label })
+  }
+  return result
+}
+
+function ServiceRow({ service, onClick }: { service: Service; onClick: () => void }) {
+  return (
+    <button className="service-row" onClick={onClick}>
+      <span className="service-row-icon">
+        <ServiceIcon name={service.name} size={22} />
+      </span>
+      <span className="service-row-body">
+        <span className="service-row-name">{service.name}</span>
+        <span className="service-row-duration">
+          <Clock3 size={13} />
+          {service.duration_minutes} мин
+        </span>
+      </span>
+      <span className="service-row-price">{service.price} ₽</span>
+      <ChevronRight size={16} className="service-row-arrow" />
+    </button>
+  )
 }
 
 function App() {
@@ -132,6 +178,8 @@ function App() {
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedMaster, setSelectedMaster] = useState<Master | null>(null)
   const [startsAt, setStartsAt] = useState('')
+  const [dateKey, setDateKey] = useState('')
+  const [timeSlot, setTimeSlot] = useState('')
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -161,6 +209,10 @@ function App() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    setStartsAt(dateKey && timeSlot ? `${dateKey}T${timeSlot}` : '')
+  }, [dateKey, timeSlot])
+
   const startFlow = (origin: FlowOrigin) => {
     setError(null)
     setFlowOrigin(origin)
@@ -180,7 +232,8 @@ function App() {
   const exitFlow = () => {
     setSelectedService(null)
     setSelectedMaster(null)
-    setStartsAt('')
+    setDateKey('')
+    setTimeSlot('')
     setError(null)
     setFlowOrigin(null)
     setFlowIndex(0)
@@ -276,28 +329,17 @@ function App() {
           </button>
           {isTestUser && <div className="hero-badge">тест</div>}
           <div className="hero-text">
+            <p className="hero-eyebrow">{masterProfile.experience_years != null ? pluralizeYears(masterProfile.experience_years) + ' опыта' : ''}</p>
             <div className="hero-name">{masterProfile.name}</div>
-            {masterProfile.experience_years != null && (
-              <div className="hero-sub">{pluralizeYears(masterProfile.experience_years)} опыта</div>
-            )}
           </div>
         </div>
         <div className="content">
           {error && <p className="error">{error}</p>}
           {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
-          <div className="section-title">Что делает</div>
+          <div className="section-title">Услуги мастера</div>
           <div className="list">
             {masterServices.map((s) => (
-              <button key={s.id} className="card" onClick={() => bookFromProfile(masterProfile, s)}>
-                <div className="badge">{serviceIcon(s.name)}</div>
-                <div className="card-body">
-                  <div className="card-title">{s.name}</div>
-                  <div className="card-sub">
-                    {s.duration_minutes} мин · {s.price} ₽
-                  </div>
-                </div>
-                <div className="card-arrow">›</div>
-              </button>
+              <ServiceRow key={s.id} service={s} onClick={() => bookFromProfile(masterProfile, s)} />
             ))}
           </div>
         </div>
@@ -314,7 +356,9 @@ function App() {
         transition={{ duration: 0.25, ease: 'easeOut' }}
       >
         <div className="done-screen">
-          <div className="done-icon">🎉</div>
+          <div className="done-icon">
+            <Check size={32} />
+          </div>
           <h1>Готово!</h1>
           <p>Вы записаны. Ждём вас в салоне.</p>
         </div>
@@ -340,6 +384,11 @@ function App() {
     ? masters.filter((m) => m.service_ids.includes(selectedService.id))
     : masters
 
+  const upcomingDates = buildUpcomingDates()
+  const todayKey = upcomingDates[0]?.key ?? ''
+  const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
+  const availableTimeSlots = dateKey === todayKey ? TIME_SLOTS.filter((t) => t > nowHHMM) : TIME_SLOTS
+
   const screenKey = inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
   const isHomeHero = !inFlow && activeTab === 'home'
   const heroBooking = bookings[0] ?? null
@@ -352,7 +401,11 @@ function App() {
           {heroMaster?.photo_url ? (
             <img className="hero-photo" src={heroMaster.photo_url} alt="" />
           ) : (
-            <div className="hero-photo hero-photo-fallback">✨</div>
+            <img
+              className="hero-photo"
+              src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`}
+              alt=""
+            />
           )}
           <div className="hero-scrim" />
           {isTestUser && <div className="hero-badge">тест</div>}
@@ -396,7 +449,9 @@ function App() {
           (heroBooking && heroMaster ? (
             <>
               <article className="confirm-card">
-                <div className="confirm-card-media">{serviceIcon(heroBooking.service_name)}</div>
+                <div className="confirm-card-media">
+                  <ServiceIcon name={heroBooking.service_name} size={26} />
+                </div>
                 <div className="confirm-card-body">
                   <div>
                     <p className="confirm-eyebrow">Подтверждено</p>
@@ -444,8 +499,18 @@ function App() {
               <p className="hub-greeting">
                 У вас пока нет записи. Выберите услугу или мастера, чтобы записаться в пару кликов.
               </p>
+              <div className="service-strip">
+                {services.slice(0, 5).map((s) => (
+                  <button key={s.id} className="service-chip" onClick={() => setActiveTab('services')}>
+                    <span className="service-chip-icon">
+                      <ServiceIcon name={s.name} size={22} />
+                    </span>
+                    <span className="service-chip-name">{s.name}</span>
+                  </button>
+                ))}
+              </div>
               <button className="primary" onClick={() => setActiveTab('services')}>
-                Записаться
+                Записаться сейчас
               </button>
               <button className="link-button" onClick={() => setActiveTab('masters')}>
                 Смотреть мастеров <Sparkles size={14} />
@@ -456,31 +521,26 @@ function App() {
         {!inFlow && activeTab === 'services' && (
           <div className="list">
             {services.map((s) => (
-              <button
+              <ServiceRow
                 key={s.id}
-                className="card"
+                service={s}
                 onClick={() => {
                   setSelectedService(s)
                   startFlow('services')
                 }}
-              >
-                <div className="badge">{serviceIcon(s.name)}</div>
-                <div className="card-body">
-                  <div className="card-title">{s.name}</div>
-                  <div className="card-sub">
-                    {s.duration_minutes} мин · {s.price} ₽
-                  </div>
-                </div>
-                <div className="card-arrow">›</div>
-              </button>
+              />
             ))}
           </div>
         )}
 
         {!inFlow && activeTab === 'masters' && (
           <div className="masters-grid">
-            {masters.map((m) => (
-              <button key={m.id} className="master-tile" onClick={() => setMasterProfile(m)}>
+            {masters.map((m, i) => (
+              <button
+                key={m.id}
+                className={`master-tile master-tile-${i % 3}`}
+                onClick={() => setMasterProfile(m)}
+              >
                 {m.photo_url ? (
                   <img src={m.photo_url} alt={m.name} />
                 ) : (
@@ -502,54 +562,62 @@ function App() {
           activeTab === 'bookings' &&
           (bookings.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">🗓️</div>
-              <p>У вас пока нет записей</p>
+              <div className="empty-icon">
+                <CalendarDays size={26} />
+              </div>
+              <h2>Записей пока нет</h2>
+              <p>Выберите услугу и найдите удобное время для визита.</p>
+              <button className="primary" onClick={() => setActiveTab('services')}>
+                Выбрать услугу
+              </button>
             </div>
           ) : (
             <div className="list">
-              {bookings.map((b) => (
-                <div key={b.id} className="booking-card">
-                  <div className="booking-row">
-                    <div className="badge">{serviceIcon(b.service_name)}</div>
-                    <div className="card-body">
-                      <div className="card-title">{b.service_name}</div>
-                      <div className="card-sub">
-                        {b.master_name} · {formatDateTime(b.starts_at)}
+              {bookings.map((b) => {
+                const master = masters.find((m) => m.id === b.master_id)
+                return (
+                  <article key={b.id} className="booking-tile">
+                    {master?.photo_url ? (
+                      <img className="booking-tile-photo" src={master.photo_url} alt={master.name} />
+                    ) : (
+                      <div className="booking-tile-photo booking-tile-photo-fallback">
+                        <ServiceIcon name={b.service_name} size={24} />
+                      </div>
+                    )}
+                    <div className="booking-tile-body">
+                      <div>
+                        <p className="confirm-eyebrow">Предстоящая</p>
+                        <h2 className="confirm-title">{b.service_name}</h2>
+                        <p className="booking-tile-master">{b.master_name}</p>
+                      </div>
+                      <div className="booking-tile-footer">
+                        <span className="booking-tile-time">{formatDateTime(b.starts_at)}</span>
+                        <button
+                          className="cancel-link"
+                          disabled={cancellingId === b.id}
+                          onClick={() => cancelBooking(b.id)}
+                        >
+                          {cancellingId === b.id ? 'Отменяем…' : 'Отменить'}
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  <button
-                    className="cancel-link"
-                    disabled={cancellingId === b.id}
-                    onClick={() => cancelBooking(b.id)}
-                  >
-                    {cancellingId === b.id ? 'Отменяем…' : 'Отменить запись'}
-                  </button>
-                </div>
-              ))}
+                  </article>
+                )
+              })}
             </div>
           ))}
 
         {inFlow && flowStep === 'service' && (
           <div className="list">
             {flowServices.map((s) => (
-              <button
+              <ServiceRow
                 key={s.id}
-                className="card"
+                service={s}
                 onClick={() => {
                   setSelectedService(s)
                   setFlowIndex((i) => i + 1)
                 }}
-              >
-                <div className="badge">{serviceIcon(s.name)}</div>
-                <div className="card-body">
-                  <div className="card-title">{s.name}</div>
-                  <div className="card-sub">
-                    {s.duration_minutes} мин · {s.price} ₽
-                  </div>
-                </div>
-                <div className="card-arrow">›</div>
-              </button>
+              />
             ))}
           </div>
         )}
@@ -579,40 +647,98 @@ function App() {
           </div>
         )}
 
-        {inFlow && flowStep === 'time' && (
-          <input
-            type="datetime-local"
-            value={startsAt}
-            min={nowForDateTimeInput()}
-            onChange={(e) => setStartsAt(e.target.value)}
-            className="datetime-input"
-          />
+        {inFlow && flowStep === 'time' && selectedMaster && selectedService && (
+          <>
+            <p className="eyebrow-label">Ваш специалист</p>
+            <div className="specialist-card">
+              {selectedMaster.photo_url ? (
+                <img className="specialist-photo" src={selectedMaster.photo_url} alt={selectedMaster.name} />
+              ) : (
+                <div className="avatar">{initials(selectedMaster.name)}</div>
+              )}
+              <div className="specialist-body">
+                <div className="specialist-name">{selectedMaster.name}</div>
+                <div className="specialist-service">
+                  {selectedService.name} · {selectedService.duration_minutes} мин
+                </div>
+              </div>
+              <Check size={18} className="specialist-check" />
+            </div>
+
+            <div className="section-title">Выберите дату</div>
+            <div className="date-pills">
+              {upcomingDates.map((d) => (
+                <button
+                  key={d.key}
+                  className={`date-pill${dateKey === d.key ? ' active' : ''}`}
+                  onClick={() => {
+                    setDateKey(d.key)
+                    setTimeSlot('')
+                  }}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="section-title">Свободное время</div>
+            {dateKey ? (
+              availableTimeSlots.length > 0 ? (
+                <div className="time-grid">
+                  {availableTimeSlots.map((t) => (
+                    <button
+                      key={t}
+                      className={`time-slot${timeSlot === t ? ' active' : ''}`}
+                      onClick={() => setTimeSlot(t)}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="hub-greeting">На сегодня свободного времени не осталось — выберите другой день.</p>
+              )
+            ) : (
+              <p className="hub-greeting">Сначала выберите дату.</p>
+            )}
+          </>
         )}
 
         {inFlow && flowStep === 'confirm' && selectedService && selectedMaster && (
-          <div className="summary">
-            <div className="summary-row">
-              <span className="summary-label">Услуга</span>
-              <span className="summary-value">{selectedService.name}</span>
+          <article className="confirm-card confirm-card-tall">
+            {selectedMaster.photo_url ? (
+              <img className="confirm-card-photo" src={selectedMaster.photo_url} alt={selectedMaster.name} />
+            ) : (
+              <div className="confirm-card-photo confirm-card-photo-fallback">{initials(selectedMaster.name)}</div>
+            )}
+            <div className="confirm-card-tall-body">
+              <p className="confirm-eyebrow">Ваша запись</p>
+              <h2 className="confirm-title">{selectedService.name}</h2>
+              <div className="confirm-master-row">
+                {selectedMaster.photo_url ? (
+                  <img className="avatar-photo" src={selectedMaster.photo_url} alt={selectedMaster.name} />
+                ) : (
+                  <div className="avatar">{initials(selectedMaster.name)}</div>
+                )}
+                <span className="confirm-master-name">{selectedMaster.name}</span>
+              </div>
+              <div className="summary-list">
+                <div className="summary-row">
+                  <span className="summary-label">Дата и время</span>
+                  <span className="summary-value">{formatDateTime(startsAt)}</span>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Стоимость</span>
+                  <span className="summary-value">{selectedService.price} ₽</span>
+                </div>
+              </div>
             </div>
-            <div className="summary-row">
-              <span className="summary-label">Мастер</span>
-              <span className="summary-value">{selectedMaster.name}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Время</span>
-              <span className="summary-value">{startsAt.replace('T', ' ')}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Цена</span>
-              <span className="summary-value">{selectedService.price} ₽</span>
-            </div>
-          </div>
+          </article>
         )}
       </motion.div>
       </AnimatePresence>
 
-      {!inFlow && activeTab === 'bookings' && (
+      {!inFlow && activeTab === 'bookings' && bookings.length > 0 && (
         <div className="footer">
           <button className="primary" onClick={() => startFlow('bookings')}>
             Записаться
@@ -627,17 +753,20 @@ function App() {
             disabled={!startsAt}
             onClick={() => setFlowIndex((i) => i + 1)}
           >
-            Далее
+            Продолжить
           </button>
         </div>
       )}
 
       {inFlow && flowStep === 'confirm' && (
-        <div className="footer">
-          <button className="primary" disabled={submitting} onClick={submitBooking}>
-            {submitting ? 'Записываем…' : 'Записаться'}
-          </button>
-        </div>
+        <>
+          <div className="footer footer-note">
+            <button className="primary" disabled={submitting} onClick={submitBooking}>
+              {submitting ? 'Записываем…' : 'Записаться'}
+            </button>
+            <p className="footer-hint">Оплата производится в салоне после визита.</p>
+          </div>
+        </>
       )}
 
       {showChrome && (
