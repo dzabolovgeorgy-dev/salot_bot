@@ -35,39 +35,11 @@
   --serif: 'Cormorant', Georgia, serif;
 
   font: 16px/1.45 var(--sans);
-  color-scheme: light dark;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #211a15;
-    --surface: #2b231d;
-    --surface-muted: #332921;
-    --text-h: #f6ece4;
-    --text: #c3ac9d;
-    --border: #40332a;
-
-    --primary: #f6ece4;
-    --primary-foreground: #3a2c22;
-
-    --secondary: #4a3a2c;
-    --secondary-foreground: #f6ece4;
-
-    --accent: #4a3a2c;
-    --accent-foreground: #edc6aa;
-    --accent-dark: #edc6aa;
-    --accent-soft: #4a3a2c;
-
-    --success: #93a97a;
-    --success-foreground: #182013;
-
-    --soft-white: #fffaf6;
-    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  }
 }
 
 * {
