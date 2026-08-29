@@ -1,7 +1,25 @@
 import { Router } from "express";
 import { db } from "./db.js";
+import { bot } from "./bot.js";
 
 export const api = Router();
+
+function formatRuDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Уведомления в чат клиенту — если не получилось отправить (бот заблокирован,
+// тестовый client_telegram_id и т.п.), это не должно ломать сам запрос
+function notifyClient(clientTelegramId: number, text: string) {
+  bot.telegram.sendMessage(clientTelegramId, text).catch((err) => {
+    console.warn("Не удалось отправить уведомление клиенту:", err instanceof Error ? err.message : err);
+  });
+}
 
 api.get("/masters", (_req, res) => {
   const masters = db
@@ -81,14 +99,28 @@ api.delete("/bookings/:id", (req, res) => {
   }
 
   const booking = db
-    .prepare("SELECT id FROM bookings WHERE id = ? AND client_telegram_id = ?")
-    .get(id, clientTelegramId);
+    .prepare(
+      `SELECT b.id, b.starts_at, m.name AS master_name, s.name AS service_name
+       FROM bookings b
+       JOIN masters m ON m.id = b.master_id
+       JOIN services s ON s.id = b.service_id
+       WHERE b.id = ? AND b.client_telegram_id = ?`
+    )
+    .get(id, clientTelegramId) as
+    | { id: number; starts_at: string; master_name: string; service_name: string }
+    | undefined;
   if (!booking) {
     res.status(404).json({ error: "Запись не найдена" });
     return;
   }
 
   db.prepare("DELETE FROM bookings WHERE id = ?").run(id);
+
+  notifyClient(
+    clientTelegramId,
+    `❌ Запись отменена\n\n${booking.service_name} — ${booking.master_name}\n${formatRuDateTime(booking.starts_at)}`
+  );
+
   res.json({ ok: true });
 });
 
@@ -108,15 +140,17 @@ api.post("/bookings", (req, res) => {
     return;
   }
 
-  const master = db.prepare("SELECT id FROM masters WHERE id = ?").get(master_id);
+  const master = db.prepare("SELECT id, name FROM masters WHERE id = ?").get(master_id) as
+    | { id: number; name: string }
+    | undefined;
   if (!master) {
     res.status(400).json({ error: "Мастер не найден" });
     return;
   }
 
   const service = db
-    .prepare("SELECT id, duration_minutes FROM services WHERE id = ?")
-    .get(service_id) as { id: number; duration_minutes: number } | undefined;
+    .prepare("SELECT id, name, duration_minutes, price FROM services WHERE id = ?")
+    .get(service_id) as { id: number; name: string; duration_minutes: number; price: number } | undefined;
   if (!service) {
     res.status(400).json({ error: "Услуга не найдена" });
     return;
@@ -159,6 +193,11 @@ api.post("/bookings", (req, res) => {
   const booking = db
     .prepare("SELECT * FROM bookings WHERE id = ?")
     .get(result.lastInsertRowid);
+
+  notifyClient(
+    client_telegram_id,
+    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`
+  );
 
   res.status(201).json(booking);
 });
