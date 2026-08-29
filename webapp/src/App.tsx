@@ -153,6 +153,25 @@ function buildMonthCells(monthStart: Date): (Date | null)[] {
   return cells
 }
 
+function minutesOf(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+function isSlotFree(
+  slotTime: string,
+  durationMinutes: number,
+  busy: { starts_at: string; duration_minutes: number }[]
+): boolean {
+  const slotStart = minutesOf(slotTime)
+  const slotEnd = slotStart + durationMinutes
+  return !busy.some((b) => {
+    const busyStart = minutesOf(b.starts_at.slice(11, 16))
+    const busyEnd = busyStart + b.duration_minutes
+    return slotStart < busyEnd && busyStart < slotEnd
+  })
+}
+
 function ServiceRow({ service, onClick }: { service: Service; onClick: () => void }) {
   return (
     <button className="service-row" onClick={onClick}>
@@ -193,6 +212,7 @@ function App() {
   const [dateKey, setDateKey] = useState('')
   const [timeSlot, setTimeSlot] = useState('')
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()))
+  const [busySlots, setBusySlots] = useState<{ starts_at: string; duration_minutes: number }[]>([])
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -234,6 +254,19 @@ function App() {
   useEffect(() => {
     setStartsAt(dateKey && timeSlot ? `${dateKey}T${timeSlot}` : '')
   }, [dateKey, timeSlot])
+
+  // Занятые интервалы выбранного мастера на выбранную дату — чтобы не показывать
+  // клиенту слоты, которые уже забронированы (нужны только на шаге выбора времени)
+  useEffect(() => {
+    if (!selectedMaster || !dateKey || !flowOrigin || FLOW_STEPS[flowOrigin][flowIndex] !== 'time') {
+      setBusySlots([])
+      return
+    }
+    fetch(`${API_URL}/api/masters/${selectedMaster.id}/bookings?date=${dateKey}`)
+      .then((r) => r.json())
+      .then(setBusySlots)
+      .catch(() => setBusySlots([]))
+  }, [selectedMaster, dateKey, flowOrigin, flowIndex])
 
   const startFlow = (origin: FlowOrigin) => {
     setError(null)
@@ -410,7 +443,9 @@ function App() {
   const today = startOfDay(new Date())
   const todayKey = dateKeyOf(today)
   const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
-  const availableTimeSlots = dateKey === todayKey ? TIME_SLOTS.filter((t) => t > nowHHMM) : TIME_SLOTS
+  const availableTimeSlots = (dateKey === todayKey ? TIME_SLOTS.filter((t) => t > nowHHMM) : TIME_SLOTS).filter(
+    (t) => isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots)
+  )
   const monthCells = buildMonthCells(calendarMonth)
   const isCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
@@ -759,7 +794,7 @@ function App() {
                   ))}
                 </div>
               ) : (
-                <p className="hub-greeting">На сегодня свободного времени не осталось — выберите другой день.</p>
+                <p className="hub-greeting">На эту дату свободного времени не осталось — выберите другой день.</p>
               )
             ) : (
               <p className="hub-greeting">Сначала выберите дату.</p>

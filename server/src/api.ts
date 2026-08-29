@@ -26,6 +26,29 @@ api.get("/services", (_req, res) => {
   res.json(services);
 });
 
+// Занятые интервалы времени у мастера на конкретную дату — чтобы фронтенд
+// мог не показывать клиенту уже занятые слоты
+api.get("/masters/:id/bookings", (req, res) => {
+  const masterId = Number(req.params.id);
+  const date = String(req.query.date ?? "");
+  if (!masterId || !date) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const bookings = db
+    .prepare(
+      `SELECT b.starts_at, s.duration_minutes
+       FROM bookings b
+       JOIN services s ON s.id = b.service_id
+       WHERE b.master_id = ?
+         AND date(b.starts_at) = ?`
+    )
+    .all(masterId, date);
+
+  res.json(bookings);
+});
+
 api.get("/bookings", (req, res) => {
   const clientTelegramId = Number(req.query.client_telegram_id);
   if (!clientTelegramId) {
