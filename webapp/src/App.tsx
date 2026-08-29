@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   Home,
@@ -77,8 +78,11 @@ const STEP_TITLES: Record<FlowStep, string> = {
 }
 
 const TIME_SLOTS = ['10:00', '11:30', '13:00', '15:00', '16:30', '18:00']
-const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
-const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+const MONTH_NAMES = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+]
+const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -127,18 +131,26 @@ function dateKeyOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function buildUpcomingDates(count = 7): { key: string; label: string }[] {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const result: { key: string; label: string }[] = []
-  for (let i = 0; i < count; i++) {
-    const d = new Date(today)
-    d.setDate(d.getDate() + i)
-    const dayLabel = i === 0 ? 'Сегодня' : i === 1 ? 'Завтра' : WEEKDAYS[d.getDay()]
-    const label = `${dayLabel}, ${d.getDate()} ${MONTHS[d.getMonth()]}`
-    result.push({ key: dateKeyOf(d), label })
-  }
-  return result
+function startOfDay(d: Date): Date {
+  const copy = new Date(d)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
+// Ячейки календаря: null — пустая клетка перед 1-м числом (для выравнивания по неделе)
+function buildMonthCells(monthStart: Date): (Date | null)[] {
+  const year = monthStart.getFullYear()
+  const month = monthStart.getMonth()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7 // Пн=0 … Вс=6
+  const cells: (Date | null)[] = []
+  for (let i = 0; i < firstWeekday; i++) cells.push(null)
+  for (let day = 1; day <= daysInMonth; day++) cells.push(new Date(year, month, day))
+  return cells
 }
 
 function ServiceRow({ service, onClick }: { service: Service; onClick: () => void }) {
@@ -180,6 +192,7 @@ function App() {
   const [startsAt, setStartsAt] = useState('')
   const [dateKey, setDateKey] = useState('')
   const [timeSlot, setTimeSlot] = useState('')
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()))
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -243,6 +256,7 @@ function App() {
     setSelectedMaster(null)
     setDateKey('')
     setTimeSlot('')
+    setCalendarMonth(startOfMonth(new Date()))
     setError(null)
     setFlowOrigin(null)
     setFlowIndex(0)
@@ -393,10 +407,13 @@ function App() {
     ? masters.filter((m) => m.service_ids.includes(selectedService.id))
     : masters
 
-  const upcomingDates = buildUpcomingDates()
-  const todayKey = upcomingDates[0]?.key ?? ''
+  const today = startOfDay(new Date())
+  const todayKey = dateKeyOf(today)
   const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
   const availableTimeSlots = dateKey === todayKey ? TIME_SLOTS.filter((t) => t > nowHHMM) : TIME_SLOTS
+  const monthCells = buildMonthCells(calendarMonth)
+  const isCurrentMonth =
+    calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
 
   const screenKey = inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
   const isHomeHero = !inFlow && activeTab === 'home'
@@ -675,19 +692,56 @@ function App() {
             </div>
 
             <div className="section-title">Выберите дату</div>
-            <div className="date-pills">
-              {upcomingDates.map((d) => (
+            <div className="calendar">
+              <div className="calendar-header">
                 <button
-                  key={d.key}
-                  className={`date-pill${dateKey === d.key ? ' active' : ''}`}
-                  onClick={() => {
-                    setDateKey(d.key)
-                    setTimeSlot('')
-                  }}
+                  type="button"
+                  className="calendar-nav-btn"
+                  disabled={isCurrentMonth}
+                  onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                  aria-label="Предыдущий месяц"
                 >
-                  {d.label}
+                  <ChevronLeft size={18} />
                 </button>
-              ))}
+                <span className="calendar-month-label">
+                  {MONTH_NAMES[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+                </span>
+                <button
+                  type="button"
+                  className="calendar-nav-btn"
+                  onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                  aria-label="Следующий месяц"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+              <div className="calendar-weekdays">
+                {WEEKDAY_LABELS.map((w) => (
+                  <span key={w} className="calendar-weekday">
+                    {w}
+                  </span>
+                ))}
+              </div>
+              <div className="calendar-grid">
+                {monthCells.map((d, i) => {
+                  if (!d) return <span key={`empty-${i}`} className="calendar-day calendar-day-empty" />
+                  const key = dateKeyOf(d)
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`calendar-day${dateKey === key ? ' active' : ''}${key === todayKey ? ' today' : ''}`}
+                      disabled={d < today}
+                      onClick={() => {
+                        setDateKey(key)
+                        setTimeSlot('')
+                      }}
+                    >
+                      {d.getDate()}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div className="section-title">Свободное время</div>
