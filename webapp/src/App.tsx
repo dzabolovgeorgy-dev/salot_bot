@@ -191,6 +191,123 @@ function ServiceRow({ service, onClick }: { service: Service; onClick: () => voi
   )
 }
 
+function DateTimePicker({
+  master,
+  service,
+  dateKey,
+  timeSlot,
+  calendarMonth,
+  today,
+  todayKey,
+  availableTimeSlots,
+  isCurrentMonth,
+  onPickDate,
+  onPickTime,
+  onPrevMonth,
+  onNextMonth,
+}: {
+  master: Master
+  service: Service
+  dateKey: string
+  timeSlot: string
+  calendarMonth: Date
+  today: Date
+  todayKey: string
+  availableTimeSlots: string[]
+  isCurrentMonth: boolean
+  onPickDate: (key: string) => void
+  onPickTime: (t: string) => void
+  onPrevMonth: () => void
+  onNextMonth: () => void
+}) {
+  const monthCells = buildMonthCells(calendarMonth)
+  return (
+    <>
+      <p className="eyebrow-label">Ваш специалист</p>
+      <div className="specialist-card">
+        {master.photo_url ? (
+          <img className="specialist-photo" src={master.photo_url} alt={master.name} />
+        ) : (
+          <div className="avatar">{initials(master.name)}</div>
+        )}
+        <div className="specialist-body">
+          <div className="specialist-name">{master.name}</div>
+          <div className="specialist-service">
+            {service.name} · {service.duration_minutes} мин
+          </div>
+        </div>
+        <Check size={18} className="specialist-check" />
+      </div>
+
+      <div className="section-title">Выберите дату</div>
+      <div className="calendar">
+        <div className="calendar-header">
+          <button
+            type="button"
+            className="calendar-nav-btn"
+            disabled={isCurrentMonth}
+            onClick={onPrevMonth}
+            aria-label="Предыдущий месяц"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="calendar-month-label">
+            {MONTH_NAMES[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+          </span>
+          <button type="button" className="calendar-nav-btn" onClick={onNextMonth} aria-label="Следующий месяц">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+        <div className="calendar-weekdays">
+          {WEEKDAY_LABELS.map((w) => (
+            <span key={w} className="calendar-weekday">
+              {w}
+            </span>
+          ))}
+        </div>
+        <div className="calendar-grid">
+          {monthCells.map((d, i) => {
+            if (!d) return <span key={`empty-${i}`} className="calendar-day calendar-day-empty" />
+            const key = dateKeyOf(d)
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`calendar-day${dateKey === key ? ' active' : ''}${key === todayKey ? ' today' : ''}`}
+                disabled={d < today}
+                onClick={() => onPickDate(key)}
+              >
+                {d.getDate()}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="section-title">Свободное время</div>
+      {dateKey ? (
+        availableTimeSlots.length > 0 ? (
+          <div className="time-grid">
+            {availableTimeSlots.map((t) => (
+              <button
+                key={t}
+                className={`time-slot${timeSlot === t ? ' active' : ''}`}
+                onClick={() => onPickTime(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="hub-greeting">На эту дату свободного времени не осталось — выберите другой день.</p>
+        )
+      ) : (
+        <p className="hub-greeting">Сначала выберите дату.</p>
+      )}
+    </>
+  )
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home')
   const [flowOrigin, setFlowOrigin] = useState<FlowOrigin | null>(null)
@@ -213,6 +330,10 @@ function App() {
   const [timeSlot, setTimeSlot] = useState('')
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()))
   const [busySlots, setBusySlots] = useState<{ starts_at: string; duration_minutes: number }[]>([])
+  const [reschedule, setReschedule] = useState<{ booking: Booking; master: Master; service: Service } | null>(
+    null
+  )
+  const [rescheduling, setRescheduling] = useState(false)
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -256,17 +377,20 @@ function App() {
   }, [dateKey, timeSlot])
 
   // Занятые интервалы выбранного мастера на выбранную дату — чтобы не показывать
-  // клиенту слоты, которые уже забронированы (нужны только на шаге выбора времени)
+  // клиенту слоты, которые уже забронированы (нужны на шаге выбора времени и при переносе)
   useEffect(() => {
-    if (!selectedMaster || !dateKey || !flowOrigin || FLOW_STEPS[flowOrigin][flowIndex] !== 'time') {
+    const master = reschedule ? reschedule.master : selectedMaster
+    const isTimeStep = reschedule !== null || (flowOrigin != null && FLOW_STEPS[flowOrigin][flowIndex] === 'time')
+    if (!master || !dateKey || !isTimeStep) {
       setBusySlots([])
       return
     }
-    fetch(`${API_URL}/api/masters/${selectedMaster.id}/bookings?date=${dateKey}`)
+    const excludeParam = reschedule ? `&exclude_booking_id=${reschedule.booking.id}` : ''
+    fetch(`${API_URL}/api/masters/${master.id}/bookings?date=${dateKey}${excludeParam}`)
       .then((r) => r.json())
       .then(setBusySlots)
       .catch(() => setBusySlots([]))
-  }, [selectedMaster, dateKey, flowOrigin, flowIndex])
+  }, [selectedMaster, dateKey, flowOrigin, flowIndex, reschedule])
 
   const startFlow = (origin: FlowOrigin) => {
     setError(null)
@@ -309,6 +433,49 @@ function App() {
     setIsDone(false)
     exitFlow()
     setActiveTab('bookings')
+  }
+
+  const startReschedule = (b: Booking) => {
+    const master = masters.find((m) => m.id === b.master_id)
+    const service = services.find((s) => s.id === b.service_id)
+    if (!master || !service) return
+    setError(null)
+    setReschedule({ booking: b, master, service })
+    setDateKey(b.starts_at.slice(0, 10))
+    setTimeSlot(b.starts_at.slice(11, 16))
+    setCalendarMonth(startOfMonth(new Date(b.starts_at)))
+  }
+
+  const exitReschedule = () => {
+    setReschedule(null)
+    setDateKey('')
+    setTimeSlot('')
+    setCalendarMonth(startOfMonth(new Date()))
+    setError(null)
+  }
+
+  const submitReschedule = async () => {
+    if (!reschedule || !startsAt) return
+    setRescheduling(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_URL}/api/bookings/${reschedule.booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_telegram_id: clientTelegramId, starts_at: startsAt }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Не удалось перенести запись')
+        return
+      }
+      await fetchBookings()
+      exitReschedule()
+    } catch {
+      setError('Не удалось связаться с сервером')
+    } finally {
+      setRescheduling(false)
+    }
   }
 
   const cancelBooking = async (id: number) => {
@@ -431,7 +598,7 @@ function App() {
   const flowSteps = flowOrigin ? FLOW_STEPS[flowOrigin] : null
   const flowStep = flowSteps ? flowSteps[flowIndex] : null
   const progress = flowSteps ? ((flowIndex + 1) / flowSteps.length) * 100 : 0
-  const showChrome = !inFlow
+  const showChrome = !inFlow && !reschedule
 
   const flowServices = selectedMaster
     ? services.filter((s) => selectedMaster.service_ids.includes(s.id))
@@ -446,12 +613,17 @@ function App() {
   const availableTimeSlots = (dateKey === todayKey ? TIME_SLOTS.filter((t) => t > nowHHMM) : TIME_SLOTS).filter(
     (t) => isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots)
   )
-  const monthCells = buildMonthCells(calendarMonth)
   const isCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
+  const pickDate = (key: string) => {
+    setDateKey(key)
+    setTimeSlot('')
+  }
+  const prevMonth = () => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
+  const nextMonth = () => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
 
-  const screenKey = inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
-  const isHomeHero = !inFlow && activeTab === 'home'
+  const screenKey = reschedule ? 'reschedule' : inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
+  const isHomeHero = !inFlow && !reschedule && activeTab === 'home'
   const heroBooking = bookings[0] ?? null
   const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
 
@@ -477,13 +649,17 @@ function App() {
         </div>
       ) : (
         <div className="topbar">
-          {inFlow && (
-            <button className="icon-back" onClick={goBack} aria-label="Назад">
+          {(inFlow || reschedule) && (
+            <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label="Назад">
               <ArrowLeft size={18} />
             </button>
           )}
           <div className="topbar-title">
-            {inFlow && flowStep ? STEP_TITLES[flowStep] : TAB_TITLES[activeTab]}
+            {reschedule
+              ? 'Дата и время'
+              : inFlow && flowStep
+                ? STEP_TITLES[flowStep]
+                : TAB_TITLES[activeTab]}
           </div>
           {isTestUser && <div className="test-badge">тест</div>}
         </div>
@@ -579,7 +755,7 @@ function App() {
             </>
           ))}
 
-        {!inFlow && activeTab === 'services' && (
+        {!inFlow && !reschedule && activeTab === 'services' && (
           <div className="list">
             {services.map((s) => (
               <ServiceRow
@@ -594,7 +770,7 @@ function App() {
           </div>
         )}
 
-        {!inFlow && activeTab === 'masters' && (
+        {!inFlow && !reschedule && activeTab === 'masters' && (
           <div className="masters-grid">
             {masters.map((m, i) => (
               <button
@@ -620,6 +796,7 @@ function App() {
         )}
 
         {!inFlow &&
+          !reschedule &&
           activeTab === 'bookings' &&
           (bookings.length === 0 ? (
             <div className="empty-state">
@@ -653,13 +830,18 @@ function App() {
                       </div>
                       <div className="booking-tile-footer">
                         <span className="booking-tile-time">{formatDateTime(b.starts_at)}</span>
-                        <button
-                          className="cancel-link"
-                          disabled={cancellingId === b.id}
-                          onClick={() => cancelBooking(b.id)}
-                        >
-                          {cancellingId === b.id ? 'Отменяем…' : 'Отменить'}
-                        </button>
+                        <div className="booking-tile-actions">
+                          <button className="text-link-inline" onClick={() => startReschedule(b)}>
+                            Изменить
+                          </button>
+                          <button
+                            className="cancel-link"
+                            disabled={cancellingId === b.id}
+                            onClick={() => cancelBooking(b.id)}
+                          >
+                            {cancellingId === b.id ? 'Отменяем…' : 'Отменить'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -709,97 +891,39 @@ function App() {
         )}
 
         {inFlow && flowStep === 'time' && selectedMaster && selectedService && (
-          <>
-            <p className="eyebrow-label">Ваш специалист</p>
-            <div className="specialist-card">
-              {selectedMaster.photo_url ? (
-                <img className="specialist-photo" src={selectedMaster.photo_url} alt={selectedMaster.name} />
-              ) : (
-                <div className="avatar">{initials(selectedMaster.name)}</div>
-              )}
-              <div className="specialist-body">
-                <div className="specialist-name">{selectedMaster.name}</div>
-                <div className="specialist-service">
-                  {selectedService.name} · {selectedService.duration_minutes} мин
-                </div>
-              </div>
-              <Check size={18} className="specialist-check" />
-            </div>
+          <DateTimePicker
+            master={selectedMaster}
+            service={selectedService}
+            dateKey={dateKey}
+            timeSlot={timeSlot}
+            calendarMonth={calendarMonth}
+            today={today}
+            todayKey={todayKey}
+            availableTimeSlots={availableTimeSlots}
+            isCurrentMonth={isCurrentMonth}
+            onPickDate={pickDate}
+            onPickTime={setTimeSlot}
+            onPrevMonth={prevMonth}
+            onNextMonth={nextMonth}
+          />
+        )}
 
-            <div className="section-title">Выберите дату</div>
-            <div className="calendar">
-              <div className="calendar-header">
-                <button
-                  type="button"
-                  className="calendar-nav-btn"
-                  disabled={isCurrentMonth}
-                  onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-                  aria-label="Предыдущий месяц"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <span className="calendar-month-label">
-                  {MONTH_NAMES[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
-                </span>
-                <button
-                  type="button"
-                  className="calendar-nav-btn"
-                  onClick={() => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-                  aria-label="Следующий месяц"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-              <div className="calendar-weekdays">
-                {WEEKDAY_LABELS.map((w) => (
-                  <span key={w} className="calendar-weekday">
-                    {w}
-                  </span>
-                ))}
-              </div>
-              <div className="calendar-grid">
-                {monthCells.map((d, i) => {
-                  if (!d) return <span key={`empty-${i}`} className="calendar-day calendar-day-empty" />
-                  const key = dateKeyOf(d)
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`calendar-day${dateKey === key ? ' active' : ''}${key === todayKey ? ' today' : ''}`}
-                      disabled={d < today}
-                      onClick={() => {
-                        setDateKey(key)
-                        setTimeSlot('')
-                      }}
-                    >
-                      {d.getDate()}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="section-title">Свободное время</div>
-            {dateKey ? (
-              availableTimeSlots.length > 0 ? (
-                <div className="time-grid">
-                  {availableTimeSlots.map((t) => (
-                    <button
-                      key={t}
-                      className={`time-slot${timeSlot === t ? ' active' : ''}`}
-                      onClick={() => setTimeSlot(t)}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="hub-greeting">На эту дату свободного времени не осталось — выберите другой день.</p>
-              )
-            ) : (
-              <p className="hub-greeting">Сначала выберите дату.</p>
-            )}
-          </>
+        {reschedule && (
+          <DateTimePicker
+            master={reschedule.master}
+            service={reschedule.service}
+            dateKey={dateKey}
+            timeSlot={timeSlot}
+            calendarMonth={calendarMonth}
+            today={today}
+            todayKey={todayKey}
+            availableTimeSlots={availableTimeSlots}
+            isCurrentMonth={isCurrentMonth}
+            onPickDate={pickDate}
+            onPickTime={setTimeSlot}
+            onPrevMonth={prevMonth}
+            onNextMonth={nextMonth}
+          />
         )}
 
         {inFlow && flowStep === 'confirm' && selectedService && selectedMaster && (
@@ -836,7 +960,7 @@ function App() {
       </motion.div>
       </AnimatePresence>
 
-      {!inFlow && activeTab === 'bookings' && bookings.length > 0 && (
+      {!inFlow && !reschedule && activeTab === 'bookings' && bookings.length > 0 && (
         <div className="footer">
           <button className="primary" onClick={() => startFlow('bookings')}>
             Записаться
@@ -852,6 +976,14 @@ function App() {
             onClick={() => setFlowIndex((i) => i + 1)}
           >
             Продолжить
+          </button>
+        </div>
+      )}
+
+      {reschedule && (
+        <div className="footer">
+          <button className="primary" disabled={!startsAt || rescheduling} onClick={submitReschedule}>
+            {rescheduling ? 'Переносим…' : 'Перенести'}
           </button>
         </div>
       )}

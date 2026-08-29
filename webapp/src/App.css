@@ -904,6 +904,22 @@
   color: var(--text-h);
 }
 
+.booking-tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.text-link-inline {
+  background: none;
+  border: none;
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
 .cancel-link {
   background: none;
   border: none;

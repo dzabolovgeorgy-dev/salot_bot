@@ -21,6 +21,32 @@ function notifyClient(clientTelegramId: number, text: string) {
   });
 }
 
+// Проверка, что у мастера нет другой записи, пересекающейся по времени.
+// excludeBookingId — чтобы при переносе запись не конфликтовала сама с собой
+function hasConflict(
+  masterId: number,
+  startsAt: string,
+  durationMinutes: number,
+  excludeBookingId?: number
+): boolean {
+  const conflict = db
+    .prepare(
+      `SELECT b.id FROM bookings b
+       JOIN services s ON s.id = b.service_id
+       WHERE b.master_id = @masterId
+         AND (@excludeId IS NULL OR b.id != @excludeId)
+         AND datetime(b.starts_at) < datetime(@startsAt, '+' || @duration || ' minutes')
+         AND datetime(@startsAt) < datetime(b.starts_at, '+' || s.duration_minutes || ' minutes')`
+    )
+    .get({
+      masterId,
+      startsAt,
+      duration: durationMinutes,
+      excludeId: excludeBookingId ?? null,
+    });
+  return !!conflict;
+}
+
 api.get("/masters", (_req, res) => {
   const masters = db
     .prepare("SELECT id, name, bio, experience_years, photo_url FROM masters")
@@ -49,6 +75,7 @@ api.get("/services", (_req, res) => {
 api.get("/masters/:id/bookings", (req, res) => {
   const masterId = Number(req.params.id);
   const date = String(req.query.date ?? "");
+  const excludeId = req.query.exclude_booking_id ? Number(req.query.exclude_booking_id) : null;
   if (!masterId || !date) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -60,9 +87,10 @@ api.get("/masters/:id/bookings", (req, res) => {
        FROM bookings b
        JOIN services s ON s.id = b.service_id
        WHERE b.master_id = ?
-         AND date(b.starts_at) = ?`
+         AND date(b.starts_at) = ?
+         AND (? IS NULL OR b.id != ?)`
     )
-    .all(masterId, date);
+    .all(masterId, date, excludeId, excludeId);
 
   res.json(bookings);
 });
@@ -164,21 +192,7 @@ api.post("/bookings", (req, res) => {
     return;
   }
 
-  const conflict = db
-    .prepare(
-      `SELECT b.id FROM bookings b
-       JOIN services s ON s.id = b.service_id
-       WHERE b.master_id = @masterId
-         AND datetime(b.starts_at) < datetime(@startsAt, '+' || @duration || ' minutes')
-         AND datetime(@startsAt) < datetime(b.starts_at, '+' || s.duration_minutes || ' minutes')`
-    )
-    .get({
-      masterId: master_id,
-      startsAt: starts_at,
-      duration: service.duration_minutes,
-    });
-
-  if (conflict) {
+  if (hasConflict(master_id, starts_at, service.duration_minutes)) {
     res.status(409).json({ error: "Это время уже занято, выберите другое" });
     return;
   }
@@ -200,4 +214,67 @@ api.post("/bookings", (req, res) => {
   );
 
   res.status(201).json(booking);
+});
+
+interface RescheduleBody {
+  client_telegram_id: number;
+  starts_at: string;
+}
+
+api.patch("/bookings/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const { client_telegram_id, starts_at } = req.body as Partial<RescheduleBody>;
+
+  if (!id || !client_telegram_id || !starts_at) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const booking = db
+    .prepare(
+      `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
+              s.name AS service_name, s.duration_minutes
+       FROM bookings b
+       JOIN masters m ON m.id = b.master_id
+       JOIN services s ON s.id = b.service_id
+       WHERE b.id = ? AND b.client_telegram_id = ?`
+    )
+    .get(id, client_telegram_id) as
+    | {
+        id: number;
+        old_starts_at: string;
+        master_id: number;
+        master_name: string;
+        service_name: string;
+        duration_minutes: number;
+      }
+    | undefined;
+
+  if (!booking) {
+    res.status(404).json({ error: "Запись не найдена" });
+    return;
+  }
+
+  const isPast = db
+    .prepare("SELECT datetime(@startsAt) < datetime('now') AS value")
+    .get({ startsAt: starts_at }) as { value: number };
+  if (isPast.value) {
+    res.status(400).json({ error: "Нельзя перенести на прошедшее время" });
+    return;
+  }
+
+  if (hasConflict(booking.master_id, starts_at, booking.duration_minutes, booking.id)) {
+    res.status(409).json({ error: "Это время уже занято, выберите другое" });
+    return;
+  }
+
+  db.prepare("UPDATE bookings SET starts_at = ? WHERE id = ?").run(starts_at, id);
+
+  notifyClient(
+    client_telegram_id,
+    `🔄 Запись перенесена\n\n${booking.service_name} — ${booking.master_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`
+  );
+
+  const updated = db.prepare("SELECT * FROM bookings WHERE id = ?").get(id);
+  res.json(updated);
 });
