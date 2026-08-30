@@ -4,8 +4,15 @@ import { bot } from "./bot.js";
 
 export const api = Router();
 
-function formatRuDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("ru-RU", {
+// Postgres отдаёт время как "2026-11-02 14:30:00" (пробел, с секундами).
+// Приводим к строгому ISO с "T", чтобы new Date(...) одинаково работал везде,
+// включая WebKit в Telegram Mini App на iPhone
+function toIso(value: string): string {
+  return value.replace(" ", "T");
+}
+
+function formatRuDateTime(value: string): string {
+  return new Date(toIso(value)).toLocaleString("ru-RU", {
     day: "numeric",
     month: "long",
     hour: "2-digit",
@@ -23,37 +30,29 @@ function notifyClient(clientTelegramId: number, text: string) {
 
 // Проверка, что у мастера нет другой записи, пересекающейся по времени.
 // excludeBookingId — чтобы при переносе запись не конфликтовала сама с собой
-function hasConflict(
+async function hasConflict(
   masterId: number,
   startsAt: string,
   durationMinutes: number,
   excludeBookingId?: number
-): boolean {
-  const conflict = db
-    .prepare(
-      `SELECT b.id FROM bookings b
-       JOIN services s ON s.id = b.service_id
-       WHERE b.master_id = @masterId
-         AND (@excludeId IS NULL OR b.id != @excludeId)
-         AND datetime(b.starts_at) < datetime(@startsAt, '+' || @duration || ' minutes')
-         AND datetime(@startsAt) < datetime(b.starts_at, '+' || s.duration_minutes || ' minutes')`
-    )
-    .get({
-      masterId,
-      startsAt,
-      duration: durationMinutes,
-      excludeId: excludeBookingId ?? null,
-    });
-  return !!conflict;
+): Promise<boolean> {
+  const { rows } = await db.query(
+    `SELECT b.id FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     WHERE b.master_id = $1
+       AND ($4::int IS NULL OR b.id != $4)
+       AND b.starts_at < ($2::timestamp + ($3 * interval '1 minute'))
+       AND $2::timestamp < (b.starts_at + (s.duration_minutes * interval '1 minute'))`,
+    [masterId, startsAt, durationMinutes, excludeBookingId ?? null]
+  );
+  return rows.length > 0;
 }
 
-api.get("/masters", (_req, res) => {
-  const masters = db
-    .prepare("SELECT id, name, bio, experience_years, photo_url FROM masters")
-    .all() as { id: number }[];
-  const relations = db
-    .prepare("SELECT master_id, service_id FROM master_services")
-    .all() as { master_id: number; service_id: number }[];
+api.get("/masters", async (_req, res) => {
+  const { rows: masters } = await db.query(
+    "SELECT id, name, bio, experience_years, photo_url FROM masters"
+  );
+  const { rows: relations } = await db.query("SELECT master_id, service_id FROM master_services");
 
   const result = masters.map((m) => ({
     ...m,
@@ -63,16 +62,14 @@ api.get("/masters", (_req, res) => {
   res.json(result);
 });
 
-api.get("/services", (_req, res) => {
-  const services = db
-    .prepare("SELECT id, name, duration_minutes, price FROM services")
-    .all();
-  res.json(services);
+api.get("/services", async (_req, res) => {
+  const { rows } = await db.query("SELECT id, name, duration_minutes, price FROM services");
+  res.json(rows);
 });
 
 // Занятые интервалы времени у мастера на конкретную дату — чтобы фронтенд
 // мог не показывать клиенту уже занятые слоты
-api.get("/masters/:id/bookings", (req, res) => {
+api.get("/masters/:id/bookings", async (req, res) => {
   const masterId = Number(req.params.id);
   const date = String(req.query.date ?? "");
   const excludeId = req.query.exclude_booking_id ? Number(req.query.exclude_booking_id) : null;
@@ -81,44 +78,42 @@ api.get("/masters/:id/bookings", (req, res) => {
     return;
   }
 
-  const bookings = db
-    .prepare(
-      `SELECT b.starts_at, s.duration_minutes
-       FROM bookings b
-       JOIN services s ON s.id = b.service_id
-       WHERE b.master_id = ?
-         AND date(b.starts_at) = ?
-         AND (? IS NULL OR b.id != ?)`
-    )
-    .all(masterId, date, excludeId, excludeId);
+  const { rows } = await db.query(
+    `SELECT b.starts_at, s.duration_minutes
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     WHERE b.master_id = $1
+       AND b.starts_at::date = $2::date
+       AND ($3::int IS NULL OR b.id != $3)`,
+    [masterId, date, excludeId]
+  );
 
-  res.json(bookings);
+  res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
 });
 
-api.get("/bookings", (req, res) => {
+api.get("/bookings", async (req, res) => {
   const clientTelegramId = Number(req.query.client_telegram_id);
   if (!clientTelegramId) {
     res.status(400).json({ error: "Не хватает client_telegram_id" });
     return;
   }
 
-  const bookings = db
-    .prepare(
-      `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
-              b.service_id, s.name AS service_name, s.duration_minutes, s.price
-       FROM bookings b
-       JOIN masters m ON m.id = b.master_id
-       JOIN services s ON s.id = b.service_id
-       WHERE b.client_telegram_id = ?
-         AND datetime(b.starts_at) >= datetime('now')
-       ORDER BY datetime(b.starts_at) ASC`
-    )
-    .all(clientTelegramId);
+  const { rows } = await db.query(
+    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
+            b.service_id, s.name AS service_name, s.duration_minutes, s.price
+     FROM bookings b
+     JOIN masters m ON m.id = b.master_id
+     JOIN services s ON s.id = b.service_id
+     WHERE b.client_telegram_id = $1
+       AND b.starts_at >= now()
+     ORDER BY b.starts_at ASC`,
+    [clientTelegramId]
+  );
 
-  res.json(bookings);
+  res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
 });
 
-api.delete("/bookings/:id", (req, res) => {
+api.delete("/bookings/:id", async (req, res) => {
   const id = Number(req.params.id);
   const clientTelegramId = Number(req.query.client_telegram_id);
   if (!id || !clientTelegramId) {
@@ -126,15 +121,15 @@ api.delete("/bookings/:id", (req, res) => {
     return;
   }
 
-  const booking = db
-    .prepare(
-      `SELECT b.id, b.starts_at, m.name AS master_name, s.name AS service_name
-       FROM bookings b
-       JOIN masters m ON m.id = b.master_id
-       JOIN services s ON s.id = b.service_id
-       WHERE b.id = ? AND b.client_telegram_id = ?`
-    )
-    .get(id, clientTelegramId) as
+  const { rows } = await db.query(
+    `SELECT b.id, b.starts_at, m.name AS master_name, s.name AS service_name
+     FROM bookings b
+     JOIN masters m ON m.id = b.master_id
+     JOIN services s ON s.id = b.service_id
+     WHERE b.id = $1 AND b.client_telegram_id = $2`,
+    [id, clientTelegramId]
+  );
+  const booking = rows[0] as
     | { id: number; starts_at: string; master_name: string; service_name: string }
     | undefined;
   if (!booking) {
@@ -142,7 +137,7 @@ api.delete("/bookings/:id", (req, res) => {
     return;
   }
 
-  db.prepare("DELETE FROM bookings WHERE id = ?").run(id);
+  await db.query("DELETE FROM bookings WHERE id = $1", [id]);
 
   notifyClient(
     clientTelegramId,
@@ -159,7 +154,7 @@ interface CreateBookingBody {
   starts_at: string;
 }
 
-api.post("/bookings", (req, res) => {
+api.post("/bookings", async (req, res) => {
   const { client_telegram_id, master_id, service_id, starts_at } =
     req.body as Partial<CreateBookingBody>;
 
@@ -168,52 +163,48 @@ api.post("/bookings", (req, res) => {
     return;
   }
 
-  const master = db.prepare("SELECT id, name FROM masters WHERE id = ?").get(master_id) as
-    | { id: number; name: string }
-    | undefined;
+  const { rows: masterRows } = await db.query("SELECT id, name FROM masters WHERE id = $1", [master_id]);
+  const master = masterRows[0] as { id: number; name: string } | undefined;
   if (!master) {
     res.status(400).json({ error: "Мастер не найден" });
     return;
   }
 
-  const service = db
-    .prepare("SELECT id, name, duration_minutes, price FROM services WHERE id = ?")
-    .get(service_id) as { id: number; name: string; duration_minutes: number; price: number } | undefined;
+  const { rows: serviceRows } = await db.query(
+    "SELECT id, name, duration_minutes, price FROM services WHERE id = $1",
+    [service_id]
+  );
+  const service = serviceRows[0] as
+    | { id: number; name: string; duration_minutes: number; price: number }
+    | undefined;
   if (!service) {
     res.status(400).json({ error: "Услуга не найдена" });
     return;
   }
 
-  const isPast = db
-    .prepare("SELECT datetime(@startsAt) < datetime('now') AS value")
-    .get({ startsAt: starts_at }) as { value: number };
-  if (isPast.value) {
+  const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
+  if (pastRows[0].value) {
     res.status(400).json({ error: "Нельзя записаться на прошедшее время" });
     return;
   }
 
-  if (hasConflict(master_id, starts_at, service.duration_minutes)) {
+  if (await hasConflict(master_id, starts_at, service.duration_minutes)) {
     res.status(409).json({ error: "Это время уже занято, выберите другое" });
     return;
   }
 
-  const result = db
-    .prepare(
-      `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at)
-       VALUES (?, ?, ?, ?)`
-    )
-    .run(client_telegram_id, master_id, service_id, starts_at);
-
-  const booking = db
-    .prepare("SELECT * FROM bookings WHERE id = ?")
-    .get(result.lastInsertRowid);
+  const { rows: inserted } = await db.query(
+    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [client_telegram_id, master_id, service_id, starts_at]
+  );
 
   notifyClient(
     client_telegram_id,
     `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`
   );
 
-  res.status(201).json(booking);
+  res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
 });
 
 interface RescheduleBody {
@@ -221,7 +212,7 @@ interface RescheduleBody {
   starts_at: string;
 }
 
-api.patch("/bookings/:id", (req, res) => {
+api.patch("/bookings/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { client_telegram_id, starts_at } = req.body as Partial<RescheduleBody>;
 
@@ -230,16 +221,16 @@ api.patch("/bookings/:id", (req, res) => {
     return;
   }
 
-  const booking = db
-    .prepare(
-      `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
-              s.name AS service_name, s.duration_minutes
-       FROM bookings b
-       JOIN masters m ON m.id = b.master_id
-       JOIN services s ON s.id = b.service_id
-       WHERE b.id = ? AND b.client_telegram_id = ?`
-    )
-    .get(id, client_telegram_id) as
+  const { rows } = await db.query(
+    `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
+            s.name AS service_name, s.duration_minutes
+     FROM bookings b
+     JOIN masters m ON m.id = b.master_id
+     JOIN services s ON s.id = b.service_id
+     WHERE b.id = $1 AND b.client_telegram_id = $2`,
+    [id, client_telegram_id]
+  );
+  const booking = rows[0] as
     | {
         id: number;
         old_starts_at: string;
@@ -255,26 +246,24 @@ api.patch("/bookings/:id", (req, res) => {
     return;
   }
 
-  const isPast = db
-    .prepare("SELECT datetime(@startsAt) < datetime('now') AS value")
-    .get({ startsAt: starts_at }) as { value: number };
-  if (isPast.value) {
+  const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
+  if (pastRows[0].value) {
     res.status(400).json({ error: "Нельзя перенести на прошедшее время" });
     return;
   }
 
-  if (hasConflict(booking.master_id, starts_at, booking.duration_minutes, booking.id)) {
+  if (await hasConflict(booking.master_id, starts_at, booking.duration_minutes, booking.id)) {
     res.status(409).json({ error: "Это время уже занято, выберите другое" });
     return;
   }
 
-  db.prepare("UPDATE bookings SET starts_at = ? WHERE id = ?").run(starts_at, id);
+  await db.query("UPDATE bookings SET starts_at = $1 WHERE id = $2", [starts_at, id]);
 
   notifyClient(
     client_telegram_id,
     `🔄 Запись перенесена\n\n${booking.service_name} — ${booking.master_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`
   );
 
-  const updated = db.prepare("SELECT * FROM bookings WHERE id = ?").get(id);
-  res.json(updated);
+  const { rows: updated } = await db.query("SELECT * FROM bookings WHERE id = $1", [id]);
+  res.json({ ...updated[0], starts_at: toIso(updated[0].starts_at) });
 });

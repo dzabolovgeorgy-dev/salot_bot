@@ -1,8 +1,10 @@
 import "dotenv/config";
 import express from "express";
-import "./db.js";
+import { initDb } from "./db.js";
 import { bot } from "./bot.js";
 import { api } from "./api.js";
+
+await initDb();
 
 const app = express();
 app.use(express.json());

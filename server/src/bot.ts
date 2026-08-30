@@ -30,8 +30,8 @@ bot.start((ctx) => {
   }
 });
 
-bot.command("masters", (ctx) => {
-  const masters = db.prepare("SELECT name FROM masters").all() as { name: string }[];
+bot.command("masters", async (ctx) => {
+  const { rows: masters } = await db.query<{ name: string }>("SELECT name FROM masters");
   if (masters.length === 0) {
     ctx.reply("Мастеров пока нет.");
     return;
@@ -40,10 +40,10 @@ bot.command("masters", (ctx) => {
   ctx.reply(`Наши мастера:\n${list}`);
 });
 
-bot.command("services", (ctx) => {
-  const services = db
-    .prepare("SELECT name, duration_minutes, price FROM services")
-    .all() as { name: string; duration_minutes: number; price: number }[];
+bot.command("services", async (ctx) => {
+  const { rows: services } = await db.query<{ name: string; duration_minutes: number; price: number }>(
+    "SELECT name, duration_minutes, price FROM services"
+  );
   if (services.length === 0) {
     ctx.reply("Услуг пока нет.");
     return;
