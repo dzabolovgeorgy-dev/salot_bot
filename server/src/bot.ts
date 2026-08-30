@@ -18,6 +18,20 @@ function getWebAppUrl(): string | undefined {
 
 export const bot = new Telegraf(token);
 
+// Кнопка слева от поля ввода в чате — открывает Mini App в один клик,
+// без необходимости писать /start
+export async function setupMenuButton(): Promise<void> {
+  const webAppUrl = getWebAppUrl();
+  if (!webAppUrl) return;
+  try {
+    await bot.telegram.setChatMenuButton({
+      menuButton: { type: "web_app", text: "Записаться", web_app: { url: webAppUrl } },
+    });
+  } catch (err) {
+    console.warn("Не удалось настроить кнопку меню:", err instanceof Error ? err.message : err);
+  }
+}
+
 bot.start((ctx) => {
   const webAppUrl = getWebAppUrl();
   if (webAppUrl) {

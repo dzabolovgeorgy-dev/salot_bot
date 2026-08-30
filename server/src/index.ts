@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { initDb } from "./db.js";
-import { bot } from "./bot.js";
+import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
 
 await initDb();
@@ -44,6 +44,7 @@ async function startBot(attemptsLeft = 8) {
 }
 
 startBot();
+setupMenuButton();
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
