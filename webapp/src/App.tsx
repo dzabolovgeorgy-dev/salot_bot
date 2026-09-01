@@ -19,6 +19,7 @@ import './App.css'
 import type { Master, Service, Booking } from './types'
 import { getTelegramUserId, getTelegramUserName } from './telegram'
 import { isWorkDay } from './schedule'
+import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
@@ -54,12 +55,6 @@ const STEP_TITLES: Record<FlowStep, string> = {
 }
 
 const TIME_SLOTS = ['10:00', '11:30', '13:00', '15:00', '16:30', '18:00']
-const MONTH_NAMES = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-]
-const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
@@ -98,30 +93,10 @@ function pluralizeYears(n: number): string {
   return `${n} лет`
 }
 
-function dateKeyOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function startOfDay(d: Date): Date {
   const copy = new Date(d)
   copy.setHours(0, 0, 0, 0)
   return copy
-}
-
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1)
-}
-
-// Ячейки календаря: null — пустая клетка перед 1-м числом (для выравнивания по неделе)
-function buildMonthCells(monthStart: Date): (Date | null)[] {
-  const year = monthStart.getFullYear()
-  const month = monthStart.getMonth()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7 // Пн=0 … Вс=6
-  const cells: (Date | null)[] = []
-  for (let i = 0; i < firstWeekday; i++) cells.push(null)
-  for (let day = 1; day <= daysInMonth; day++) cells.push(new Date(year, month, day))
-  return cells
 }
 
 function minutesOf(hhmm: string): number {

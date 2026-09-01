@@ -162,6 +162,103 @@
   color: var(--danger);
 }
 
+.staff-month-calendar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.staff-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.staff-month-arrow {
+  border: none;
+  background: var(--surface-muted);
+  color: var(--text-h);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.staff-month-label {
+  font-family: var(--serif);
+  color: var(--text-h);
+  font-size: 1rem;
+}
+
+.staff-month-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+
+.staff-month-weekdays span {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.staff-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.staff-month-day {
+  position: relative;
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-h);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.staff-month-day-empty {
+  cursor: default;
+}
+
+.staff-month-day.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.staff-month-day-count {
+  position: absolute;
+  bottom: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 100px;
+  background: var(--accent-dark);
+  color: var(--soft-white);
+  font-size: 0.58rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.staff-month-day.active .staff-month-day-count {
+  background: var(--soft-white);
+  color: var(--primary);
+}
+
 .staff-shift-row {
   display: flex;
   flex-wrap: wrap;

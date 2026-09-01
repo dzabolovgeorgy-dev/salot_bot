@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Booking, BlockedSlot } from './types'
 import { isWorkDay } from './schedule'
+import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import './StaffApp.css'
 
@@ -9,15 +10,9 @@ const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'manage'
 
-const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
 ]
-
-function dateKeyOf(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 // 7 дат начиная с сегодня + смещение в неделях
 function weekDates(weekOffset: number): Date[] {
@@ -72,6 +67,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [weekData, setWeekData] = useState<Record<string, Booking[]>>({})
   const [weekLoading, setWeekLoading] = useState(true)
 
+  const [scheduleMonth, setScheduleMonth] = useState(() => startOfMonth(new Date()))
+  const [monthCounts, setMonthCounts] = useState<Record<string, number>>({})
+  const [monthLoading, setMonthLoading] = useState(true)
+
   const [blockMasterId, setBlockMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
   const [blockStart, setBlockStart] = useState('')
   const [blockEnd, setBlockEnd] = useState('')
@@ -106,6 +105,33 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     loadSchedule()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date])
+
+  // Сколько записей и блокировок на каждый день видимого месяца — для сетки календаря
+  async function loadMonthCounts() {
+    setMonthLoading(true)
+    try {
+      const days = buildMonthCells(scheduleMonth).filter((d): d is Date => d !== null)
+      const results = await Promise.all(
+        days.map((d) =>
+          fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) => r.json())
+        )
+      )
+      const counts: Record<string, number> = {}
+      days.forEach((d, i) => {
+        counts[dateKeyOf(d)] = (results[i].bookings?.length ?? 0) + (results[i].blocked_slots?.length ?? 0)
+      })
+      setMonthCounts(counts)
+    } catch {
+      // тихо — сетка просто не покажет отметки
+    } finally {
+      setMonthLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadMonthCounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleMonth])
 
   // "Мой день" — только записи клиентов у самого мастера на сегодня
   async function loadToday() {
@@ -260,7 +286,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         )}
       </nav>
 
-      {activeTab !== 'today' && activeTab !== 'week' && activeTab !== 'manage' && (
+      {activeTab === 'block' && (
         <div className="staff-date-nav">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
@@ -369,6 +395,53 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       {activeTab === 'schedule' && (
         <section className="staff-schedule">
+          <div className="staff-month-calendar">
+            <div className="staff-month-nav">
+              <button
+                type="button"
+                className="staff-month-arrow"
+                onClick={() => setScheduleMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                aria-label="Предыдущий месяц"
+              >
+                ‹
+              </button>
+              <span className="staff-month-label">
+                {MONTH_NAMES[scheduleMonth.getMonth()]} {scheduleMonth.getFullYear()}
+              </span>
+              <button
+                type="button"
+                className="staff-month-arrow"
+                onClick={() => setScheduleMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                aria-label="Следующий месяц"
+              >
+                ›
+              </button>
+            </div>
+            <div className="staff-month-weekdays">
+              {WEEKDAY_LABELS.map((w) => (
+                <span key={w}>{w}</span>
+              ))}
+            </div>
+            <div className="staff-month-grid">
+              {buildMonthCells(scheduleMonth).map((d, i) => {
+                if (!d) return <span key={`empty-${i}`} className="staff-month-day staff-month-day-empty" />
+                const key = dateKeyOf(d)
+                const count = monthCounts[key] ?? 0
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`staff-month-day${date === key ? ' active' : ''}`}
+                    onClick={() => setDate(key)}
+                  >
+                    {d.getDate()}
+                    {count > 0 && <span className="staff-month-day-count">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {masters.length > 0 && (
             <div className="staff-shift-row">
               {masters.map((m) => {
