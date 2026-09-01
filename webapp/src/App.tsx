@@ -17,7 +17,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking } from './types'
-import { getTelegramUserId } from './telegram'
+import { getTelegramUserId, getTelegramUserName } from './telegram'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
@@ -481,6 +481,7 @@ function App() {
           master_id: selectedMaster.id,
           service_id: selectedService.id,
           starts_at: startsAt,
+          client_name: getTelegramUserName(),
         }),
       })
       const data = await res.json()

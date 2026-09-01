@@ -199,10 +199,11 @@ interface CreateBookingBody {
   master_id: number;
   service_id: number;
   starts_at: string;
+  client_name?: string;
 }
 
 api.post("/bookings", async (req, res) => {
-  const { client_telegram_id, master_id, service_id, starts_at } =
+  const { client_telegram_id, master_id, service_id, starts_at, client_name } =
     req.body as Partial<CreateBookingBody>;
 
   if (!client_telegram_id || !master_id || !service_id || !starts_at) {
@@ -241,9 +242,9 @@ api.post("/bookings", async (req, res) => {
   }
 
   const { rows: inserted } = await db.query(
-    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [client_telegram_id, master_id, service_id, starts_at]
+    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [client_telegram_id, master_id, service_id, starts_at, client_name ?? null]
   );
 
   notifyClient(
@@ -349,7 +350,7 @@ api.get("/staff/schedule", async (req, res) => {
 
   const { rows: bookings } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
-            s.name AS service_name, s.duration_minutes
+            s.name AS service_name, s.duration_minutes, b.client_name
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id

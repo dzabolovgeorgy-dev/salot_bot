@@ -22,7 +22,8 @@ export interface Booking {
   service_id: number
   service_name: string
   duration_minutes: number
-  price: number
+  price?: number
+  client_name?: string | null
 }
 
 export interface BlockedSlot {

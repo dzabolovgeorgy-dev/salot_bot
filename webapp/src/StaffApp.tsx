@@ -5,7 +5,7 @@ import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'schedule' | 'block'
+type StaffTab = 'today' | 'schedule' | 'block'
 
 interface StaffAppProps {
   telegramId: number
@@ -25,13 +25,16 @@ function formatTime(iso: string): string {
 }
 
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
-  const [activeTab, setActiveTab] = useState<StaffTab>('schedule')
+  const [activeTab, setActiveTab] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blocks, setBlocks] = useState<BlockedSlot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [todayBookings, setTodayBookings] = useState<Booking[]>([])
+  const [todayLoading, setTodayLoading] = useState(true)
 
   const [blockMasterId, setBlockMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
   const [blockStart, setBlockStart] = useState('')
@@ -66,6 +69,19 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     loadSchedule()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date])
+
+  // "Мой день" — только записи клиентов у самого мастера на сегодня
+  useEffect(() => {
+    if (role !== 'master' || !masterId) return
+    setTodayLoading(true)
+    fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${todayKey()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setTodayBookings((data.bookings as Booking[]).filter((b) => b.master_id === masterId))
+      })
+      .catch(() => {})
+      .finally(() => setTodayLoading(false))
+  }, [role, masterId, telegramId])
 
   async function submitBlock(e: FormEvent) {
     e.preventDefault()
@@ -124,6 +140,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       </header>
 
       <nav className="staff-tabs">
+        {role === 'master' && (
+          <button type="button" className={activeTab === 'today' ? 'active' : ''} onClick={() => setActiveTab('today')}>
+            Мой день
+          </button>
+        )}
         <button
           type="button"
           className={activeTab === 'schedule' ? 'active' : ''}
@@ -136,11 +157,34 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         </button>
       </nav>
 
-      <div className="staff-date-nav">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </div>
+      {activeTab !== 'today' && (
+        <div className="staff-date-nav">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+      )}
 
       {error && <div className="staff-error">{error}</div>}
+
+      {activeTab === 'today' && (
+        <section className="staff-schedule">
+          {todayLoading ? (
+            <p className="staff-empty">Загрузка…</p>
+          ) : todayBookings.length === 0 ? (
+            <p className="staff-empty">На сегодня записей нет</p>
+          ) : (
+            <ul className="staff-list">
+              {todayBookings.map((b) => (
+                <li key={b.id} className="staff-list-item">
+                  <span className="staff-list-time">{formatTime(b.starts_at)}</span>
+                  <span className="staff-list-body">
+                    {b.client_name ?? 'Клиент'} — {b.service_name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {activeTab === 'schedule' && (
         <section className="staff-schedule">

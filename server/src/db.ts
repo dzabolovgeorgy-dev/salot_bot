@@ -39,8 +39,11 @@ export async function initDb(): Promise<void> {
       master_id INTEGER NOT NULL REFERENCES masters(id),
       service_id INTEGER NOT NULL REFERENCES services(id),
       starts_at TIMESTAMP NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT now()
+      created_at TIMESTAMP NOT NULL DEFAULT now(),
+      client_name TEXT
     );
+
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_name TEXT;
 
     CREATE TABLE IF NOT EXISTS staff (
       id SERIAL PRIMARY KEY,
