@@ -41,6 +41,22 @@ export async function initDb(): Promise<void> {
       starts_at TIMESTAMP NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT now()
     );
+
+    CREATE TABLE IF NOT EXISTS staff (
+      id SERIAL PRIMARY KEY,
+      telegram_id BIGINT NOT NULL UNIQUE,
+      role TEXT NOT NULL CHECK (role IN ('master', 'admin')),
+      master_id INTEGER REFERENCES masters(id),
+      CHECK ((role = 'master' AND master_id IS NOT NULL) OR (role = 'admin' AND master_id IS NULL))
+    );
+
+    CREATE TABLE IF NOT EXISTS blocked_slots (
+      id SERIAL PRIMARY KEY,
+      master_id INTEGER NOT NULL REFERENCES masters(id),
+      starts_at TIMESTAMP NOT NULL,
+      ends_at TIMESTAMP NOT NULL,
+      note TEXT
+    );
   `);
 
   // Если база пустая — наполняем тестовыми мастерами и услугами

@@ -16,33 +16,8 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
-
-interface Master {
-  id: number
-  name: string
-  bio: string | null
-  experience_years: number | null
-  photo_url: string | null
-  service_ids: number[]
-}
-
-interface Service {
-  id: number
-  name: string
-  duration_minutes: number
-  price: number
-}
-
-interface Booking {
-  id: number
-  starts_at: string
-  master_id: number
-  master_name: string
-  service_id: number
-  service_name: string
-  duration_minutes: number
-  price: number
-}
+import type { Master, Service, Booking } from './types'
+import { getTelegramUserId } from './telegram'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
@@ -85,11 +60,6 @@ const MONTH_NAMES = [
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
-
-function getTelegramUserId(): number {
-  const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user
-  return tgUser?.id ?? 111111
-}
 
 function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
   const n = name.toLowerCase()

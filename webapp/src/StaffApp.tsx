@@ -1,0 +1,228 @@
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
+import type { Master, Booking, BlockedSlot } from './types'
+import './StaffApp.css'
+
+const API_URL = import.meta.env.VITE_API_URL ?? ''
+
+type StaffTab = 'schedule' | 'block'
+
+interface StaffAppProps {
+  telegramId: number
+  role: 'master' | 'admin'
+  masterId?: number
+  masterName?: string
+}
+
+function todayKey(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function formatTime(iso: string): string {
+  return iso.slice(11, 16)
+}
+
+export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
+  const [activeTab, setActiveTab] = useState<StaffTab>('schedule')
+  const [date, setDate] = useState(todayKey())
+  const [masters, setMasters] = useState<Master[]>([])
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [blocks, setBlocks] = useState<BlockedSlot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const [blockMasterId, setBlockMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
+  const [blockStart, setBlockStart] = useState('')
+  const [blockEnd, setBlockEnd] = useState('')
+  const [blockNote, setBlockNote] = useState('')
+  const [blockSubmitting, setBlockSubmitting] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/masters`)
+      .then((r) => r.json())
+      .then(setMasters)
+      .catch(() => {})
+  }, [])
+
+  async function loadSchedule() {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${date}`)
+      if (!res.ok) throw new Error('Не удалось загрузить расписание')
+      const data = await res.json()
+      setBookings(data.bookings)
+      setBlocks(data.blocked_slots)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить расписание')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSchedule()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date])
+
+  async function submitBlock(e: FormEvent) {
+    e.preventDefault()
+    if (!blockMasterId || !blockStart || !blockEnd) return
+    setBlockSubmitting(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/blocked-slots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          master_id: blockMasterId,
+          starts_at: `${date}T${blockStart}`,
+          ends_at: `${date}T${blockEnd}`,
+          note: blockNote || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+      setBlockStart('')
+      setBlockEnd('')
+      setBlockNote('')
+      await loadSchedule()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setBlockSubmitting(false)
+    }
+  }
+
+  async function removeBlock(id: number) {
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/blocked-slots/${id}?telegram_id=${telegramId}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить')
+      await loadSchedule()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить')
+    }
+  }
+
+  const dayItems = [
+    ...bookings.map((b) => ({ kind: 'booking' as const, time: formatTime(b.starts_at), booking: b })),
+    ...blocks.map((b) => ({ kind: 'block' as const, time: formatTime(b.starts_at), block: b })),
+  ].sort((a, b) => a.time.localeCompare(b.time))
+
+  return (
+    <div className="staff-app">
+      <header className="staff-header">
+        <h1>Персонал</h1>
+        <span className="staff-role-badge">{role === 'admin' ? 'Администратор' : `Мастер: ${masterName}`}</span>
+      </header>
+
+      <nav className="staff-tabs">
+        <button
+          type="button"
+          className={activeTab === 'schedule' ? 'active' : ''}
+          onClick={() => setActiveTab('schedule')}
+        >
+          Расписание
+        </button>
+        <button type="button" className={activeTab === 'block' ? 'active' : ''} onClick={() => setActiveTab('block')}>
+          Заблокировать время
+        </button>
+      </nav>
+
+      <div className="staff-date-nav">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+
+      {error && <div className="staff-error">{error}</div>}
+
+      {activeTab === 'schedule' && (
+        <section className="staff-schedule">
+          {loading ? (
+            <p className="staff-empty">Загрузка…</p>
+          ) : dayItems.length === 0 ? (
+            <p className="staff-empty">На этот день ничего нет</p>
+          ) : (
+            <ul className="staff-list">
+              {dayItems.map((entry) =>
+                entry.kind === 'booking' ? (
+                  <li key={`booking-${entry.booking.id}`} className="staff-list-item">
+                    <span className="staff-list-time">{entry.time}</span>
+                    <span className="staff-list-body">
+                      {entry.booking.service_name} — {entry.booking.master_name}
+                    </span>
+                  </li>
+                ) : (
+                  <li key={`block-${entry.block.id}`} className="staff-list-item staff-list-item--block">
+                    <span className="staff-list-time">{entry.time}</span>
+                    <span className="staff-list-body">
+                      Заблокировано ({entry.block.master_name}
+                      {entry.block.note ? `, ${entry.block.note}` : ''})
+                    </span>
+                    <button type="button" className="staff-remove-btn" onClick={() => removeBlock(entry.block.id)}>
+                      Убрать
+                    </button>
+                  </li>
+                )
+              )}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'block' && (
+        <section className="staff-block-form">
+          <form onSubmit={submitBlock}>
+            {role === 'admin' ? (
+              <label>
+                Мастер
+                <select
+                  value={blockMasterId}
+                  onChange={(e) => setBlockMasterId(Number(e.target.value))}
+                  required
+                >
+                  <option value="" disabled>
+                    Выберите мастера
+                  </option>
+                  {masters.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="staff-fixed-master">Мастер: {masterName}</p>
+            )}
+            <label>
+              С
+              <input type="time" value={blockStart} onChange={(e) => setBlockStart(e.target.value)} required />
+            </label>
+            <label>
+              До
+              <input type="time" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)} required />
+            </label>
+            <label>
+              Заметка (необязательно)
+              <input
+                type="text"
+                value={blockNote}
+                onChange={(e) => setBlockNote(e.target.value)}
+                placeholder="Обед"
+              />
+            </label>
+            <button type="submit" disabled={blockSubmitting}>
+              {blockSubmitting ? 'Сохранение…' : 'Заблокировать'}
+            </button>
+          </form>
+        </section>
+      )}
+    </div>
+  )
+}

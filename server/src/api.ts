@@ -28,8 +28,41 @@ function notifyClient(clientTelegramId: number, text: string) {
   });
 }
 
-// Проверка, что у мастера нет другой записи, пересекающейся по времени.
-// excludeBookingId — чтобы при переносе запись не конфликтовала сама с собой
+// Уведомление мастеру — только если у него есть доступ в staff (иначе некому слать)
+async function notifyMaster(masterId: number, text: string) {
+  const { rows } = await db.query<{ telegram_id: string }>(
+    "SELECT telegram_id FROM staff WHERE role = 'master' AND master_id = $1",
+    [masterId]
+  );
+  const masterTelegramId = rows[0]?.telegram_id;
+  if (!masterTelegramId) return;
+  bot.telegram.sendMessage(masterTelegramId, text).catch((err) => {
+    console.warn("Не удалось отправить уведомление мастеру:", err instanceof Error ? err.message : err);
+  });
+}
+
+// Роль пользователя по Telegram ID: клиент (нет в staff), мастер или админ
+async function getRole(
+  telegramId: number
+): Promise<{ role: "client" } | { role: "master"; master_id: number; master_name: string } | { role: "admin" }> {
+  const { rows } = await db.query<{ role: "master" | "admin"; master_id: number | null; master_name: string | null }>(
+    `SELECT s.role, s.master_id, m.name AS master_name
+     FROM staff s
+     LEFT JOIN masters m ON m.id = s.master_id
+     WHERE s.telegram_id = $1`,
+    [telegramId]
+  );
+  const row = rows[0];
+  if (!row) return { role: "client" };
+  if (row.role === "master") {
+    return { role: "master", master_id: row.master_id!, master_name: row.master_name! };
+  }
+  return { role: "admin" };
+}
+
+// Проверка, что у мастера нет другой записи или заблокированного времени,
+// пересекающегося по времени. excludeBookingId — чтобы при переносе запись
+// не конфликтовала сама с собой
 async function hasConflict(
   masterId: number,
   startsAt: string,
@@ -42,7 +75,12 @@ async function hasConflict(
      WHERE b.master_id = $1
        AND ($4::int IS NULL OR b.id != $4)
        AND b.starts_at < ($2::timestamp + ($3 * interval '1 minute'))
-       AND $2::timestamp < (b.starts_at + (s.duration_minutes * interval '1 minute'))`,
+       AND $2::timestamp < (b.starts_at + (s.duration_minutes * interval '1 minute'))
+     UNION ALL
+     SELECT bs.id FROM blocked_slots bs
+     WHERE bs.master_id = $1
+       AND bs.starts_at < ($2::timestamp + ($3 * interval '1 minute'))
+       AND $2::timestamp < bs.ends_at`,
     [masterId, startsAt, durationMinutes, excludeBookingId ?? null]
   );
   return rows.length > 0;
@@ -84,7 +122,12 @@ api.get("/masters/:id/bookings", async (req, res) => {
      JOIN services s ON s.id = b.service_id
      WHERE b.master_id = $1
        AND b.starts_at::date = $2::date
-       AND ($3::int IS NULL OR b.id != $3)`,
+       AND ($3::int IS NULL OR b.id != $3)
+     UNION ALL
+     SELECT bs.starts_at, EXTRACT(EPOCH FROM (bs.ends_at - bs.starts_at))::int / 60 AS duration_minutes
+     FROM blocked_slots bs
+     WHERE bs.master_id = $1
+       AND bs.starts_at::date = $2::date`,
     [masterId, date, excludeId]
   );
 
@@ -122,7 +165,7 @@ api.delete("/bookings/:id", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.id, b.starts_at, m.name AS master_name, s.name AS service_name
+    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name, s.name AS service_name
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -130,7 +173,7 @@ api.delete("/bookings/:id", async (req, res) => {
     [id, clientTelegramId]
   );
   const booking = rows[0] as
-    | { id: number; starts_at: string; master_name: string; service_name: string }
+    | { id: number; starts_at: string; master_id: number; master_name: string; service_name: string }
     | undefined;
   if (!booking) {
     res.status(404).json({ error: "Запись не найдена" });
@@ -142,6 +185,10 @@ api.delete("/bookings/:id", async (req, res) => {
   notifyClient(
     clientTelegramId,
     `❌ Запись отменена\n\n${booking.service_name} — ${booking.master_name}\n${formatRuDateTime(booking.starts_at)}`
+  );
+  notifyMaster(
+    booking.master_id,
+    `❌ Запись отменена клиентом\n\n${booking.service_name}\n${formatRuDateTime(booking.starts_at)}`
   );
 
   res.json({ ok: true });
@@ -203,6 +250,7 @@ api.post("/bookings", async (req, res) => {
     client_telegram_id,
     `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`
   );
+  notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
 
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
 });
@@ -263,7 +311,126 @@ api.patch("/bookings/:id", async (req, res) => {
     client_telegram_id,
     `🔄 Запись перенесена\n\n${booking.service_name} — ${booking.master_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`
   );
+  notifyMaster(
+    booking.master_id,
+    `🔄 Запись перенесена\n\n${booking.service_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`
+  );
 
   const { rows: updated } = await db.query("SELECT * FROM bookings WHERE id = $1", [id]);
   res.json({ ...updated[0], starts_at: toIso(updated[0].starts_at) });
+});
+
+// ===== Эндпоинты для персонала (мастера и администраторы) =====
+
+api.get("/me", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает telegram_id" });
+    return;
+  }
+  res.json(await getRole(telegramId));
+});
+
+// Расписание всех мастеров на дату: записи клиентов + заблокированное время.
+// Доступно только персоналу
+api.get("/staff/schedule", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  const date = String(req.query.date ?? "");
+  if (!telegramId || !date) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const role = await getRole(telegramId);
+  if (role.role === "client") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows: bookings } = await db.query(
+    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
+            s.name AS service_name, s.duration_minutes
+     FROM bookings b
+     JOIN masters m ON m.id = b.master_id
+     JOIN services s ON s.id = b.service_id
+     WHERE b.starts_at::date = $1::date
+     ORDER BY b.starts_at ASC`,
+    [date]
+  );
+
+  const { rows: blocks } = await db.query(
+    `SELECT bs.id, bs.starts_at, bs.ends_at, bs.master_id, m.name AS master_name, bs.note
+     FROM blocked_slots bs
+     JOIN masters m ON m.id = bs.master_id
+     WHERE bs.starts_at::date = $1::date
+     ORDER BY bs.starts_at ASC`,
+    [date]
+  );
+
+  res.json({
+    bookings: bookings.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })),
+    blocked_slots: blocks.map((r) => ({ ...r, starts_at: toIso(r.starts_at), ends_at: toIso(r.ends_at) })),
+  });
+});
+
+interface BlockedSlotBody {
+  telegram_id: number;
+  master_id: number;
+  starts_at: string;
+  ends_at: string;
+  note?: string;
+}
+
+api.post("/staff/blocked-slots", async (req, res) => {
+  const { telegram_id, master_id, starts_at, ends_at, note } = req.body as Partial<BlockedSlotBody>;
+  if (!telegram_id || !master_id || !starts_at || !ends_at) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const role = await getRole(telegram_id);
+  if (role.role === "client") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+  if (role.role === "master" && role.master_id !== master_id) {
+    res.status(403).json({ error: "Можно блокировать только своё время" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `INSERT INTO blocked_slots (master_id, starts_at, ends_at, note) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [master_id, starts_at, ends_at, note ?? null]
+  );
+
+  res.status(201).json({ ...rows[0], starts_at: toIso(rows[0].starts_at), ends_at: toIso(rows[0].ends_at) });
+});
+
+api.delete("/staff/blocked-slots/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!id || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const role = await getRole(telegramId);
+  if (role.role === "client") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows } = await db.query("SELECT master_id FROM blocked_slots WHERE id = $1", [id]);
+  const block = rows[0] as { master_id: number } | undefined;
+  if (!block) {
+    res.status(404).json({ error: "Не найдено" });
+    return;
+  }
+  if (role.role === "master" && role.master_id !== block.master_id) {
+    res.status(403).json({ error: "Можно снимать только свою блокировку" });
+    return;
+  }
+
+  await db.query("DELETE FROM blocked_slots WHERE id = $1", [id]);
+  res.json({ ok: true });
 });
