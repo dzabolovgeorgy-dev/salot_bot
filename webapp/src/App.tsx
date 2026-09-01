@@ -18,6 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking } from './types'
 import { getTelegramUserId, getTelegramUserName } from './telegram'
+import { isWorkDay } from './schedule'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
@@ -128,17 +129,6 @@ function minutesOf(hhmm: string): number {
   return h * 60 + m
 }
 
-// Тот же расчёт графика "N дней работает — N выходных", что и на сервере —
-// чтобы клиент видел выходные мастера сразу в календаре, а не после отказа при записи
-function isWorkDay(dateKey: string, master: Master): boolean {
-  if (!master.schedule_anchor || !master.work_days || !master.off_days) return true
-  const anchor = new Date(`${master.schedule_anchor}T00:00:00`)
-  const date = new Date(`${dateKey}T00:00:00`)
-  const diffDays = Math.round((date.getTime() - anchor.getTime()) / 86400000)
-  const cycle = master.work_days + master.off_days
-  const position = ((diffDays % cycle) + cycle) % cycle
-  return position < master.work_days
-}
 
 function isSlotFree(
   slotTime: string,

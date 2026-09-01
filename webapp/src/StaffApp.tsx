@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Booking, BlockedSlot } from './types'
+import { isWorkDay } from './schedule'
 import AdminManage from './AdminManage'
 import './StaffApp.css'
 
@@ -368,6 +369,20 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       {activeTab === 'schedule' && (
         <section className="staff-schedule">
+          {masters.length > 0 && (
+            <div className="staff-shift-row">
+              {masters.map((m) => {
+                const working = isWorkDay(date, m)
+                return (
+                  <span key={m.id} className={`staff-shift-chip${working ? '' : ' staff-shift-chip--off'}`}>
+                    {m.name}
+                    <span className="staff-shift-dot" />
+                    {working ? 'на смене' : 'выходной'}
+                  </span>
+                )
+              })}
+            </div>
+          )}
           {loading ? (
             <p className="staff-empty">Загрузка…</p>
           ) : dayItems.length === 0 ? (
