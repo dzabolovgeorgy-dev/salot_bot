@@ -60,6 +60,22 @@ async function getRole(
   return { role: "admin" };
 }
 
+// Проверка по графику "N дней работает — N дней выходной", который крутится
+// по кругу от даты начала (schedule_anchor). Если график не задан — мастер
+// работает всегда (обратная совместимость с мастерами без графика)
+function isWorkDay(
+  dateStr: string,
+  master: { schedule_anchor: string | null; work_days: number | null; off_days: number | null }
+): boolean {
+  if (!master.schedule_anchor || !master.work_days || !master.off_days) return true;
+  const anchor = new Date(`${master.schedule_anchor}T00:00:00`);
+  const date = new Date(`${dateStr}T00:00:00`);
+  const diffDays = Math.round((date.getTime() - anchor.getTime()) / 86400000);
+  const cycle = master.work_days + master.off_days;
+  const position = ((diffDays % cycle) + cycle) % cycle;
+  return position < master.work_days;
+}
+
 async function requireAdmin(telegramId: number): Promise<boolean> {
   const role = await getRole(telegramId);
   return role.role === "admin";
@@ -93,7 +109,7 @@ async function hasConflict(
 
 api.get("/masters", async (_req, res) => {
   const { rows: masters } = await db.query(
-    "SELECT id, name, bio, experience_years, photo_url FROM masters"
+    "SELECT id, name, bio, experience_years, photo_url, schedule_anchor, work_days, off_days FROM masters"
   );
   const { rows: relations } = await db.query("SELECT master_id, service_id FROM master_services");
 
@@ -216,8 +232,13 @@ api.post("/bookings", async (req, res) => {
     return;
   }
 
-  const { rows: masterRows } = await db.query("SELECT id, name FROM masters WHERE id = $1", [master_id]);
-  const master = masterRows[0] as { id: number; name: string } | undefined;
+  const { rows: masterRows } = await db.query(
+    "SELECT id, name, schedule_anchor, work_days, off_days FROM masters WHERE id = $1",
+    [master_id]
+  );
+  const master = masterRows[0] as
+    | { id: number; name: string; schedule_anchor: string | null; work_days: number | null; off_days: number | null }
+    | undefined;
   if (!master) {
     res.status(400).json({ error: "Мастер не найден" });
     return;
@@ -238,6 +259,11 @@ api.post("/bookings", async (req, res) => {
   const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
   if (pastRows[0].value) {
     res.status(400).json({ error: "Нельзя записаться на прошедшее время" });
+    return;
+  }
+
+  if (!isWorkDay(starts_at.slice(0, 10), master)) {
+    res.status(400).json({ error: "У мастера выходной в этот день" });
     return;
   }
 
@@ -277,7 +303,8 @@ api.patch("/bookings/:id", async (req, res) => {
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
-            s.name AS service_name, s.duration_minutes
+            s.name AS service_name, s.duration_minutes,
+            m.schedule_anchor, m.work_days, m.off_days
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -292,6 +319,9 @@ api.patch("/bookings/:id", async (req, res) => {
         master_name: string;
         service_name: string;
         duration_minutes: number;
+        schedule_anchor: string | null;
+        work_days: number | null;
+        off_days: number | null;
       }
     | undefined;
 
@@ -303,6 +333,11 @@ api.patch("/bookings/:id", async (req, res) => {
   const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
   if (pastRows[0].value) {
     res.status(400).json({ error: "Нельзя перенести на прошедшее время" });
+    return;
+  }
+
+  if (!isWorkDay(starts_at.slice(0, 10), booking)) {
+    res.status(400).json({ error: "У мастера выходной в этот день" });
     return;
   }
 

@@ -5,6 +5,9 @@ export interface Master {
   experience_years: number | null
   photo_url: string | null
   service_ids: number[]
+  schedule_anchor: string | null
+  work_days: number | null
+  off_days: number | null
 }
 
 export interface Service {

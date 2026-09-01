@@ -4,6 +4,7 @@ import pg, { Pool } from "pg";
 // отключаем автоматическое превращение timestamp-колонок в JS Date, иначе
 // драйвер сдвигает время под часовой пояс сервера
 pg.types.setTypeParser(1114, (value) => value);
+pg.types.setTypeParser(1082, (value) => value); // date
 
 export const db = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -17,8 +18,15 @@ export async function initDb(): Promise<void> {
       name TEXT NOT NULL,
       bio TEXT,
       experience_years INTEGER,
-      photo_url TEXT
+      photo_url TEXT,
+      schedule_anchor DATE,
+      work_days INTEGER,
+      off_days INTEGER
     );
+
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_anchor DATE;
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_days INTEGER;
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS off_days INTEGER;
 
     CREATE TABLE IF NOT EXISTS services (
       id SERIAL PRIMARY KEY,

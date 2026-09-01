@@ -128,6 +128,18 @@ function minutesOf(hhmm: string): number {
   return h * 60 + m
 }
 
+// Тот же расчёт графика "N дней работает — N выходных", что и на сервере —
+// чтобы клиент видел выходные мастера сразу в календаре, а не после отказа при записи
+function isWorkDay(dateKey: string, master: Master): boolean {
+  if (!master.schedule_anchor || !master.work_days || !master.off_days) return true
+  const anchor = new Date(`${master.schedule_anchor}T00:00:00`)
+  const date = new Date(`${dateKey}T00:00:00`)
+  const diffDays = Math.round((date.getTime() - anchor.getTime()) / 86400000)
+  const cycle = master.work_days + master.off_days
+  const position = ((diffDays % cycle) + cycle) % cycle
+  return position < master.work_days
+}
+
 function isSlotFree(
   slotTime: string,
   durationMinutes: number,
@@ -239,12 +251,14 @@ function DateTimePicker({
           {monthCells.map((d, i) => {
             if (!d) return <span key={`empty-${i}`} className="calendar-day calendar-day-empty" />
             const key = dateKeyOf(d)
+            const dayOff = !isWorkDay(key, master)
             return (
               <button
                 key={key}
                 type="button"
-                className={`calendar-day${dateKey === key ? ' active' : ''}${key === todayKey ? ' today' : ''}`}
-                disabled={d < today}
+                className={`calendar-day${dateKey === key ? ' active' : ''}${key === todayKey ? ' today' : ''}${dayOff ? ' day-off' : ''}`}
+                disabled={d < today || dayOff}
+                title={dayOff ? 'У мастера выходной' : undefined}
                 onClick={() => onPickDate(key)}
               >
                 {d.getDate()}
