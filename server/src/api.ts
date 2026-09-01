@@ -350,7 +350,7 @@ api.get("/staff/schedule", async (req, res) => {
 
   const { rows: bookings } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
-            s.name AS service_name, s.duration_minutes, b.client_name
+            s.name AS service_name, s.duration_minutes, b.client_name, b.status
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -372,6 +372,46 @@ api.get("/staff/schedule", async (req, res) => {
     bookings: bookings.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })),
     blocked_slots: blocks.map((r) => ({ ...r, starts_at: toIso(r.starts_at), ends_at: toIso(r.ends_at) })),
   });
+});
+
+interface BookingStatusBody {
+  telegram_id: number;
+  status: "upcoming" | "completed" | "no_show";
+}
+
+api.patch("/staff/bookings/:id/status", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, status } = req.body as Partial<BookingStatusBody>;
+  if (!id || !telegram_id || !status) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!["upcoming", "completed", "no_show"].includes(status)) {
+    res.status(400).json({ error: "Некорректный статус" });
+    return;
+  }
+
+  const role = await getRole(telegram_id);
+  if (role.role === "client") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows } = await db.query("SELECT master_id FROM bookings WHERE id = $1", [id]);
+  const booking = rows[0] as { master_id: number } | undefined;
+  if (!booking) {
+    res.status(404).json({ error: "Запись не найдена" });
+    return;
+  }
+  if (role.role === "master" && role.master_id !== booking.master_id) {
+    res.status(403).json({ error: "Можно менять статус только своих записей" });
+    return;
+  }
+
+  await db.query("UPDATE bookings SET status = $1 WHERE id = $2", [status, id]);
+  // При status = 'completed' — сюда позже подключим начисление бонусов на карту лояльности
+
+  res.json({ ok: true });
 });
 
 interface BlockedSlotBody {

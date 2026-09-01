@@ -35,6 +35,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   const [todayBookings, setTodayBookings] = useState<Booking[]>([])
   const [todayLoading, setTodayLoading] = useState(true)
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [statusSaving, setStatusSaving] = useState(false)
 
   const [blockMasterId, setBlockMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
   const [blockStart, setBlockStart] = useState('')
@@ -71,17 +73,44 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   }, [date])
 
   // "Мой день" — только записи клиентов у самого мастера на сегодня
-  useEffect(() => {
+  async function loadToday() {
     if (role !== 'master' || !masterId) return
     setTodayLoading(true)
-    fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${todayKey()}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setTodayBookings((data.bookings as Booking[]).filter((b) => b.master_id === masterId))
-      })
-      .catch(() => {})
-      .finally(() => setTodayLoading(false))
+    try {
+      const res = await fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${todayKey()}`)
+      const data = await res.json()
+      setTodayBookings((data.bookings as Booking[]).filter((b) => b.master_id === masterId))
+    } catch {
+      // тихо — на этой вкладке нет отдельного места для ошибки
+    } finally {
+      setTodayLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadToday()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, masterId, telegramId])
+
+  async function setBookingStatus(bookingId: number, status: 'completed' | 'no_show') {
+    setStatusSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, status }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+      setSelectedBooking(null)
+      await loadToday()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setStatusSaving(false)
+    }
+  }
 
   async function submitBlock(e: FormEvent) {
     e.preventDefault()
@@ -165,7 +194,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       {error && <div className="staff-error">{error}</div>}
 
-      {activeTab === 'today' && (
+      {activeTab === 'today' && !selectedBooking && (
         <section className="staff-schedule">
           {todayLoading ? (
             <p className="staff-empty">Загрузка…</p>
@@ -174,15 +203,51 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           ) : (
             <ul className="staff-list">
               {todayBookings.map((b) => (
-                <li key={b.id} className="staff-list-item">
+                <li key={b.id} className="staff-list-item staff-list-item--clickable" onClick={() => setSelectedBooking(b)}>
                   <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                   <span className="staff-list-body">
                     {b.client_name ?? 'Клиент'} — {b.service_name}
+                    {b.status === 'completed' && <span className="staff-status staff-status--done"> ✓ выполнено</span>}
+                    {b.status === 'no_show' && <span className="staff-status staff-status--no-show"> ✕ не пришёл</span>}
                   </span>
                 </li>
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {activeTab === 'today' && selectedBooking && (
+        <section className="staff-booking-card">
+          <button type="button" className="staff-back-btn" onClick={() => setSelectedBooking(null)}>
+            ← Назад
+          </button>
+          <h2>{selectedBooking.client_name ?? 'Клиент'}</h2>
+          <p className="staff-card-line">{selectedBooking.service_name}</p>
+          <p className="staff-card-line">{formatTime(selectedBooking.starts_at)}</p>
+          {selectedBooking.status !== 'upcoming' && (
+            <p className="staff-card-line">
+              Статус: {selectedBooking.status === 'completed' ? 'Выполнено' : 'Клиент не пришёл'}
+            </p>
+          )}
+          <div className="staff-card-actions">
+            <button
+              type="button"
+              className="staff-card-done"
+              disabled={statusSaving}
+              onClick={() => setBookingStatus(selectedBooking.id, 'completed')}
+            >
+              Отметить выполненной
+            </button>
+            <button
+              type="button"
+              className="staff-card-no-show"
+              disabled={statusSaving}
+              onClick={() => setBookingStatus(selectedBooking.id, 'no_show')}
+            >
+              Клиент не пришёл
+            </button>
+          </div>
         </section>
       )}
 

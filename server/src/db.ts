@@ -40,10 +40,13 @@ export async function initDb(): Promise<void> {
       service_id INTEGER NOT NULL REFERENCES services(id),
       starts_at TIMESTAMP NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT now(),
-      client_name TEXT
+      client_name TEXT,
+      status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'completed', 'no_show'))
     );
 
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_name TEXT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'upcoming'
+      CHECK (status IN ('upcoming', 'completed', 'no_show'));
 
     CREATE TABLE IF NOT EXISTS staff (
       id SERIAL PRIMARY KEY,

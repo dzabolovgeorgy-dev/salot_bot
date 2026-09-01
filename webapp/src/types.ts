@@ -24,6 +24,7 @@ export interface Booking {
   duration_minutes: number
   price?: number
   client_name?: string | null
+  status?: 'upcoming' | 'completed' | 'no_show'
 }
 
 export interface BlockedSlot {
