@@ -85,6 +85,44 @@
   padding: 24px 0;
 }
 
+.staff-empty--compact {
+  padding: 4px 0 12px;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.staff-week-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.staff-week-nav button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.staff-week-day {
+  margin-bottom: 18px;
+}
+
+.staff-week-day h3 {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-h);
+  margin: 0 0 8px;
+  text-transform: capitalize;
+}
+
 .staff-list {
   list-style: none;
   margin: 0;
@@ -257,4 +295,144 @@
 .staff-block-form button[type='submit']:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.staff-block-form label.staff-checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.staff-block-form label.staff-checkbox-row input {
+  width: auto;
+}
+
+.staff-subtabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.staff-subtabs button {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.staff-subtabs button.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.staff-admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  margin-top: 16px;
+}
+
+.staff-admin-form h3 {
+  font-family: var(--serif);
+  color: var(--text-h);
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.staff-admin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
+.staff-admin-form input,
+.staff-admin-form select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+}
+
+.staff-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-checkbox-label {
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
+.staff-checkbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.staff-checkbox-row input {
+  width: auto;
+}
+
+.staff-form-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.staff-form-actions button[type='submit'] {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.staff-form-actions button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.staff-cancel-btn {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.staff-admin > .staff-admin-form button[type='submit'] {
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  cursor: pointer;
 }

@@ -60,6 +60,11 @@ async function getRole(
   return { role: "admin" };
 }
 
+async function requireAdmin(telegramId: number): Promise<boolean> {
+  const role = await getRole(telegramId);
+  return role.role === "admin";
+}
+
 // Проверка, что у мастера нет другой записи или заблокированного времени,
 // пересекающегося по времени. excludeBookingId — чтобы при переносе запись
 // не конфликтовала сама с собой
@@ -473,5 +478,255 @@ api.delete("/staff/blocked-slots/:id", async (req, res) => {
   }
 
   await db.query("DELETE FROM blocked_slots WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// ===== Управление мастерами, услугами и персоналом (только админ) =====
+
+interface MasterBody {
+  telegram_id: number;
+  name: string;
+  bio?: string;
+  experience_years?: number;
+  photo_url?: string;
+}
+
+api.post("/masters", async (req, res) => {
+  const { telegram_id, name, bio, experience_years, photo_url } = req.body as Partial<MasterBody>;
+  if (!telegram_id || !name) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `INSERT INTO masters (name, bio, experience_years, photo_url) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [name, bio ?? null, experience_years ?? null, photo_url ?? null]
+  );
+  res.status(201).json(rows[0]);
+});
+
+api.patch("/masters/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, name, bio, experience_years, photo_url } = req.body as Partial<MasterBody>;
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `UPDATE masters SET
+       name = COALESCE($1, name),
+       bio = COALESCE($2, bio),
+       experience_years = COALESCE($3, experience_years),
+       photo_url = COALESCE($4, photo_url)
+     WHERE id = $5 RETURNING *`,
+    [name ?? null, bio ?? null, experience_years ?? null, photo_url ?? null, id]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Мастер не найден" });
+    return;
+  }
+  res.json(rows[0]);
+});
+
+api.delete("/masters/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!id || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  try {
+    const { rowCount } = await db.query("DELETE FROM masters WHERE id = $1", [id]);
+    if (!rowCount) {
+      res.status(404).json({ error: "Мастер не найден" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch {
+    res.status(409).json({ error: "Нельзя удалить: у мастера есть записи, услуги или доступ в системе" });
+  }
+});
+
+interface ServiceBody {
+  telegram_id: number;
+  name: string;
+  duration_minutes: number;
+  price: number;
+}
+
+api.post("/services", async (req, res) => {
+  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
+  if (!telegram_id || !name || !duration_minutes || price === undefined) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING *`,
+    [name, duration_minutes, price]
+  );
+  res.status(201).json(rows[0]);
+});
+
+api.patch("/services/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `UPDATE services SET
+       name = COALESCE($1, name),
+       duration_minutes = COALESCE($2, duration_minutes),
+       price = COALESCE($3, price)
+     WHERE id = $4 RETURNING *`,
+    [name ?? null, duration_minutes ?? null, price ?? null, id]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Услуга не найдена" });
+    return;
+  }
+  res.json(rows[0]);
+});
+
+api.delete("/services/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!id || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  try {
+    const { rowCount } = await db.query("DELETE FROM services WHERE id = $1", [id]);
+    if (!rowCount) {
+      res.status(404).json({ error: "Услуга не найдена" });
+      return;
+    }
+    res.json({ ok: true });
+  } catch {
+    res.status(409).json({ error: "Нельзя удалить: услуга используется в записях" });
+  }
+});
+
+interface MasterServicesBody {
+  telegram_id: number;
+  service_ids: number[];
+}
+
+// Полностью заменяет список услуг мастера на переданный
+api.put("/masters/:id/services", async (req, res) => {
+  const masterId = Number(req.params.id);
+  const { telegram_id, service_ids } = req.body as Partial<MasterServicesBody>;
+  if (!masterId || !telegram_id || !Array.isArray(service_ids)) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  await db.query("DELETE FROM master_services WHERE master_id = $1", [masterId]);
+  for (const serviceId of service_ids) {
+    await db.query("INSERT INTO master_services (master_id, service_id) VALUES ($1, $2)", [masterId, serviceId]);
+  }
+  res.json({ ok: true });
+});
+
+api.get("/staff", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает telegram_id" });
+    return;
+  }
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT s.id, s.telegram_id, s.role, s.master_id, m.name AS master_name
+     FROM staff s
+     LEFT JOIN masters m ON m.id = s.master_id
+     ORDER BY s.id ASC`
+  );
+  res.json(rows);
+});
+
+interface AddStaffBody {
+  telegram_id: number;
+  target_telegram_id: number;
+  role: "master" | "admin";
+  master_id?: number;
+}
+
+api.post("/staff", async (req, res) => {
+  const { telegram_id, target_telegram_id, role, master_id } = req.body as Partial<AddStaffBody>;
+  if (!telegram_id || !target_telegram_id || !role) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  if (role === "master" && !master_id) {
+    res.status(400).json({ error: "Для роли «мастер» нужно выбрать мастера" });
+    return;
+  }
+
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, $2, $3) RETURNING *`,
+      [target_telegram_id, role, role === "master" ? master_id : null]
+    );
+    res.status(201).json(rows[0]);
+  } catch {
+    res.status(409).json({ error: "Этот Telegram ID уже добавлен в персонал" });
+  }
+});
+
+api.delete("/staff/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!id || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  await db.query("DELETE FROM staff WHERE id = $1", [id]);
   res.json({ ok: true });
 });
