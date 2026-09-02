@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service } from './types'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type SubTab = 'masters' | 'services' | 'staff'
+type Section = 'menu' | 'masters' | 'services' | 'staff'
+type MasterView = 'list' | 'quick' | 'edit'
 
 interface StaffMember {
   id: number
@@ -19,12 +20,11 @@ interface AdminManageProps {
   telegramId: number
 }
 
-const emptyMasterForm = { name: '', bio: '', experience_years: '', photo_url: '' }
+const emptyMasterForm = { name: '', bio: '', experience_years: '', photo_url: '', accessTelegramId: '' }
 const emptyServiceForm = { name: '', duration_minutes: '', price: '' }
-const emptyStaffForm = { target_telegram_id: '', role: 'master' as 'master' | 'admin', master_id: '' }
 
 export default function AdminManage({ telegramId }: AdminManageProps) {
-  const [subTab, setSubTab] = useState<SubTab>('masters')
+  const [section, setSection] = useState<Section>('menu')
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
@@ -50,11 +50,34 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const staffByMasterId = useMemo(() => {
+    const map = new Map<number, StaffMember>()
+    staff.forEach((s) => {
+      if (s.role === 'master' && s.master_id != null) map.set(s.master_id, s)
+    })
+    return map
+  }, [staff])
+
   // ===== Мастера =====
+  const [masterView, setMasterView] = useState<MasterView>('list')
   const [editingMasterId, setEditingMasterId] = useState<number | null>(null)
   const [masterForm, setMasterForm] = useState(emptyMasterForm)
   const [masterServiceIds, setMasterServiceIds] = useState<number[]>([])
   const [masterSaving, setMasterSaving] = useState(false)
+  const [quickName, setQuickName] = useState('')
+  const [quickTelegramId, setQuickTelegramId] = useState('')
+
+  function openMasterList() {
+    setMasterView('list')
+    setError('')
+  }
+
+  function openQuickAdd() {
+    setQuickName('')
+    setQuickTelegramId('')
+    setMasterView('quick')
+    setError('')
+  }
 
   function startEditMaster(m: Master) {
     setEditingMasterId(m.id)
@@ -63,49 +86,75 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
       bio: m.bio ?? '',
       experience_years: m.experience_years?.toString() ?? '',
       photo_url: m.photo_url ?? '',
+      accessTelegramId: staffByMasterId.get(m.id)?.telegram_id?.toString() ?? '',
     })
     setMasterServiceIds(m.service_ids)
+    setMasterView('edit')
+    setError('')
   }
 
-  function startNewMaster() {
-    setEditingMasterId(null)
-    setMasterForm(emptyMasterForm)
-    setMasterServiceIds([])
-  }
-
-  async function submitMaster(e: FormEvent) {
+  async function submitQuickAdd(e: FormEvent) {
     e.preventDefault()
-    if (!masterForm.name) return
+    if (!quickName) return
     setMasterSaving(true)
     setError('')
     try {
-      const body = {
-        telegram_id: telegramId,
-        name: masterForm.name,
-        bio: masterForm.bio || undefined,
-        experience_years: masterForm.experience_years ? Number(masterForm.experience_years) : undefined,
-        photo_url: masterForm.photo_url || undefined,
+      const res = await fetch(`${API_URL}/api/masters`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          name: quickName,
+          access_telegram_id: quickTelegramId ? Number(quickTelegramId) : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+      await loadAll()
+      if (data.warning) {
+        setError(data.warning)
       }
-      const res = await fetch(
-        editingMasterId ? `${API_URL}/api/masters/${editingMasterId}` : `${API_URL}/api/masters`,
-        {
-          method: editingMasterId ? 'PATCH' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }
-      )
+      openMasterList()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setMasterSaving(false)
+    }
+  }
+
+  async function submitMasterEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!masterForm.name || !editingMasterId) return
+    setMasterSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/masters/${editingMasterId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          name: masterForm.name,
+          bio: masterForm.bio || undefined,
+          experience_years: masterForm.experience_years ? Number(masterForm.experience_years) : undefined,
+          photo_url: masterForm.photo_url || undefined,
+          access_telegram_id: masterForm.accessTelegramId ? Number(masterForm.accessTelegramId) : null,
+        }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
 
-      const masterId = editingMasterId ?? data.id
-      await fetch(`${API_URL}/api/masters/${masterId}/services`, {
+      await fetch(`${API_URL}/api/masters/${editingMasterId}/services`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: telegramId, service_ids: masterServiceIds }),
       })
 
-      startNewMaster()
       await loadAll()
+      if (data.warning) {
+        setError(data.warning)
+      } else {
+        openMasterList()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
@@ -120,8 +169,8 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
       const res = await fetch(`${API_URL}/api/masters/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить')
-      if (editingMasterId === id) startNewMaster()
       await loadAll()
+      openMasterList()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось удалить')
     }
@@ -197,13 +246,14 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
     }
   }
 
-  // ===== Персонал =====
-  const [staffForm, setStaffForm] = useState(emptyStaffForm)
+  // ===== Персонал (только администраторы — доступ мастерам выдаётся на вкладке «Мастера») =====
+  const [newAdminId, setNewAdminId] = useState('')
   const [staffSaving, setStaffSaving] = useState(false)
+  const admins = staff.filter((s) => s.role === 'admin')
 
-  async function submitStaff(e: FormEvent) {
+  async function submitAdmin(e: FormEvent) {
     e.preventDefault()
-    if (!staffForm.target_telegram_id || (staffForm.role === 'master' && !staffForm.master_id)) return
+    if (!newAdminId) return
     setStaffSaving(true)
     setError('')
     try {
@@ -212,14 +262,13 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           telegram_id: telegramId,
-          target_telegram_id: Number(staffForm.target_telegram_id),
-          role: staffForm.role,
-          master_id: staffForm.role === 'master' ? Number(staffForm.master_id) : undefined,
+          target_telegram_id: Number(newAdminId),
+          role: 'admin',
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось добавить')
-      setStaffForm(emptyStaffForm)
+      setNewAdminId('')
       await loadAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось добавить')
@@ -241,44 +290,103 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
     }
   }
 
+  function openSection(s: Section) {
+    setSection(s)
+    setError('')
+    if (s === 'masters') setMasterView('list')
+  }
+
   return (
     <div className="staff-admin">
-      <nav className="staff-subtabs">
-        <button type="button" className={subTab === 'masters' ? 'active' : ''} onClick={() => setSubTab('masters')}>
-          Мастера
-        </button>
-        <button type="button" className={subTab === 'services' ? 'active' : ''} onClick={() => setSubTab('services')}>
-          Услуги
-        </button>
-        <button type="button" className={subTab === 'staff' ? 'active' : ''} onClick={() => setSubTab('staff')}>
-          Персонал
-        </button>
-      </nav>
-
       {error && <div className="staff-error">{error}</div>}
 
-      {subTab === 'masters' && (
-        <section>
-          <ul className="staff-list">
-            {masters.map((m) => (
-              <li key={m.id} className="staff-list-item staff-list-item--clickable" onClick={() => startEditMaster(m)}>
-                <span className="staff-list-body">{m.name}</span>
-                <button
-                  type="button"
-                  className="staff-remove-btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    deleteMaster(m.id)
-                  }}
-                >
-                  Удалить
-                </button>
-              </li>
-            ))}
-          </ul>
+      {section === 'menu' && (
+        <ul className="staff-menu">
+          <li>
+            <button type="button" className="staff-menu-row" onClick={() => openSection('masters')}>
+              <span>Мастера</span>
+              <span className="staff-menu-count">{masters.length} →</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" className="staff-menu-row" onClick={() => openSection('services')}>
+              <span>Услуги</span>
+              <span className="staff-menu-count">{services.length} →</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" className="staff-menu-row" onClick={() => openSection('staff')}>
+              <span>Персонал</span>
+              <span className="staff-menu-count">{admins.length} →</span>
+            </button>
+          </li>
+        </ul>
+      )}
 
-          <form className="staff-admin-form" onSubmit={submitMaster}>
-            <h3>{editingMasterId ? 'Изменить мастера' : 'Новый мастер'}</h3>
+      {section === 'masters' && masterView === 'list' && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={() => openSection('menu')}>
+            ← Управление
+          </button>
+          <ul className="staff-list">
+            {masters.map((m) => {
+              const hasAccess = staffByMasterId.has(m.id)
+              return (
+                <li key={m.id} className="staff-list-item staff-list-item--clickable" onClick={() => startEditMaster(m)}>
+                  <span className="staff-list-body">
+                    {m.name}
+                    <span className={`staff-access-badge${hasAccess ? '' : ' staff-access-badge--off'}`}>
+                      {hasAccess ? 'есть доступ' : 'нет доступа'}
+                    </span>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          <button type="button" className="staff-add-btn" onClick={openQuickAdd}>
+            + Добавить мастера
+          </button>
+        </section>
+      )}
+
+      {section === 'masters' && masterView === 'quick' && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={openMasterList}>
+            ← Мастера
+          </button>
+          <form className="staff-admin-form" onSubmit={submitQuickAdd}>
+            <h3>Новый мастер</h3>
+            <p className="staff-form-hint">
+              Достаточно имени и Telegram ID — мастер сразу появится в списке и получит доступ к своей панели. Фото,
+              описание и услуги можно добавить позже, открыв его карточку.
+            </p>
+            <label>
+              Имя
+              <input type="text" value={quickName} onChange={(e) => setQuickName(e.target.value)} required autoFocus />
+            </label>
+            <label>
+              Telegram ID (необязательно)
+              <input
+                type="number"
+                value={quickTelegramId}
+                onChange={(e) => setQuickTelegramId(e.target.value)}
+                placeholder="Узнать можно через @userinfobot"
+              />
+            </label>
+            <button type="submit" disabled={masterSaving}>
+              {masterSaving ? 'Сохранение…' : 'Добавить'}
+            </button>
+          </form>
+        </section>
+      )}
+
+      {section === 'masters' && masterView === 'edit' && editingMasterId && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={openMasterList}>
+            ← Мастера
+          </button>
+          <form className="staff-admin-form" onSubmit={submitMasterEdit}>
+            <h3>{masterForm.name}</h3>
             <label>
               Имя
               <input
@@ -286,6 +394,15 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
                 value={masterForm.name}
                 onChange={(e) => setMasterForm({ ...masterForm, name: e.target.value })}
                 required
+              />
+            </label>
+            <label>
+              Telegram ID (доступ к панели)
+              <input
+                type="number"
+                value={masterForm.accessTelegramId}
+                onChange={(e) => setMasterForm({ ...masterForm, accessTelegramId: e.target.value })}
+                placeholder="Пусто — доступа нет"
               />
             </label>
             <label>
@@ -329,20 +446,21 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
             </div>
             <div className="staff-form-actions">
               <button type="submit" disabled={masterSaving}>
-                {masterSaving ? 'Сохранение…' : editingMasterId ? 'Сохранить' : 'Добавить'}
+                {masterSaving ? 'Сохранение…' : 'Сохранить'}
               </button>
-              {editingMasterId && (
-                <button type="button" className="staff-cancel-btn" onClick={startNewMaster}>
-                  Отменить
-                </button>
-              )}
+              <button type="button" className="staff-cancel-btn" onClick={() => deleteMaster(editingMasterId)}>
+                Удалить мастера
+              </button>
             </div>
           </form>
         </section>
       )}
 
-      {subTab === 'services' && (
+      {section === 'services' && (
         <section>
+          <button type="button" className="staff-back-btn" onClick={() => openSection('menu')}>
+            ← Управление
+          </button>
           <ul className="staff-list">
             {services.map((s) => (
               <li key={s.id} className="staff-list-item staff-list-item--clickable" onClick={() => startEditService(s)}>
@@ -408,14 +526,18 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
         </section>
       )}
 
-      {subTab === 'staff' && (
+      {section === 'staff' && (
         <section>
+          <button type="button" className="staff-back-btn" onClick={() => openSection('menu')}>
+            ← Управление
+          </button>
+          <p className="staff-form-hint">
+            Доступ мастеров выдаётся на вкладке «Мастера». Здесь — только администраторы.
+          </p>
           <ul className="staff-list">
-            {staff.map((s) => (
+            {admins.map((s) => (
               <li key={s.id} className="staff-list-item">
-                <span className="staff-list-body">
-                  {s.telegram_id} — {s.role === 'admin' ? 'Администратор' : `Мастер: ${s.master_name}`}
-                </span>
+                <span className="staff-list-body">{s.telegram_id} — Администратор</span>
                 <button type="button" className="staff-remove-btn" onClick={() => deleteStaff(s.id)}>
                   Убрать
                 </button>
@@ -423,46 +545,12 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
             ))}
           </ul>
 
-          <form className="staff-admin-form" onSubmit={submitStaff}>
-            <h3>Добавить сотрудника</h3>
+          <form className="staff-admin-form" onSubmit={submitAdmin}>
+            <h3>Сделать администратором</h3>
             <label>
               Telegram ID
-              <input
-                type="number"
-                value={staffForm.target_telegram_id}
-                onChange={(e) => setStaffForm({ ...staffForm, target_telegram_id: e.target.value })}
-                required
-              />
+              <input type="number" value={newAdminId} onChange={(e) => setNewAdminId(e.target.value)} required />
             </label>
-            <label>
-              Роль
-              <select
-                value={staffForm.role}
-                onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value as 'master' | 'admin' })}
-              >
-                <option value="master">Мастер</option>
-                <option value="admin">Администратор</option>
-              </select>
-            </label>
-            {staffForm.role === 'master' && (
-              <label>
-                Мастер
-                <select
-                  value={staffForm.master_id}
-                  onChange={(e) => setStaffForm({ ...staffForm, master_id: e.target.value })}
-                  required
-                >
-                  <option value="" disabled>
-                    Выберите мастера
-                  </option>
-                  {masters.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             <button type="submit" disabled={staffSaving}>
               {staffSaving ? 'Сохранение…' : 'Добавить'}
             </button>

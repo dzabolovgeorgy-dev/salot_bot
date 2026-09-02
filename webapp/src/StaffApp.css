@@ -445,28 +445,72 @@
   width: auto;
 }
 
-.staff-subtabs {
+.staff-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  margin-bottom: 16px;
 }
 
-.staff-subtabs button {
-  flex: 1;
-  padding: 8px 10px;
+.staff-menu-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--text);
+  color: var(--text-h);
   font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.staff-menu-count {
   font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.staff-add-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--primary);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.staff-subtabs button.active {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  border-color: var(--primary);
+.staff-access-badge {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--success);
+}
+
+.staff-access-badge--off {
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.staff-form-hint {
+  font-size: 0.85rem;
+  color: var(--text);
+  opacity: 0.75;
+  line-height: 1.5;
+  margin: 0 0 4px;
 }
 
 .staff-admin-form {

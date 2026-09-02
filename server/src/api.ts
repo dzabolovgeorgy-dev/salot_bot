@@ -527,10 +527,30 @@ interface MasterBody {
   bio?: string;
   experience_years?: number;
   photo_url?: string;
+  access_telegram_id?: number | null;
+}
+
+// Выдать/поменять/убрать доступ мастера к панели персонала — используется
+// сразу при создании мастера и при редактировании (полностью заменяет
+// существующую привязку в staff, если она была)
+async function setMasterAccess(masterId: number, accessTelegramId: number | null | undefined): Promise<string | null> {
+  if (accessTelegramId === undefined) return null;
+  await db.query("DELETE FROM staff WHERE master_id = $1", [masterId]);
+  if (!accessTelegramId) return null;
+  try {
+    await db.query(`INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, 'master', $2)`, [
+      accessTelegramId,
+      masterId,
+    ]);
+    return null;
+  } catch {
+    return "Мастер сохранён, но этот Telegram ID уже занят другим сотрудником — доступ не выдан";
+  }
 }
 
 api.post("/masters", async (req, res) => {
-  const { telegram_id, name, bio, experience_years, photo_url } = req.body as Partial<MasterBody>;
+  const { telegram_id, name, bio, experience_years, photo_url, access_telegram_id } =
+    req.body as Partial<MasterBody>;
   if (!telegram_id || !name) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -544,12 +564,16 @@ api.post("/masters", async (req, res) => {
     `INSERT INTO masters (name, bio, experience_years, photo_url) VALUES ($1, $2, $3, $4) RETURNING *`,
     [name, bio ?? null, experience_years ?? null, photo_url ?? null]
   );
-  res.status(201).json(rows[0]);
+  const master = rows[0];
+  const warning = await setMasterAccess(master.id, access_telegram_id);
+
+  res.status(201).json(warning ? { ...master, warning } : master);
 });
 
 api.patch("/masters/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { telegram_id, name, bio, experience_years, photo_url } = req.body as Partial<MasterBody>;
+  const { telegram_id, name, bio, experience_years, photo_url, access_telegram_id } =
+    req.body as Partial<MasterBody>;
   if (!id || !telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -572,7 +596,9 @@ api.patch("/masters/:id", async (req, res) => {
     res.status(404).json({ error: "Мастер не найден" });
     return;
   }
-  res.json(rows[0]);
+  const warning = await setMasterAccess(id, access_telegram_id);
+
+  res.json(warning ? { ...rows[0], warning } : rows[0]);
 });
 
 api.delete("/masters/:id", async (req, res) => {
