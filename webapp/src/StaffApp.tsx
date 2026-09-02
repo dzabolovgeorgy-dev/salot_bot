@@ -269,13 +269,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             Неделя
           </button>
         )}
-        <button
-          type="button"
-          className={activeTab === 'schedule' ? 'active' : ''}
-          onClick={() => setActiveTab('schedule')}
-        >
-          Расписание
-        </button>
+        {role === 'admin' && (
+          <button
+            type="button"
+            className={activeTab === 'schedule' ? 'active' : ''}
+            onClick={() => setActiveTab('schedule')}
+          >
+            Расписание
+          </button>
+        )}
         <button type="button" className={activeTab === 'block' ? 'active' : ''} onClick={() => setActiveTab('block')}>
           Заблокировать время
         </button>
@@ -541,6 +543,23 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               {blockSubmitting ? 'Сохранение…' : 'Заблокировать'}
             </button>
           </form>
+
+          {blocks.length > 0 && (
+            <ul className="staff-list staff-block-existing">
+              {blocks.map((b) => (
+                <li key={b.id} className="staff-list-item staff-list-item--block">
+                  <span className="staff-list-time">{formatTime(b.starts_at)}</span>
+                  <span className="staff-list-body">
+                    {role === 'admin' ? `${b.master_name}` : 'Заблокировано'}
+                    {b.note ? ` — ${b.note}` : ''}
+                  </span>
+                  <button type="button" className="staff-remove-btn" onClick={() => removeBlock(b.id)}>
+                    Убрать
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 

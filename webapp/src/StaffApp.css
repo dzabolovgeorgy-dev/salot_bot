@@ -379,6 +379,10 @@
   padding: 4px 8px;
 }
 
+.staff-block-existing {
+  margin-top: 16px;
+}
+
 .staff-block-form form {
   display: flex;
   flex-direction: column;
