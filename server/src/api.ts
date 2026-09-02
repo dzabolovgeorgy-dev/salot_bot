@@ -726,6 +726,31 @@ api.put("/masters/:id/services", async (req, res) => {
   res.json({ ok: true });
 });
 
+interface ServiceMastersBody {
+  telegram_id: number;
+  master_ids: number[];
+}
+
+// Полностью заменяет список мастеров, которые делают эту услугу, на переданный
+api.put("/services/:id/masters", async (req, res) => {
+  const serviceId = Number(req.params.id);
+  const { telegram_id, master_ids } = req.body as Partial<ServiceMastersBody>;
+  if (!serviceId || !telegram_id || !Array.isArray(master_ids)) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  await db.query("DELETE FROM master_services WHERE service_id = $1", [serviceId]);
+  for (const masterId of master_ids) {
+    await db.query("INSERT INTO master_services (master_id, service_id) VALUES ($1, $2)", [masterId, serviceId]);
+  }
+  res.json({ ok: true });
+});
+
 api.get("/staff", async (req, res) => {
   const telegramId = Number(req.query.telegram_id);
   if (!telegramId) {

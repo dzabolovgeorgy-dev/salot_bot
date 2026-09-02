@@ -185,6 +185,7 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
   // ===== Услуги =====
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null)
   const [serviceForm, setServiceForm] = useState(emptyServiceForm)
+  const [serviceMasterIds, setServiceMasterIds] = useState<number[]>([])
   const [serviceSaving, setServiceSaving] = useState(false)
 
   function startEditService(s: Service) {
@@ -194,11 +195,17 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
       duration_minutes: s.duration_minutes.toString(),
       price: s.price.toString(),
     })
+    setServiceMasterIds(masters.filter((m) => m.service_ids.includes(s.id)).map((m) => m.id))
   }
 
   function startNewService() {
     setEditingServiceId(null)
     setServiceForm(emptyServiceForm)
+    setServiceMasterIds([])
+  }
+
+  function toggleServiceMaster(masterId: number) {
+    setServiceMasterIds((ids) => (ids.includes(masterId) ? ids.filter((id) => id !== masterId) : [...ids, masterId]))
   }
 
   async function submitService(e: FormEvent) {
@@ -223,6 +230,14 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+
+      const serviceId = editingServiceId ?? data.id
+      await fetch(`${API_URL}/api/services/${serviceId}/masters`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, master_ids: serviceMasterIds }),
+      })
+
       startNewService()
       await loadAll()
     } catch (err) {
@@ -512,6 +527,19 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
                 required
               />
             </label>
+            <div className="staff-checkbox-group">
+              <span className="staff-checkbox-label">Кто делает эту услугу</span>
+              {masters.map((m) => (
+                <label key={m.id} className="staff-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={serviceMasterIds.includes(m.id)}
+                    onChange={() => toggleServiceMaster(m.id)}
+                  />
+                  {m.name}
+                </label>
+              ))}
+            </div>
             <div className="staff-form-actions">
               <button type="submit" disabled={serviceSaving}>
                 {serviceSaving ? 'Сохранение…' : editingServiceId ? 'Сохранить' : 'Добавить'}
