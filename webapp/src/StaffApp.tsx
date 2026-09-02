@@ -442,7 +442,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             </div>
           </div>
 
-          {masters.length > 0 && (
+          {role === 'admin' && masters.length > 0 && (
             <div className="staff-shift-row">
               {masters.map((m) => {
                 const working = isWorkDay(date, m)

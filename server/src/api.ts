@@ -372,8 +372,8 @@ api.get("/me", async (req, res) => {
   res.json(await getRole(telegramId));
 });
 
-// Расписание всех мастеров на дату: записи клиентов + заблокированное время.
-// Доступно только персоналу
+// Расписание на дату: записи клиентов + заблокированное время. Админ видит
+// всех мастеров сразу; мастер — только себя (не должен видеть чужие записи)
 api.get("/staff/schedule", async (req, res) => {
   const telegramId = Number(req.query.telegram_id);
   const date = String(req.query.date ?? "");
@@ -387,6 +387,7 @@ api.get("/staff/schedule", async (req, res) => {
     res.status(403).json({ error: "Доступно только персоналу" });
     return;
   }
+  const onlyMasterId = role.role === "master" ? role.master_id : null;
 
   const { rows: bookings } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
@@ -395,8 +396,9 @@ api.get("/staff/schedule", async (req, res) => {
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
      WHERE b.starts_at::date = $1::date
+       AND ($2::int IS NULL OR b.master_id = $2)
      ORDER BY b.starts_at ASC`,
-    [date]
+    [date, onlyMasterId]
   );
 
   const { rows: blocks } = await db.query(
@@ -404,8 +406,9 @@ api.get("/staff/schedule", async (req, res) => {
      FROM blocked_slots bs
      JOIN masters m ON m.id = bs.master_id
      WHERE bs.starts_at::date = $1::date
+       AND ($2::int IS NULL OR bs.master_id = $2)
      ORDER BY bs.starts_at ASC`,
-    [date]
+    [date, onlyMasterId]
   );
 
   res.json({
