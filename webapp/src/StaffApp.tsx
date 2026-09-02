@@ -69,7 +69,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   const [scheduleMonth, setScheduleMonth] = useState(() => startOfMonth(new Date()))
   const [monthCounts, setMonthCounts] = useState<Record<string, number>>({})
-  const [monthLoading, setMonthLoading] = useState(true)
+  const [, setMonthLoading] = useState(true)
 
   const [blockMasterId, setBlockMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
   const [blockStart, setBlockStart] = useState('')
