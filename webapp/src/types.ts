@@ -39,6 +39,23 @@ export interface BlockedSlot {
   note: string | null
 }
 
+export interface ClientSummary {
+  client_telegram_id: string | number
+  name: string | null
+  visits: number
+  last_visit: string
+  total_spent: number
+}
+
+export interface ClientVisit {
+  id: number
+  starts_at: string
+  status: 'upcoming' | 'completed' | 'no_show'
+  service_name: string
+  price: number
+  master_name: string
+}
+
 export type StaffRole =
   | { role: 'client' }
   | { role: 'master'; master_id: number; master_name: string }

@@ -1,12 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Master, Service } from './types'
+import type { Master, Service, ClientSummary, ClientVisit } from './types'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type Section = 'menu' | 'masters' | 'services' | 'staff'
+type Section = 'menu' | 'masters' | 'services' | 'staff' | 'clients'
 type MasterView = 'list' | 'quick' | 'edit'
+
+const STATUS_LABELS: Record<string, string> = {
+  upcoming: 'Предстоит',
+  completed: 'Выполнено',
+  no_show: 'Не пришёл',
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso.replace(' ', 'T')).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso.replace(' ', 'T')).toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 interface StaffMember {
   id: number
@@ -28,18 +47,21 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [clients, setClients] = useState<ClientSummary[]>([])
   const [error, setError] = useState('')
 
   async function loadAll() {
     try {
-      const [mRes, sRes, stRes] = await Promise.all([
+      const [mRes, sRes, stRes, cRes] = await Promise.all([
         fetch(`${API_URL}/api/masters`),
         fetch(`${API_URL}/api/services`),
         fetch(`${API_URL}/api/staff?telegram_id=${telegramId}`),
+        fetch(`${API_URL}/api/staff/clients?telegram_id=${telegramId}`),
       ])
       setMasters(await mRes.json())
       setServices(await sRes.json())
       setStaff(await stRes.json())
+      setClients(await cRes.json())
     } catch {
       setError('Не удалось загрузить данные')
     }
@@ -305,10 +327,37 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
     }
   }
 
+  // ===== Клиенты =====
+  const [selectedClient, setSelectedClient] = useState<ClientSummary | null>(null)
+  const [clientVisits, setClientVisits] = useState<ClientVisit[]>([])
+  const [clientVisitsLoading, setClientVisitsLoading] = useState(false)
+
+  async function openClient(c: ClientSummary) {
+    setSelectedClient(c)
+    setClientVisitsLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/clients/${c.client_telegram_id}?telegram_id=${telegramId}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить')
+      setClientVisits(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить')
+    } finally {
+      setClientVisitsLoading(false)
+    }
+  }
+
+  function closeClient() {
+    setSelectedClient(null)
+    setClientVisits([])
+  }
+
   function openSection(s: Section) {
     setSection(s)
     setError('')
     if (s === 'masters') setMasterView('list')
+    if (s === 'clients') closeClient()
   }
 
   return (
@@ -333,6 +382,12 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
             <button type="button" className="staff-menu-row" onClick={() => openSection('staff')}>
               <span>Персонал</span>
               <span className="staff-menu-count">{admins.length} →</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" className="staff-menu-row" onClick={() => openSection('clients')}>
+              <span>Клиенты</span>
+              <span className="staff-menu-count">{clients.length} →</span>
             </button>
           </li>
         </ul>
@@ -583,6 +638,74 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
               {staffSaving ? 'Сохранение…' : 'Добавить'}
             </button>
           </form>
+        </section>
+      )}
+
+      {section === 'clients' && !selectedClient && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={() => openSection('menu')}>
+            ← Управление
+          </button>
+          {clients.length === 0 ? (
+            <p className="staff-empty">Пока никто не записывался</p>
+          ) : (
+            <ul className="staff-list">
+              {clients.map((c) => (
+                <li
+                  key={c.client_telegram_id}
+                  className="staff-list-item staff-list-item--clickable"
+                  onClick={() => openClient(c)}
+                >
+                  <span className="staff-list-body">
+                    {c.name ?? 'Без имени'}
+                    <span className="staff-client-meta">
+                      {c.visits} {c.visits === 1 ? 'визит' : 'визита'} · последний {formatDate(c.last_visit)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {section === 'clients' && selectedClient && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={closeClient}>
+            ← Клиенты
+          </button>
+          <h3 className="staff-client-name">{selectedClient.name ?? 'Без имени'}</h3>
+          <div className="staff-client-stats">
+            <div>
+              <span className="staff-client-stat-value">{selectedClient.visits}</span>
+              <span className="staff-client-stat-label">визитов</span>
+            </div>
+            <div>
+              <span className="staff-client-stat-value">{selectedClient.total_spent} ₽</span>
+              <span className="staff-client-stat-label">потрачено</span>
+            </div>
+          </div>
+
+          {clientVisitsLoading ? (
+            <p className="staff-empty">Загрузка…</p>
+          ) : (
+            <ul className="staff-list">
+              {clientVisits.map((v) => (
+                <li key={v.id} className="staff-list-item">
+                  <span className="staff-list-body">
+                    {formatDateTime(v.starts_at)}
+                    <span className="staff-client-meta">
+                      {v.service_name} — {v.master_name}, {v.price} ₽
+                      <span className={`staff-status staff-status--${v.status === 'completed' ? 'done' : v.status === 'no_show' ? 'no-show' : ''}`}>
+                        {' '}
+                        {STATUS_LABELS[v.status]}
+                      </span>
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
     </div>

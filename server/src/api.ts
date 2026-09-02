@@ -751,6 +751,61 @@ api.put("/services/:id/masters", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Список клиентов, собранный из истории записей: имя (последнее известное),
+// сколько раз записывался, когда был в последний раз, сколько потратил
+// (только за выполненные визиты). Только для администратора
+api.get("/staff/clients", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает telegram_id" });
+    return;
+  }
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT b.client_telegram_id,
+            (array_agg(b.client_name ORDER BY b.created_at DESC))[1] AS name,
+            COUNT(*)::int AS visits,
+            MAX(b.starts_at) AS last_visit,
+            COALESCE(SUM(CASE WHEN b.status = 'completed' THEN s.price ELSE 0 END), 0)::int AS total_spent
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     GROUP BY b.client_telegram_id
+     ORDER BY MAX(b.starts_at) DESC`
+  );
+
+  res.json(rows.map((r) => ({ ...r, last_visit: toIso(r.last_visit) })));
+});
+
+// История записей одного клиента — карточка при открытии из списка
+api.get("/staff/clients/:clientTelegramId", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  const clientTelegramId = Number(req.params.clientTelegramId);
+  if (!telegramId || !clientTelegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT b.id, b.starts_at, b.status, s.name AS service_name, s.price, m.name AS master_name
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     JOIN masters m ON m.id = b.master_id
+     WHERE b.client_telegram_id = $1
+     ORDER BY b.starts_at DESC`,
+    [clientTelegramId]
+  );
+
+  res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
+});
+
 api.get("/staff", async (req, res) => {
   const telegramId = Number(req.query.telegram_id);
   if (!telegramId) {
