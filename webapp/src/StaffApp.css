@@ -150,6 +150,20 @@
   cursor: pointer;
 }
 
+.staff-list-item--completed {
+  opacity: 0.55;
+}
+
+.staff-list-item--completed .staff-list-body {
+  text-decoration: line-through;
+  text-decoration-color: var(--success);
+}
+
+.staff-list-item--no-show {
+  border-left: 3px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+
 .staff-status {
   font-size: 0.85rem;
 }

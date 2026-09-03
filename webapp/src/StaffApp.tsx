@@ -352,7 +352,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           ) : (
             <ul className="staff-list">
               {todayBookings.map((b) => (
-                <li key={b.id} className="staff-list-item staff-list-item--clickable" onClick={() => setSelectedBooking(b)}>
+                <li key={b.id} className={`staff-list-item staff-list-item--clickable${b.status === 'completed' ? ' staff-list-item--completed' : ''}${b.status === 'no_show' ? ' staff-list-item--no-show' : ''}`} onClick={() => setSelectedBooking(b)}>
                   <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                   <span className="staff-list-body">
                     {b.client_name ?? 'Клиент'} — {b.service_name}
@@ -467,7 +467,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   ) : (
                     <ul className="staff-list">
                       {items.map((b) => (
-                        <li key={b.id} className="staff-list-item">
+                        <li key={b.id} className={`staff-list-item${b.status === 'completed' ? ' staff-list-item--completed' : ''}${b.status === 'no_show' ? ' staff-list-item--no-show' : ''}`}>
                           <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                           <span className="staff-list-body">
                             {b.client_name ?? 'Клиент'} — {b.service_name}
