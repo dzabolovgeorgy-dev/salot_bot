@@ -32,8 +32,11 @@ export async function initDb(): Promise<void> {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       duration_minutes INTEGER NOT NULL,
-      price INTEGER NOT NULL
+      price INTEGER NOT NULL,
+      requires_allergy_check BOOLEAN NOT NULL DEFAULT false
     );
+
+    ALTER TABLE services ADD COLUMN IF NOT EXISTS requires_allergy_check BOOLEAN NOT NULL DEFAULT false;
 
     CREATE TABLE IF NOT EXISTS master_services (
       master_id INTEGER NOT NULL REFERENCES masters(id),
@@ -71,6 +74,13 @@ export async function initDb(): Promise<void> {
       ends_at TIMESTAMP NOT NULL,
       note TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS client_notes (
+      id SERIAL PRIMARY KEY,
+      client_telegram_id BIGINT NOT NULL UNIQUE,
+      note TEXT NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT now()
+    );
   `);
 
   // Если база пустая — наполняем тестовыми мастерами и услугами
@@ -96,7 +106,7 @@ export async function initDb(): Promise<void> {
     ["Стрижка", 30, 1500]
   );
   const color = await db.query(
-    `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING id`,
+    `INSERT INTO services (name, duration_minutes, price, requires_allergy_check) VALUES ($1, $2, $3, true) RETURNING id`,
     ["Окрашивание", 120, 4500]
   );
   const manicure = await db.query(

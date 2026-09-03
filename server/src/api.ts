@@ -122,7 +122,9 @@ api.get("/masters", async (_req, res) => {
 });
 
 api.get("/services", async (_req, res) => {
-  const { rows } = await db.query("SELECT id, name, duration_minutes, price FROM services");
+  const { rows } = await db.query(
+    "SELECT id, name, duration_minutes, price, requires_allergy_check FROM services"
+  );
   res.json(rows);
 });
 
@@ -630,10 +632,12 @@ interface ServiceBody {
   name: string;
   duration_minutes: number;
   price: number;
+  requires_allergy_check?: boolean;
 }
 
 api.post("/services", async (req, res) => {
-  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
+  const { telegram_id, name, duration_minutes, price, requires_allergy_check } =
+    req.body as Partial<ServiceBody>;
   if (!telegram_id || !name || !duration_minutes || price === undefined) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -644,15 +648,16 @@ api.post("/services", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING *`,
-    [name, duration_minutes, price]
+    `INSERT INTO services (name, duration_minutes, price, requires_allergy_check) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [name, duration_minutes, price, requires_allergy_check ?? false]
   );
   res.status(201).json(rows[0]);
 });
 
 api.patch("/services/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
+  const { telegram_id, name, duration_minutes, price, requires_allergy_check } =
+    req.body as Partial<ServiceBody>;
   if (!id || !telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -666,9 +671,10 @@ api.patch("/services/:id", async (req, res) => {
     `UPDATE services SET
        name = COALESCE($1, name),
        duration_minutes = COALESCE($2, duration_minutes),
-       price = COALESCE($3, price)
-     WHERE id = $4 RETURNING *`,
-    [name ?? null, duration_minutes ?? null, price ?? null, id]
+       price = COALESCE($3, price),
+       requires_allergy_check = COALESCE($4, requires_allergy_check)
+     WHERE id = $5 RETURNING *`,
+    [name ?? null, duration_minutes ?? null, price ?? null, requires_allergy_check ?? null, id]
   );
   if (!rows[0]) {
     res.status(404).json({ error: "Услуга не найдена" });

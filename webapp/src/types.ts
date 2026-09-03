@@ -15,6 +15,7 @@ export interface Service {
   name: string
   duration_minutes: number
   price: number
+  requires_allergy_check: boolean
 }
 
 export interface Booking {
