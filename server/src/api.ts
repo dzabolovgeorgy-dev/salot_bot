@@ -777,6 +777,7 @@ api.get("/staff/clients", async (req, res) => {
   const { rows } = await db.query(
     `SELECT b.client_telegram_id,
             (array_agg(b.client_name ORDER BY b.created_at DESC))[1] AS name,
+            (array_agg(b.client_username ORDER BY b.created_at DESC) FILTER (WHERE b.client_username IS NOT NULL))[1] AS username,
             COUNT(*)::int AS visits,
             MAX(b.starts_at) AS last_visit,
             COALESCE(SUM(CASE WHEN b.status = 'completed' THEN s.price ELSE 0 END), 0)::int AS total_spent

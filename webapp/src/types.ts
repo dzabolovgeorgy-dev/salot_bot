@@ -51,6 +51,7 @@ export interface BlockedSlot {
 export interface ClientSummary {
   client_telegram_id: string | number
   name: string | null
+  username: string | null
   visits: number
   last_visit: string
   total_spent: number

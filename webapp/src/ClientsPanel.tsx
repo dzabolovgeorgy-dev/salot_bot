@@ -114,6 +114,20 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
             ← Клиенты
           </button>
           <h3 className="staff-client-name">{selectedClient.name ?? 'Без имени'}</h3>
+          {selectedClient.username ? (
+            <a
+              className="staff-telegram-link"
+              href={`https://t.me/${selectedClient.username}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              💬 Написать в Telegram
+            </a>
+          ) : (
+            <p className="staff-telegram-link staff-telegram-link--disabled">
+              Написать в Telegram нельзя — у клиента нет публичного username
+            </p>
+          )}
           <div className="staff-client-stats">
             <div>
               <span className="staff-client-stat-value">{selectedClient.visits}</span>
