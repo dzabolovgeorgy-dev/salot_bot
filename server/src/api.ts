@@ -394,10 +394,11 @@ api.get("/staff/schedule", async (req, res) => {
   const { rows: bookings } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
             s.name AS service_name, s.duration_minutes, b.client_name, b.status,
-            b.client_telegram_id
+            b.client_telegram_id, cn.note AS client_note
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
+     LEFT JOIN client_notes cn ON cn.client_telegram_id = b.client_telegram_id
      WHERE b.starts_at::date = $1::date
        AND ($2::int IS NULL OR b.master_id = $2)
      ORDER BY b.starts_at ASC`,

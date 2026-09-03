@@ -184,7 +184,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   const [notePromptBooking, setNotePromptBooking] = useState<Booking | null>(null)
   const [noteText, setNoteText] = useState('')
-  const [noteLoading, setNoteLoading] = useState(false)
   const [noteSaving, setNoteSaving] = useState(false)
 
   async function setBookingStatus(bookingId: number, status: 'completed' | 'no_show') {
@@ -200,22 +199,13 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
       await loadToday()
 
-      // После "Выполнена" — предложить добавить/обновить заметку о клиенте
+      // После "Выполнена" — предложить добавить/обновить заметку о клиенте.
+      // Заметка уже пришла вместе с записью (client_note) — отдельный запрос не нужен
       if (status === 'completed' && selectedBooking?.client_telegram_id) {
         const booking = selectedBooking
         setSelectedBooking(null)
         setNotePromptBooking(booking)
-        setNoteText('')
-        setNoteLoading(true)
-        try {
-          const noteRes = await fetch(`${API_URL}/api/client-notes/${booking.client_telegram_id}`)
-          const noteData = await noteRes.json()
-          setNoteText(noteData.note ?? '')
-        } catch {
-          // тихо — просто откроется пустое поле
-        } finally {
-          setNoteLoading(false)
-        }
+        setNoteText(booking.client_note ?? '')
       } else {
         setSelectedBooking(null)
       }
@@ -366,6 +356,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                   <span className="staff-list-body">
                     {b.client_name ?? 'Клиент'} — {b.service_name}
+                    {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠ есть заметка</span>}
                     {b.status === 'completed' && <span className="staff-status staff-status--done"> ✓ выполнено</span>}
                     {b.status === 'no_show' && <span className="staff-status staff-status--no-show"> ✕ не пришёл</span>}
                   </span>
@@ -384,6 +375,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <h2>{selectedBooking.client_name ?? 'Клиент'}</h2>
           <p className="staff-card-line">{selectedBooking.service_name}</p>
           <p className="staff-card-line">{formatTime(selectedBooking.starts_at)}</p>
+          {selectedBooking.client_note && (
+            <div className="staff-note-warning">
+              <span className="staff-note-warning-label">⚠ Заметка о клиенте</span>
+              <p>{selectedBooking.client_note}</p>
+            </div>
+          )}
           {selectedBooking.status !== 'upcoming' && (
             <p className="staff-card-line">
               Статус: {selectedBooking.status === 'completed' ? 'Выполнено' : 'Клиент не пришёл'}
@@ -414,19 +411,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         <section className="staff-booking-card">
           <h2>Добавить заметку о клиенте?</h2>
           <p className="staff-card-line">{notePromptBooking.client_name ?? 'Клиент'} — необязательно</p>
-          {noteLoading ? (
-            <p className="staff-empty">Загрузка…</p>
-          ) : (
-            <textarea
-              className="staff-note-textarea"
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
-              rows={4}
-            />
-          )}
+          <textarea
+            className="staff-note-textarea"
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
+            rows={4}
+          />
           <div className="staff-card-actions">
-            <button type="button" className="staff-card-done" disabled={noteSaving || noteLoading} onClick={saveNote}>
+            <button type="button" className="staff-card-done" disabled={noteSaving} onClick={saveNote}>
               {noteSaving ? 'Сохранение…' : 'Сохранить'}
             </button>
             <button type="button" className="staff-card-no-show" disabled={noteSaving} onClick={skipNote}>
@@ -464,6 +457,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                           <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                           <span className="staff-list-body">
                             {b.client_name ?? 'Клиент'} — {b.service_name}
+                            {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠</span>}
                             {b.status === 'completed' && <span className="staff-status staff-status--done"> ✓</span>}
                             {b.status === 'no_show' && <span className="staff-status staff-status--no-show"> ✕</span>}
                           </span>

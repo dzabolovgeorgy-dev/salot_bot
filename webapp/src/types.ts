@@ -30,6 +30,7 @@ export interface Booking {
   client_name?: string | null
   status?: 'upcoming' | 'completed' | 'no_show'
   client_telegram_id?: string | number
+  client_note?: string | null
 }
 
 export interface ClientNote {
