@@ -29,6 +29,12 @@ export interface Booking {
   price?: number
   client_name?: string | null
   status?: 'upcoming' | 'completed' | 'no_show'
+  client_telegram_id?: string | number
+}
+
+export interface ClientNote {
+  note: string | null
+  updated_at: string | null
 }
 
 export interface BlockedSlot {

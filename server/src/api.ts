@@ -393,7 +393,8 @@ api.get("/staff/schedule", async (req, res) => {
 
   const { rows: bookings } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
-            s.name AS service_name, s.duration_minutes, b.client_name, b.status
+            s.name AS service_name, s.duration_minutes, b.client_name, b.status,
+            b.client_telegram_id
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -810,6 +811,44 @@ api.get("/staff/clients/:clientTelegramId", async (req, res) => {
   );
 
   res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
+});
+
+// Заметка о клиенте (аллергии/особенности) — одна на клиента. Читает и пишет
+// и сам клиент (перед записью на услугу с риском), и мастер (после визита)
+api.get("/client-notes/:clientTelegramId", async (req, res) => {
+  const clientTelegramId = Number(req.params.clientTelegramId);
+  if (!clientTelegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const { rows } = await db.query("SELECT note, updated_at FROM client_notes WHERE client_telegram_id = $1", [
+    clientTelegramId,
+  ]);
+  const row = rows[0] as { note: string; updated_at: string } | undefined;
+  res.json(row ? { note: row.note, updated_at: toIso(row.updated_at) } : { note: null, updated_at: null });
+});
+
+interface ClientNoteBody {
+  note: string;
+}
+
+api.put("/client-notes/:clientTelegramId", async (req, res) => {
+  const clientTelegramId = Number(req.params.clientTelegramId);
+  const { note } = req.body as Partial<ClientNoteBody>;
+  if (!clientTelegramId || !note) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `INSERT INTO client_notes (client_telegram_id, note, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (client_telegram_id) DO UPDATE SET note = $2, updated_at = now()
+     RETURNING note, updated_at`,
+    [clientTelegramId, note]
+  );
+  res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
 });
 
 api.get("/staff", async (req, res) => {

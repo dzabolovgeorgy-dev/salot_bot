@@ -182,6 +182,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, masterId, telegramId, weekOffset])
 
+  const [notePromptBooking, setNotePromptBooking] = useState<Booking | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [noteLoading, setNoteLoading] = useState(false)
+  const [noteSaving, setNoteSaving] = useState(false)
+
   async function setBookingStatus(bookingId: number, status: 'completed' | 'no_show') {
     setStatusSaving(true)
     setError('')
@@ -193,13 +198,59 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
-      setSelectedBooking(null)
       await loadToday()
+
+      // После "Выполнена" — предложить добавить/обновить заметку о клиенте
+      if (status === 'completed' && selectedBooking?.client_telegram_id) {
+        const booking = selectedBooking
+        setSelectedBooking(null)
+        setNotePromptBooking(booking)
+        setNoteText('')
+        setNoteLoading(true)
+        try {
+          const noteRes = await fetch(`${API_URL}/api/client-notes/${booking.client_telegram_id}`)
+          const noteData = await noteRes.json()
+          setNoteText(noteData.note ?? '')
+        } catch {
+          // тихо — просто откроется пустое поле
+        } finally {
+          setNoteLoading(false)
+        }
+      } else {
+        setSelectedBooking(null)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
       setStatusSaving(false)
     }
+  }
+
+  async function saveNote() {
+    if (!notePromptBooking?.client_telegram_id) return
+    if (!noteText.trim()) {
+      setNotePromptBooking(null)
+      return
+    }
+    setNoteSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/client-notes/${notePromptBooking.client_telegram_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: noteText.trim() }),
+      })
+      if (!res.ok) throw new Error('Не удалось сохранить заметку')
+      setNotePromptBooking(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить заметку')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
+  function skipNote() {
+    setNotePromptBooking(null)
   }
 
   async function submitBlock(e: FormEvent) {
@@ -302,7 +353,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       {error && <div className="staff-error">{error}</div>}
 
-      {activeTab === 'today' && !selectedBooking && (
+      {activeTab === 'today' && !selectedBooking && !notePromptBooking && (
         <section className="staff-schedule">
           {todayLoading ? (
             <p className="staff-empty">Загрузка…</p>
@@ -354,6 +405,32 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               onClick={() => setBookingStatus(selectedBooking.id, 'no_show')}
             >
               Клиент не пришёл
+            </button>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'today' && notePromptBooking && (
+        <section className="staff-booking-card">
+          <h2>Добавить заметку о клиенте?</h2>
+          <p className="staff-card-line">{notePromptBooking.client_name ?? 'Клиент'} — необязательно</p>
+          {noteLoading ? (
+            <p className="staff-empty">Загрузка…</p>
+          ) : (
+            <textarea
+              className="staff-note-textarea"
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
+              rows={4}
+            />
+          )}
+          <div className="staff-card-actions">
+            <button type="button" className="staff-card-done" disabled={noteSaving || noteLoading} onClick={saveNote}>
+              {noteSaving ? 'Сохранение…' : 'Сохранить'}
+            </button>
+            <button type="button" className="staff-card-no-show" disabled={noteSaving} onClick={skipNote}>
+              Пропустить
             </button>
           </div>
         </section>

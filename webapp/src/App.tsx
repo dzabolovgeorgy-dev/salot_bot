@@ -284,6 +284,13 @@ function App() {
   )
   const [rescheduling, setRescheduling] = useState(false)
 
+  // Проверка заметки о клиенте (аллергии/особенности) перед записью на
+  // услугу, где это важно — 'idle' у услуг без риска, чтобы ничего не спрашивать
+  const [allergyStage, setAllergyStage] = useState<'idle' | 'loading' | 'ask' | 'edit' | 'done'>('idle')
+  const [existingNote, setExistingNote] = useState('')
+  const [allergyDraft, setAllergyDraft] = useState('')
+  const [allergySaving, setAllergySaving] = useState(false)
+
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
 
@@ -340,6 +347,52 @@ function App() {
       .then(setBusySlots)
       .catch(() => setBusySlots([]))
   }, [selectedMaster, dateKey, flowOrigin, flowIndex, reschedule])
+
+  // На экране подтверждения записи — если услуга связана с риском аллергии,
+  // проверяем заметку о клиенте до того, как разрешить подтвердить запись
+  useEffect(() => {
+    const isConfirmStep = !reschedule && flowOrigin != null && FLOW_STEPS[flowOrigin][flowIndex] === 'confirm'
+    if (!isConfirmStep || !selectedService?.requires_allergy_check) {
+      setAllergyStage('idle')
+      return
+    }
+    setAllergyStage('loading')
+    fetch(`${API_URL}/api/client-notes/${clientTelegramId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.note) {
+          setExistingNote(data.note)
+          setAllergyDraft(data.note)
+          setAllergyStage('ask')
+        } else {
+          setExistingNote('')
+          setAllergyDraft('')
+          setAllergyStage('edit')
+        }
+      })
+      .catch(() => setAllergyStage('edit'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowOrigin, flowIndex, selectedService, reschedule])
+
+  async function saveAllergyNote() {
+    if (!allergyDraft.trim()) {
+      setAllergyStage('done')
+      return
+    }
+    setAllergySaving(true)
+    try {
+      await fetch(`${API_URL}/api/client-notes/${clientTelegramId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: allergyDraft.trim() }),
+      })
+    } catch {
+      // не критично — запись всё равно можно подтвердить
+    } finally {
+      setAllergySaving(false)
+      setAllergyStage('done')
+    }
+  }
 
   const startFlow = (origin: FlowOrigin) => {
     setError(null)
@@ -907,6 +960,48 @@ function App() {
             </div>
           </article>
         )}
+
+        {inFlow && flowStep === 'confirm' && allergyStage !== 'idle' && allergyStage !== 'loading' && (
+          <div className="allergy-check">
+            {allergyStage === 'ask' && (
+              <>
+                <p className="allergy-check-text">У нас записано: «{existingNote}». Всё ещё актуально?</p>
+                <div className="allergy-check-actions">
+                  <button type="button" className="allergy-btn-secondary" onClick={() => setAllergyStage('done')}>
+                    Да
+                  </button>
+                  <button type="button" className="allergy-btn-secondary" onClick={() => setAllergyStage('edit')}>
+                    Нет, обновить
+                  </button>
+                </div>
+              </>
+            )}
+            {allergyStage === 'edit' && (
+              <>
+                <p className="allergy-check-text">
+                  {existingNote
+                    ? 'Обновите заметку:'
+                    : 'Есть аллергии или особенности, о которых важно знать мастеру?'}
+                </p>
+                <textarea
+                  className="allergy-check-textarea"
+                  value={allergyDraft}
+                  onChange={(e) => setAllergyDraft(e.target.value)}
+                  placeholder="Например: аллергия на аммиак…"
+                  rows={3}
+                />
+                <div className="allergy-check-actions">
+                  <button type="button" className="allergy-btn-primary" disabled={allergySaving} onClick={saveAllergyNote}>
+                    {allergySaving ? 'Сохранение…' : 'Сохранить'}
+                  </button>
+                  <button type="button" className="allergy-btn-secondary" disabled={allergySaving} onClick={() => setAllergyStage('done')}>
+                    Пропустить
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </motion.div>
       </AnimatePresence>
 
@@ -941,7 +1036,11 @@ function App() {
       {inFlow && flowStep === 'confirm' && (
         <>
           <div className="footer footer-note">
-            <button className="primary" disabled={submitting} onClick={submitBooking}>
+            <button
+              className="primary"
+              disabled={submitting || allergyStage === 'loading' || allergyStage === 'ask' || allergyStage === 'edit'}
+              onClick={submitBooking}
+            >
               {submitting ? 'Записываем…' : 'Записаться'}
             </button>
             <p className="footer-hint">Оплата производится в салоне после визита.</p>

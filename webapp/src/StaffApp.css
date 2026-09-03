@@ -328,6 +328,19 @@
   font-size: 0.95rem;
 }
 
+.staff-note-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  resize: vertical;
+  margin-top: 8px;
+}
+
 .staff-card-actions {
   display: flex;
   flex-direction: column;

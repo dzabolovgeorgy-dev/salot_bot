@@ -555,6 +555,69 @@
   text-align: right;
 }
 
+.allergy-check {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.allergy-check-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-h);
+  line-height: 1.5;
+}
+
+.allergy-check-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 14px;
+  resize: vertical;
+}
+
+.allergy-check-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.allergy-btn-primary,
+.allergy-btn-secondary {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  font-family: var(--sans);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.allergy-btn-primary {
+  border: none;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.allergy-btn-secondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+}
+
+.allergy-btn-primary:disabled,
+.allergy-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Home details grid + quick links */
 
 .details-grid {
