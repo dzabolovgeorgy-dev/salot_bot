@@ -4,11 +4,12 @@ import type { Master, Booking, BlockedSlot } from './types'
 import { isWorkDay } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
+import ClientsPanel from './ClientsPanel'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'manage'
+type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage'
 
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
@@ -281,6 +282,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         <button type="button" className={activeTab === 'block' ? 'active' : ''} onClick={() => setActiveTab('block')}>
           Заблокировать время
         </button>
+        {role === 'admin' && (
+          <button type="button" className={activeTab === 'clients' ? 'active' : ''} onClick={() => setActiveTab('clients')}>
+            Клиенты
+          </button>
+        )}
         {role === 'admin' && (
           <button type="button" className={activeTab === 'manage' ? 'active' : ''} onClick={() => setActiveTab('manage')}>
             Управление
@@ -562,6 +568,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           )}
         </section>
       )}
+
+      {activeTab === 'clients' && <ClientsPanel telegramId={telegramId} />}
 
       {activeTab === 'manage' && <AdminManage telegramId={telegramId} />}
     </div>
