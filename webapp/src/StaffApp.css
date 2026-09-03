@@ -168,6 +168,28 @@
   cursor: help;
 }
 
+.staff-telegram-link {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-foreground);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  width: fit-content;
+  margin: 2px 0;
+}
+
+.staff-telegram-link--disabled {
+  background: none;
+  color: var(--text);
+  opacity: 0.6;
+  font-weight: 400;
+  font-size: 0.85rem;
+  padding: 0;
+}
+
 .staff-note-warning {
   background: rgba(179, 65, 58, 0.08);
   border: 1px solid var(--danger);

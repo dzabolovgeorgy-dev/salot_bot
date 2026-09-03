@@ -375,6 +375,20 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <h2>{selectedBooking.client_name ?? 'Клиент'}</h2>
           <p className="staff-card-line">{selectedBooking.service_name}</p>
           <p className="staff-card-line">{formatTime(selectedBooking.starts_at)}</p>
+          {selectedBooking.client_username ? (
+            <a
+              className="staff-telegram-link"
+              href={`https://t.me/${selectedBooking.client_username}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              💬 Написать в Telegram
+            </a>
+          ) : (
+            <p className="staff-telegram-link staff-telegram-link--disabled">
+              Написать в Telegram нельзя — у клиента нет публичного username
+            </p>
+          )}
           {selectedBooking.client_note && (
             <div className="staff-note-warning">
               <span className="staff-note-warning-label">⚠ Заметка о клиенте</span>

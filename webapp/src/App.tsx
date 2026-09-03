@@ -17,7 +17,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking } from './types'
-import { getTelegramUserId, getTelegramUserName } from './telegram'
+import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
 import { isWorkDay } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
@@ -514,6 +514,7 @@ function App() {
           service_id: selectedService.id,
           starts_at: startsAt,
           client_name: getTelegramUserName(),
+          client_username: getTelegramUsername() ?? undefined,
         }),
       })
       const data = await res.json()
