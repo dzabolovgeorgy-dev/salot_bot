@@ -290,7 +290,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
-      await loadToday()
+      await Promise.all([loadToday(), loadWeek()])
 
       // После "Выполнена" — предложить добавить/обновить заметку о клиенте.
       // Заметка уже пришла вместе с записью (client_note) — отдельный запрос не нужен
@@ -532,7 +532,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         </section>
       )}
 
-      {activeTab === 'today' && selectedBooking && (
+      {(activeTab === 'today' || activeTab === 'week') && selectedBooking && (
         <section className="staff-booking-card">
           <button type="button" className="staff-back-btn" onClick={() => setSelectedBooking(null)}>
             ← Назад
@@ -595,7 +595,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         </section>
       )}
 
-      {activeTab === 'today' && notePromptBooking && (
+      {(activeTab === 'today' || activeTab === 'week') && notePromptBooking && (
         <section className="staff-booking-card">
           <h2>Добавить заметку о клиенте?</h2>
           <p className="staff-card-line">{notePromptBooking.client_name ?? 'Клиент'} — необязательно</p>
@@ -629,7 +629,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           </div>
           {weekLoading ? (
             <p className="staff-empty">Загрузка…</p>
-          ) : (
+          ) : selectedBooking || notePromptBooking ? null : (
             weekDates(weekOffset).map((d) => {
               const key = dateKeyOf(d)
               const items = weekData[key] ?? []
@@ -641,7 +641,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   ) : (
                     <ul className="staff-list">
                       {items.map((b) => (
-                        <li key={b.id} className={`staff-list-item${b.status === 'completed' ? ' staff-list-item--completed' : ''}${b.status === 'no_show' ? ' staff-list-item--no-show' : ''}`}>
+                        <li
+                          key={b.id}
+                          className={`staff-list-item staff-list-item--clickable${b.status === 'completed' ? ' staff-list-item--completed' : ''}${b.status === 'no_show' ? ' staff-list-item--no-show' : ''}`}
+                          onClick={() => setSelectedBooking(b)}
+                        >
                           <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                           <span className="staff-list-body">
                             {b.client_name ?? 'Клиент'} — {b.service_name}
