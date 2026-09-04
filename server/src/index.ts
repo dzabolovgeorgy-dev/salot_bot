@@ -4,6 +4,14 @@ import { initDb } from "./db.js";
 import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
 
+// Большинство обработчиков в api.ts не ловят свои ошибки — если запрос к базе
+// неожиданно упадёт (сетевой сбой и т.п.), Node по умолчанию завершает весь
+// процесс из-за необработанного отклонённого промиса. Ловим это здесь, чтобы
+// падал только один запрос, а не весь сервер
+process.on("unhandledRejection", (reason) => {
+  console.error("Необработанная ошибка в запросе (сервер продолжает работать):", reason);
+});
+
 await initDb();
 
 const app = express();
