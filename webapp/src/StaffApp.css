@@ -732,7 +732,8 @@
   cursor: pointer;
 }
 
-.staff-admin > .staff-admin-form button[type='submit'] {
+.staff-admin > .staff-admin-form button[type='submit'],
+.staff-new-booking-form button[type='submit'] {
   padding: 12px;
   border: none;
   border-radius: var(--radius-md);

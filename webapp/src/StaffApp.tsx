@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Master, Booking, BlockedSlot } from './types'
+import type { Master, Service, Booking, BlockedSlot } from './types'
 import { isWorkDay } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
@@ -50,10 +50,15 @@ function formatTime(iso: string): string {
   return iso.slice(11, 16)
 }
 
+function formatSelectedDate(dateKey: string): string {
+  return new Date(`${dateKey}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+}
+
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
   const [activeTab, setActiveTab] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blocks, setBlocks] = useState<BlockedSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,10 +84,24 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [blockAllDay, setBlockAllDay] = useState(false)
   const [blockSubmitting, setBlockSubmitting] = useState(false)
 
+  const [showNewBooking, setShowNewBooking] = useState(false)
+  const [newBookingMasterId, setNewBookingMasterId] = useState<number | ''>('')
+  const [newBookingServiceId, setNewBookingServiceId] = useState<number | ''>('')
+  const [newBookingTime, setNewBookingTime] = useState('')
+  const [newBookingClientName, setNewBookingClientName] = useState('')
+  const [newBookingContact, setNewBookingContact] = useState<'phone' | 'telegram'>('phone')
+  const [newBookingPhone, setNewBookingPhone] = useState('')
+  const [newBookingTelegramId, setNewBookingTelegramId] = useState('')
+  const [newBookingSaving, setNewBookingSaving] = useState(false)
+
   useEffect(() => {
     fetch(`${API_URL}/api/masters`)
       .then((r) => r.json())
       .then(setMasters)
+      .catch(() => {})
+    fetch(`${API_URL}/api/services`)
+      .then((r) => r.json())
+      .then(setServices)
       .catch(() => {})
   }, [])
 
@@ -271,6 +290,49 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
       setBlockSubmitting(false)
+    }
+  }
+
+  // Админ записывает клиента вручную — тот позвонил или написал в WhatsApp,
+  // а не открывал Mini App сам
+  async function submitNewBooking(e: FormEvent) {
+    e.preventDefault()
+    if (!newBookingMasterId || !newBookingServiceId || !newBookingTime || !newBookingClientName.trim()) return
+    if (newBookingContact === 'phone' && !newBookingPhone.trim()) return
+    if (newBookingContact === 'telegram' && !newBookingTelegramId.trim()) return
+
+    setNewBookingSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          master_id: newBookingMasterId,
+          service_id: newBookingServiceId,
+          starts_at: `${date}T${newBookingTime}`,
+          client_name: newBookingClientName.trim(),
+          client_phone: newBookingContact === 'phone' ? newBookingPhone.trim() : undefined,
+          client_telegram_id: newBookingContact === 'telegram' ? Number(newBookingTelegramId) : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+
+      setShowNewBooking(false)
+      setNewBookingMasterId('')
+      setNewBookingServiceId('')
+      setNewBookingTime('')
+      setNewBookingClientName('')
+      setNewBookingPhone('')
+      setNewBookingTelegramId('')
+      setNewBookingContact('phone')
+      await loadSchedule()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setNewBookingSaving(false)
     }
   }
 
@@ -549,6 +611,111 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               })}
             </div>
           )}
+          <button type="button" className="staff-add-btn" onClick={() => setShowNewBooking((v) => !v)}>
+            {showNewBooking ? 'Отмена' : '+ Новая запись'}
+          </button>
+
+          {showNewBooking && (
+            <form className="staff-admin-form staff-new-booking-form" onSubmit={submitNewBooking}>
+              <h3>Новая запись на {formatSelectedDate(date)}</h3>
+              <p className="staff-form-hint">Для клиента, который позвонил или написал в WhatsApp, а не в Mini App.</p>
+              <label>
+                Мастер
+                <select
+                  value={newBookingMasterId}
+                  onChange={(e) => setNewBookingMasterId(Number(e.target.value))}
+                  required
+                >
+                  <option value="" disabled>
+                    Выберите мастера
+                  </option>
+                  {masters.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Услуга
+                <select
+                  value={newBookingServiceId}
+                  onChange={(e) => setNewBookingServiceId(Number(e.target.value))}
+                  required
+                >
+                  <option value="" disabled>
+                    Выберите услугу
+                  </option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.price} ₽
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Время
+                <input type="time" value={newBookingTime} onChange={(e) => setNewBookingTime(e.target.value)} required />
+              </label>
+              <label>
+                Имя клиента
+                <input
+                  type="text"
+                  value={newBookingClientName}
+                  onChange={(e) => setNewBookingClientName(e.target.value)}
+                  required
+                />
+              </label>
+              <div className="staff-checkbox-group">
+                <span className="staff-checkbox-label">Как связаться с клиентом</span>
+                <label className="staff-checkbox-row">
+                  <input
+                    type="radio"
+                    name="new-booking-contact"
+                    checked={newBookingContact === 'phone'}
+                    onChange={() => setNewBookingContact('phone')}
+                  />
+                  Телефон (звонок / WhatsApp)
+                </label>
+                <label className="staff-checkbox-row">
+                  <input
+                    type="radio"
+                    name="new-booking-contact"
+                    checked={newBookingContact === 'telegram'}
+                    onChange={() => setNewBookingContact('telegram')}
+                  />
+                  Telegram ID (если известен)
+                </label>
+              </div>
+              {newBookingContact === 'phone' ? (
+                <label>
+                  Телефон
+                  <input
+                    type="tel"
+                    value={newBookingPhone}
+                    onChange={(e) => setNewBookingPhone(e.target.value)}
+                    placeholder="+7 999 123-45-67"
+                    required
+                  />
+                </label>
+              ) : (
+                <label>
+                  Telegram ID
+                  <input
+                    type="number"
+                    value={newBookingTelegramId}
+                    onChange={(e) => setNewBookingTelegramId(e.target.value)}
+                    placeholder="Узнать можно через @userinfobot"
+                    required
+                  />
+                </label>
+              )}
+              <button type="submit" disabled={newBookingSaving}>
+                {newBookingSaving ? 'Сохранение…' : 'Записать'}
+              </button>
+            </form>
+          )}
+
           {loading ? (
             <p className="staff-empty">Загрузка…</p>
           ) : dayItems.length === 0 ? (
@@ -561,6 +728,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                     <span className="staff-list-time">{entry.time}</span>
                     <span className="staff-list-body">
                       {entry.booking.service_name} — {entry.booking.master_name}
+                      {entry.booking.client_name && (
+                        <span className="staff-client-meta">{entry.booking.client_name}</span>
+                      )}
                     </span>
                   </li>
                 ) : (
