@@ -15,6 +15,16 @@ const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
 ]
 
+// Сетка времени для ручной записи админом — с 9:00 до 20:00 каждые 30 минут,
+// чтобы не листать нативный time-picker
+const ADMIN_TIME_SLOTS: string[] = (() => {
+  const slots: string[] = []
+  for (let m = 9 * 60; m <= 20 * 60; m += 30) {
+    slots.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+  }
+  return slots
+})()
+
 // 7 дат начиная с сегодня + смещение в неделях
 function weekDates(weekOffset: number): Date[] {
   const start = new Date()
@@ -109,9 +119,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   const newBookingIsPast = newBookingTime ? new Date(`${date}T${newBookingTime}`).getTime() < Date.now() : false
 
-  const newBookingConflict = (() => {
-    if (!newBookingMasterId || !newBookingTime || !newBookingService) return false
-    const start = new Date(`${date}T${newBookingTime}`).getTime()
+  // Занят ли мастер в это время — используется и для сетки слотов (какие
+  // кнопки disabled), и для итоговой проверки перед отправкой
+  function isTimeTakenForNewBooking(time: string): boolean {
+    if (!newBookingMasterId || !newBookingService) return false
+    const start = new Date(`${date}T${time}`).getTime()
     const end = start + newBookingService.duration_minutes * 60000
     const bookingHit = bookings.some((b) => {
       if (b.master_id !== newBookingMasterId) return false
@@ -124,7 +136,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       if (bl.master_id !== newBookingMasterId) return false
       return start < new Date(bl.ends_at).getTime() && new Date(bl.starts_at).getTime() < end
     })
-  })()
+  }
+
+  const newBookingConflict = newBookingTime ? isTimeTakenForNewBooking(newBookingTime) : false
 
   const newBookingBlockReason = newBookingIsPast
     ? 'Нельзя записать на прошедшее время'
@@ -718,41 +732,45 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               <h3>Новая запись на {formatSelectedDate(date)}</h3>
               <p className="staff-form-hint">Для клиента, который позвонил или написал в WhatsApp, а не в Mini App.</p>
               <label>
-                Мастер
+                Услуга
                 <select
-                  value={newBookingMasterId}
+                  value={newBookingServiceId}
                   onChange={(e) => {
-                    setNewBookingMasterId(Number(e.target.value))
-                    setNewBookingServiceId('')
+                    setNewBookingServiceId(Number(e.target.value))
+                    setNewBookingMasterId('')
+                    setNewBookingTime('')
                   }}
                   required
                 >
                   <option value="" disabled>
-                    Выберите мастера
+                    Выберите услугу
                   </option>
-                  {masters.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.price} ₽
                     </option>
                   ))}
                 </select>
               </label>
               <label>
-                Услуга
+                Мастер
                 <select
-                  value={newBookingServiceId}
-                  onChange={(e) => setNewBookingServiceId(Number(e.target.value))}
-                  disabled={!newBookingMasterId}
+                  value={newBookingMasterId}
+                  onChange={(e) => {
+                    setNewBookingMasterId(Number(e.target.value))
+                    setNewBookingTime('')
+                  }}
+                  disabled={!newBookingServiceId}
                   required
                 >
                   <option value="" disabled>
-                    {newBookingMasterId ? 'Выберите услугу' : 'Сначала выберите мастера'}
+                    {newBookingServiceId ? 'Выберите мастера' : 'Сначала выберите услугу'}
                   </option>
-                  {services
-                    .filter((s) => masters.find((m) => m.id === newBookingMasterId)?.service_ids.includes(s.id))
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} — {s.price} ₽
+                  {masters
+                    .filter((m) => m.service_ids.includes(newBookingServiceId as number))
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
                       </option>
                     ))}
                 </select>
@@ -760,10 +778,29 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               {newBookingMasterOffDuty && (
                 <p className="staff-error">У мастера выходной {formatSelectedDate(date)} — выберите другого мастера или дату</p>
               )}
-              <label>
-                Время
-                <input type="time" value={newBookingTime} onChange={(e) => setNewBookingTime(e.target.value)} required />
-              </label>
+              {newBookingMasterId && !newBookingMasterOffDuty && (
+                <div>
+                  <span className="staff-checkbox-label">Время</span>
+                  <div className="staff-time-grid">
+                    {ADMIN_TIME_SLOTS.map((t) => {
+                      const past = new Date(`${date}T${t}`).getTime() < Date.now()
+                      const taken = !past && isTimeTakenForNewBooking(t)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`staff-time-slot${newBookingTime === t ? ' active' : ''}`}
+                          disabled={past || taken}
+                          title={taken ? 'Уже занято' : past ? 'Уже прошло' : undefined}
+                          onClick={() => setNewBookingTime(t)}
+                        >
+                          {t}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               {!newBookingMasterOffDuty && newBookingBlockReason && <p className="staff-error">{newBookingBlockReason}</p>}
               <label>
                 Имя клиента
