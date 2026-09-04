@@ -92,7 +92,30 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [newBookingContact, setNewBookingContact] = useState<'phone' | 'telegram'>('phone')
   const [newBookingPhone, setNewBookingPhone] = useState('')
   const [newBookingTelegramId, setNewBookingTelegramId] = useState('')
+  const [newBookingNote, setNewBookingNote] = useState('')
   const [newBookingSaving, setNewBookingSaving] = useState(false)
+
+  const newBookingService = services.find((s) => s.id === newBookingServiceId)
+
+  // Услуга с риском аллергии — подтягиваем существующую заметку о клиенте,
+  // если она уже есть (чтобы админ не перезаписал её вслепую)
+  async function checkExistingNoteForNewBooking() {
+    if (!newBookingService?.requires_allergy_check) return
+    const url =
+      newBookingContact === 'telegram' && newBookingTelegramId.trim()
+        ? `${API_URL}/api/client-notes/${newBookingTelegramId.trim()}`
+        : newBookingContact === 'phone' && newBookingPhone.trim()
+          ? `${API_URL}/api/client-notes/by-phone/${encodeURIComponent(newBookingPhone.trim())}`
+          : null
+    if (!url) return
+    try {
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.note) setNewBookingNote(data.note)
+    } catch {
+      // тихо — необязательное удобство, не мешает записи
+    }
+  }
 
   useEffect(() => {
     fetch(`${API_URL}/api/masters`)
@@ -324,6 +347,18 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
 
+      if (newBookingNote.trim()) {
+        const noteUrl =
+          newBookingContact === 'telegram'
+            ? `${API_URL}/api/client-notes/${newBookingTelegramId.trim()}`
+            : `${API_URL}/api/client-notes/by-phone/${encodeURIComponent(newBookingPhone.trim())}`
+        fetch(noteUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: newBookingNote.trim() }),
+        }).catch(() => {})
+      }
+
       setShowNewBooking(false)
       setNewBookingMasterId('')
       setNewBookingServiceId('')
@@ -332,6 +367,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       setNewBookingPhone('')
       setNewBookingTelegramId('')
       setNewBookingContact('phone')
+      setNewBookingNote('')
       await loadSchedule()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
@@ -713,6 +749,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                     type="tel"
                     value={newBookingPhone}
                     onChange={(e) => setNewBookingPhone(e.target.value)}
+                    onBlur={checkExistingNoteForNewBooking}
                     placeholder="+7 999 123-45-67"
                     required
                   />
@@ -724,8 +761,21 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                     type="number"
                     value={newBookingTelegramId}
                     onChange={(e) => setNewBookingTelegramId(e.target.value)}
+                    onBlur={checkExistingNoteForNewBooking}
                     placeholder="Узнать можно через @userinfobot"
                     required
+                  />
+                </label>
+              )}
+              {newBookingService?.requires_allergy_check && (
+                <label>
+                  Заметка о клиенте (аллергии/особенности) — необязательно
+                  <textarea
+                    className="staff-note-textarea"
+                    value={newBookingNote}
+                    onChange={(e) => setNewBookingNote(e.target.value)}
+                    placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
+                    rows={3}
                   />
                 </label>
               )}
