@@ -220,7 +220,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       // После "Выполнена" — предложить добавить/обновить заметку о клиенте.
       // Заметка уже пришла вместе с записью (client_note) — отдельный запрос не нужен
-      if (status === 'completed' && selectedBooking?.client_telegram_id) {
+      if (status === 'completed' && (selectedBooking?.client_telegram_id || selectedBooking?.client_phone)) {
         const booking = selectedBooking
         setSelectedBooking(null)
         setNotePromptBooking(booking)
@@ -236,7 +236,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   }
 
   async function saveNote() {
-    if (!notePromptBooking?.client_telegram_id) return
+    const booking = notePromptBooking
+    if (!booking?.client_telegram_id && !booking?.client_phone) return
     if (!noteText.trim()) {
       setNotePromptBooking(null)
       return
@@ -244,7 +245,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setNoteSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/client-notes/${notePromptBooking.client_telegram_id}`, {
+      const url = booking.client_telegram_id
+        ? `${API_URL}/api/client-notes/${booking.client_telegram_id}`
+        : `${API_URL}/api/client-notes/by-phone/${booking.client_phone}`
+      const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: noteText.trim() }),
@@ -446,9 +450,18 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             >
               💬 Написать в Telegram
             </a>
+          ) : selectedBooking.client_phone ? (
+            <a
+              className="staff-telegram-link"
+              href={`https://wa.me/${selectedBooking.client_phone}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              💬 Написать в WhatsApp
+            </a>
           ) : (
             <p className="staff-telegram-link staff-telegram-link--disabled">
-              Написать в Telegram нельзя — у клиента нет публичного username
+              Написать клиенту нельзя — нет контакта в Telegram
             </p>
           )}
           {selectedBooking.client_note && (

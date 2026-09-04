@@ -61,7 +61,8 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     setClientVisitsLoading(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/clients/${c.client_telegram_id}?telegram_id=${telegramId}`)
+      const clientKey = c.client_telegram_id ?? `phone-${c.client_phone}`
+      const res = await fetch(`${API_URL}/api/staff/clients/${clientKey}?telegram_id=${telegramId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить')
       setClientVisits(data)
@@ -91,7 +92,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
             <ul className="staff-list">
               {clients.map((c) => (
                 <li
-                  key={c.client_telegram_id}
+                  key={c.client_telegram_id ?? c.client_phone}
                   className="staff-list-item staff-list-item--clickable"
                   onClick={() => openClient(c)}
                 >
@@ -123,9 +124,18 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
             >
               💬 Написать в Telegram
             </a>
+          ) : selectedClient.client_phone ? (
+            <a
+              className="staff-telegram-link"
+              href={`https://wa.me/${selectedClient.client_phone}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              💬 Написать в WhatsApp
+            </a>
           ) : (
             <p className="staff-telegram-link staff-telegram-link--disabled">
-              Написать в Telegram нельзя — у клиента нет публичного username
+              Написать клиенту нельзя — нет контакта в Telegram
             </p>
           )}
           <div className="staff-client-stats">
