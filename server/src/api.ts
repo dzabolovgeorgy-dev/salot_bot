@@ -11,6 +11,13 @@ function toIso(value: string): string {
   return value.replace(" ", "T");
 }
 
+// Для записей без Telegram (звонок/WhatsApp) телефон — единственный ID
+// клиента. Приводим к цифрам, чтобы "+7 999 123-45-67" и "79991234567"
+// считались одним и тем же клиентом и совпадали со ссылкой wa.me
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, "");
+}
+
 function formatRuDateTime(value: string): string {
   return new Date(toIso(value)).toLocaleString("ru-RU", {
     day: "numeric",
@@ -290,6 +297,92 @@ api.post("/bookings", async (req, res) => {
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
 });
 
+interface AdminCreateBookingBody {
+  telegram_id: number;
+  master_id: number;
+  service_id: number;
+  starts_at: string;
+  client_name: string;
+  client_telegram_id?: number;
+  client_phone?: string;
+}
+
+// Админ создаёт запись вручную — клиент позвонил или написал в WhatsApp,
+// а не открывал Mini App. Нужен либо Telegram ID клиента (если он известен),
+// либо телефон — но не оба сразу, чтобы не путать одного и того же клиента
+// с разными карточками в «Клиенты»
+api.post("/staff/bookings", async (req, res) => {
+  const { telegram_id, master_id, service_id, starts_at, client_name, client_telegram_id, client_phone } =
+    req.body as Partial<AdminCreateBookingBody>;
+
+  if (!telegram_id || !(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  if (!master_id || !service_id || !starts_at || !client_name?.trim()) {
+    res.status(400).json({ error: "Не хватает полей запроса" });
+    return;
+  }
+  if (!client_telegram_id && !client_phone?.trim()) {
+    res.status(400).json({ error: "Укажите Telegram ID или телефон клиента" });
+    return;
+  }
+  if (client_telegram_id && client_phone?.trim()) {
+    res.status(400).json({ error: "Укажите либо Telegram ID, либо телефон — не оба" });
+    return;
+  }
+
+  const { rows: masterRows } = await db.query(
+    "SELECT id, name, schedule_anchor, work_days, off_days FROM masters WHERE id = $1",
+    [master_id]
+  );
+  const master = masterRows[0] as
+    | { id: number; name: string; schedule_anchor: string | null; work_days: number | null; off_days: number | null }
+    | undefined;
+  if (!master) {
+    res.status(400).json({ error: "Мастер не найден" });
+    return;
+  }
+
+  const { rows: serviceRows } = await db.query("SELECT id, name, duration_minutes FROM services WHERE id = $1", [
+    service_id,
+  ]);
+  const service = serviceRows[0] as { id: number; name: string; duration_minutes: number } | undefined;
+  if (!service) {
+    res.status(400).json({ error: "Услуга не найдена" });
+    return;
+  }
+
+  if (!isWorkDay(starts_at.slice(0, 10), master)) {
+    res.status(400).json({ error: "У мастера выходной в этот день" });
+    return;
+  }
+
+  if (await hasConflict(master_id, starts_at, service.duration_minutes)) {
+    res.status(409).json({ error: "Это время уже занято, выберите другое" });
+    return;
+  }
+
+  const normalizedPhone = client_phone?.trim() ? normalizePhone(client_phone) : null;
+
+  const { rows: inserted } = await db.query(
+    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_phone)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [client_telegram_id ?? null, master_id, service_id, starts_at, client_name.trim(), normalizedPhone]
+  );
+
+  if (client_telegram_id) {
+    notifyClient(
+      client_telegram_id,
+      `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\n\nЖдём вас в салоне!`
+    );
+  }
+  notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
+
+  res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
+});
+
 interface RescheduleBody {
   client_telegram_id: number;
   starts_at: string;
@@ -395,11 +488,13 @@ api.get("/staff/schedule", async (req, res) => {
   const { rows: bookings } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
             s.name AS service_name, s.duration_minutes, b.client_name, b.status,
-            b.client_telegram_id, b.client_username, cn.note AS client_note
+            b.client_telegram_id, b.client_username, b.client_phone,
+            cn.note AS client_note
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
      LEFT JOIN client_notes cn ON cn.client_telegram_id = b.client_telegram_id
+       OR (b.client_telegram_id IS NULL AND cn.client_phone = b.client_phone)
      WHERE b.starts_at::date = $1::date
        AND ($2::int IS NULL OR b.master_id = $2)
      ORDER BY b.starts_at ASC`,
@@ -775,7 +870,7 @@ api.get("/staff/clients", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.client_telegram_id,
+    `SELECT b.client_telegram_id, b.client_phone,
             (array_agg(b.client_name ORDER BY b.created_at DESC))[1] AS name,
             (array_agg(b.client_username ORDER BY b.created_at DESC) FILTER (WHERE b.client_username IS NOT NULL))[1] AS username,
             COUNT(*)::int AS visits,
@@ -783,18 +878,20 @@ api.get("/staff/clients", async (req, res) => {
             COALESCE(SUM(CASE WHEN b.status = 'completed' THEN s.price ELSE 0 END), 0)::int AS total_spent
      FROM bookings b
      JOIN services s ON s.id = b.service_id
-     GROUP BY b.client_telegram_id
+     GROUP BY b.client_telegram_id, b.client_phone
      ORDER BY MAX(b.starts_at) DESC`
   );
 
   res.json(rows.map((r) => ({ ...r, last_visit: toIso(r.last_visit) })));
 });
 
-// История записей одного клиента — карточка при открытии из списка
-api.get("/staff/clients/:clientTelegramId", async (req, res) => {
+// История записей одного клиента — карточка при открытии из списка.
+// clientKey — Telegram ID как есть, либо "phone-<цифры>" для клиента без
+// Telegram (записан вручную по звонку/WhatsApp)
+api.get("/staff/clients/:clientKey", async (req, res) => {
   const telegramId = Number(req.query.telegram_id);
-  const clientTelegramId = Number(req.params.clientTelegramId);
-  if (!telegramId || !clientTelegramId) {
+  const clientKey = req.params.clientKey;
+  if (!telegramId || !clientKey) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
@@ -803,14 +900,22 @@ api.get("/staff/clients/:clientTelegramId", async (req, res) => {
     return;
   }
 
+  const isPhone = clientKey.startsWith("phone-");
+  const whereClause = isPhone ? "b.client_phone = $1" : "b.client_telegram_id = $1";
+  const whereValue = isPhone ? clientKey.slice("phone-".length) : Number(clientKey);
+  if (isPhone ? !whereValue : !whereValue) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at, b.status, s.name AS service_name, s.price, m.name AS master_name
      FROM bookings b
      JOIN services s ON s.id = b.service_id
      JOIN masters m ON m.id = b.master_id
-     WHERE b.client_telegram_id = $1
+     WHERE ${whereClause}
      ORDER BY b.starts_at DESC`,
-    [clientTelegramId]
+    [whereValue]
   );
 
   res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
@@ -850,6 +955,38 @@ api.put("/client-notes/:clientTelegramId", async (req, res) => {
      ON CONFLICT (client_telegram_id) DO UPDATE SET note = $2, updated_at = now()
      RETURNING note, updated_at`,
     [clientTelegramId, note]
+  );
+  res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
+});
+
+// Те же заметки, но для клиентов без Telegram (запись вручную по звонку/WhatsApp) —
+// телефон вместо Telegram ID как ключ
+api.get("/client-notes/by-phone/:phone", async (req, res) => {
+  const phone = normalizePhone(req.params.phone);
+  if (!phone) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const { rows } = await db.query("SELECT note, updated_at FROM client_notes WHERE client_phone = $1", [phone]);
+  const row = rows[0] as { note: string; updated_at: string } | undefined;
+  res.json(row ? { note: row.note, updated_at: toIso(row.updated_at) } : { note: null, updated_at: null });
+});
+
+api.put("/client-notes/by-phone/:phone", async (req, res) => {
+  const phone = normalizePhone(req.params.phone);
+  const { note } = req.body as Partial<ClientNoteBody>;
+  if (!phone || !note) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `INSERT INTO client_notes (client_phone, note, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (client_phone) DO UPDATE SET note = $2, updated_at = now()
+     RETURNING note, updated_at`,
+    [phone, note]
   );
   res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
 });

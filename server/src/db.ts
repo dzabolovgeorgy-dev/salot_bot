@@ -46,20 +46,25 @@ export async function initDb(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS bookings (
       id SERIAL PRIMARY KEY,
-      client_telegram_id BIGINT NOT NULL,
+      client_telegram_id BIGINT,
       master_id INTEGER NOT NULL REFERENCES masters(id),
       service_id INTEGER NOT NULL REFERENCES services(id),
       starts_at TIMESTAMP NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT now(),
       client_name TEXT,
       status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'completed', 'no_show')),
-      client_username TEXT
+      client_username TEXT,
+      client_phone TEXT
     );
 
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_name TEXT;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'upcoming'
       CHECK (status IN ('upcoming', 'completed', 'no_show'));
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_username TEXT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_phone TEXT;
+    -- Записи, которые администратор создаёт вручную (звонок/WhatsApp), могут
+    -- быть без Telegram ID — тогда обязателен client_phone
+    ALTER TABLE bookings ALTER COLUMN client_telegram_id DROP NOT NULL;
 
     CREATE TABLE IF NOT EXISTS staff (
       id SERIAL PRIMARY KEY,
@@ -79,10 +84,15 @@ export async function initDb(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,
-      client_telegram_id BIGINT NOT NULL UNIQUE,
+      client_telegram_id BIGINT UNIQUE,
       note TEXT NOT NULL,
-      updated_at TIMESTAMP NOT NULL DEFAULT now()
+      updated_at TIMESTAMP NOT NULL DEFAULT now(),
+      client_phone TEXT
     );
+
+    ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS client_phone TEXT;
+    ALTER TABLE client_notes ALTER COLUMN client_telegram_id DROP NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS client_notes_phone_key ON client_notes (client_phone);
   `);
 
   // Если база пустая — наполняем тестовыми мастерами и услугами
