@@ -101,6 +101,38 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [whatsappConfirmLink, setWhatsappConfirmLink] = useState<{ url: string; clientName: string } | null>(null)
 
   const newBookingService = services.find((s) => s.id === newBookingServiceId)
+  const newBookingMaster = masters.find((m) => m.id === newBookingMasterId)
+
+  // Видно сразу по ходу заполнения формы, а не только после отказа сервера:
+  // выходной у мастера, прошедшее время, занятой слот
+  const newBookingMasterOffDuty = newBookingMaster ? !isWorkDay(date, newBookingMaster) : false
+
+  const newBookingIsPast = newBookingTime ? new Date(`${date}T${newBookingTime}`).getTime() < Date.now() : false
+
+  const newBookingConflict = (() => {
+    if (!newBookingMasterId || !newBookingTime || !newBookingService) return false
+    const start = new Date(`${date}T${newBookingTime}`).getTime()
+    const end = start + newBookingService.duration_minutes * 60000
+    const bookingHit = bookings.some((b) => {
+      if (b.master_id !== newBookingMasterId) return false
+      const bStart = new Date(b.starts_at).getTime()
+      const bEnd = bStart + b.duration_minutes * 60000
+      return start < bEnd && bStart < end
+    })
+    if (bookingHit) return true
+    return blocks.some((bl) => {
+      if (bl.master_id !== newBookingMasterId) return false
+      return start < new Date(bl.ends_at).getTime() && new Date(bl.starts_at).getTime() < end
+    })
+  })()
+
+  const newBookingBlockReason = newBookingIsPast
+    ? 'Нельзя записать на прошедшее время'
+    : newBookingMasterOffDuty
+      ? 'У мастера выходной в этот день'
+      : newBookingConflict
+        ? 'Это время уже занято, выберите другое'
+        : null
 
   // Услуга с риском аллергии — подтягиваем существующую заметку о клиенте,
   // если она уже есть (чтобы админ не перезаписал её вслепую)
@@ -332,6 +364,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     if (!newBookingMasterId || !newBookingServiceId || !newBookingTime || !newBookingClientName.trim()) return
     if (newBookingContact === 'phone' && !newBookingPhone.trim()) return
     if (newBookingContact === 'telegram' && !newBookingTelegramId.trim()) return
+    if (newBookingBlockReason) return
 
     setNewBookingSaving(true)
     setError('')
@@ -724,10 +757,14 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                     ))}
                 </select>
               </label>
+              {newBookingMasterOffDuty && (
+                <p className="staff-error">У мастера выходной {formatSelectedDate(date)} — выберите другого мастера или дату</p>
+              )}
               <label>
                 Время
                 <input type="time" value={newBookingTime} onChange={(e) => setNewBookingTime(e.target.value)} required />
               </label>
+              {!newBookingMasterOffDuty && newBookingBlockReason && <p className="staff-error">{newBookingBlockReason}</p>}
               <label>
                 Имя клиента
                 <input
@@ -795,7 +832,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   />
                 </label>
               )}
-              <button type="submit" disabled={newBookingSaving}>
+              <button type="submit" disabled={newBookingSaving || !!newBookingBlockReason}>
                 {newBookingSaving ? 'Сохранение…' : 'Записать'}
               </button>
             </form>
