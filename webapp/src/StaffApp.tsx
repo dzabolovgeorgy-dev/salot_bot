@@ -636,7 +636,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 Мастер
                 <select
                   value={newBookingMasterId}
-                  onChange={(e) => setNewBookingMasterId(Number(e.target.value))}
+                  onChange={(e) => {
+                    setNewBookingMasterId(Number(e.target.value))
+                    setNewBookingServiceId('')
+                  }}
                   required
                 >
                   <option value="" disabled>
@@ -654,16 +657,19 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 <select
                   value={newBookingServiceId}
                   onChange={(e) => setNewBookingServiceId(Number(e.target.value))}
+                  disabled={!newBookingMasterId}
                   required
                 >
                   <option value="" disabled>
-                    Выберите услугу
+                    {newBookingMasterId ? 'Выберите услугу' : 'Сначала выберите мастера'}
                   </option>
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} — {s.price} ₽
-                    </option>
-                  ))}
+                  {services
+                    .filter((s) => masters.find((m) => m.id === newBookingMasterId)?.service_ids.includes(s.id))
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — {s.price} ₽
+                      </option>
+                    ))}
                 </select>
               </label>
               <label>
