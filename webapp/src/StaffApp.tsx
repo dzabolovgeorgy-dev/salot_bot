@@ -54,6 +54,10 @@ function formatSelectedDate(dateKey: string): string {
   return new Date(`${dateKey}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
 }
 
+function normalizePhoneForLink(phone: string): string {
+  return phone.replace(/\D/g, '')
+}
+
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
   const [activeTab, setActiveTab] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
   const [date, setDate] = useState(todayKey())
@@ -94,6 +98,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [newBookingTelegramId, setNewBookingTelegramId] = useState('')
   const [newBookingNote, setNewBookingNote] = useState('')
   const [newBookingSaving, setNewBookingSaving] = useState(false)
+  const [whatsappConfirmLink, setWhatsappConfirmLink] = useState<{ url: string; clientName: string } | null>(null)
 
   const newBookingService = services.find((s) => s.id === newBookingServiceId)
 
@@ -357,6 +362,17 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ note: newBookingNote.trim() }),
         }).catch(() => {})
+      }
+
+      if (newBookingContact === 'phone') {
+        const masterName = masters.find((m) => m.id === newBookingMasterId)?.name ?? ''
+        const message = `Здравствуйте, ${newBookingClientName.trim()}! Вы записаны в салон: ${newBookingService?.name ?? ''}, ${formatSelectedDate(date)} в ${newBookingTime}, мастер ${masterName}. Ждём вас!`
+        setWhatsappConfirmLink({
+          url: `https://wa.me/${normalizePhoneForLink(newBookingPhone)}?text=${encodeURIComponent(message)}`,
+          clientName: newBookingClientName.trim(),
+        })
+      } else {
+        setWhatsappConfirmLink(null)
       }
 
       setShowNewBooking(false)
@@ -783,6 +799,26 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 {newBookingSaving ? 'Сохранение…' : 'Записать'}
               </button>
             </form>
+          )}
+
+          {whatsappConfirmLink && (
+            <div className="staff-confirm-callout">
+              <p>Запись для «{whatsappConfirmLink.clientName}» создана. Продублировать детали клиенту?</p>
+              <div className="staff-confirm-callout-actions">
+                <a
+                  className="staff-telegram-link"
+                  href={whatsappConfirmLink.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setWhatsappConfirmLink(null)}
+                >
+                  💬 Отправить подтверждение в WhatsApp
+                </a>
+                <button type="button" className="staff-confirm-dismiss" onClick={() => setWhatsappConfirmLink(null)}>
+                  Не сейчас
+                </button>
+              </div>
+            </div>
           )}
 
           {loading ? (
