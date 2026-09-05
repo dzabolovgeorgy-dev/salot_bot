@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
+import { appendBookingRow } from "./sheets.js";
 
 export const api = Router();
 
@@ -294,6 +295,15 @@ api.post("/bookings", async (req, res) => {
   );
   notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
 
+  appendBookingRow({
+    clientName: client_name ?? "Клиент",
+    contact: client_username ? `@${client_username}` : `Telegram ID: ${client_telegram_id}`,
+    serviceName: service.name,
+    masterName: master.name,
+    startsAt: formatRuDateTime(starts_at),
+    price: service.price,
+  });
+
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
 });
 
@@ -345,10 +355,11 @@ api.post("/staff/bookings", async (req, res) => {
     return;
   }
 
-  const { rows: serviceRows } = await db.query("SELECT id, name, duration_minutes FROM services WHERE id = $1", [
-    service_id,
-  ]);
-  const service = serviceRows[0] as { id: number; name: string; duration_minutes: number } | undefined;
+  const { rows: serviceRows } = await db.query(
+    "SELECT id, name, duration_minutes, price FROM services WHERE id = $1",
+    [service_id]
+  );
+  const service = serviceRows[0] as { id: number; name: string; duration_minutes: number; price: number } | undefined;
   if (!service) {
     res.status(400).json({ error: "Услуга не найдена" });
     return;
@@ -379,6 +390,15 @@ api.post("/staff/bookings", async (req, res) => {
     );
   }
   notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
+
+  appendBookingRow({
+    clientName: client_name.trim(),
+    contact: client_telegram_id ? `Telegram ID: ${client_telegram_id}` : (normalizedPhone ?? "-"),
+    serviceName: service.name,
+    masterName: master.name,
+    startsAt: formatRuDateTime(starts_at),
+    price: service.price,
+  });
 
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
 });
