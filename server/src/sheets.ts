@@ -49,6 +49,21 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Все обращения к Google Sheets идут строго по одному, а не параллельно.
+// Без этого две записи, пришедшие почти одновременно, могут переплести свои
+// шаги (создание вкладки, запись заголовка, дозапись строки) и одна из них
+// затрёт данные другой — так уже случалось на практике при тесте гонки
+let sheetsQueue: Promise<void> = Promise.resolve();
+
+function runSerialized<T>(fn: () => Promise<T>): Promise<T> {
+  const run = sheetsQueue.then(fn);
+  sheetsQueue = run.then(
+    () => {},
+    () => {}
+  );
+  return run;
+}
+
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 async function sheetsRequest(sheetId: string, path: string, init: RequestInit = {}): Promise<any> {
@@ -78,10 +93,17 @@ async function ensureSheetExists(sheetId: string, title: string, header: string[
   const titles = await getSheetTitles(sheetId);
   if (titles.has(title)) return;
 
-  await sheetsRequest(sheetId, ":batchUpdate", {
-    method: "POST",
-    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
-  });
+  try {
+    await sheetsRequest(sheetId, ":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+    });
+  } catch (err) {
+    // Две записи почти одновременно — обе не нашли вкладку и обе пытаются создать.
+    // Кто-то один выигрывает, второй получает "already exists" — это не ошибка,
+    // а нормальный исход гонки, просто продолжаем как будто вкладка уже была
+    if (!(err instanceof Error && err.message.includes("already exists"))) throw err;
+  }
   titlesCache = null;
 
   await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${title}'!A1`)}?valueInputOption=USER_ENTERED`, {
@@ -90,10 +112,28 @@ async function ensureSheetExists(sheetId: string, title: string, header: string[
   });
 }
 
-function dateKeyOf(iso: string): string {
+const MONTH_NAMES = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+];
+
+// Вкладка на месяц, а не на день — при большом потоке записей вкладок "по дню"
+// накопилось бы десятки, и найти нужную стало бы невозможно
+function monthTitleOf(iso: string): string {
+  const d = new Date(iso);
+  return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function dateDisplay(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}`;
+}
+
+function timeDisplay(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function formatDisplay(iso: string): string {
@@ -152,15 +192,26 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
   const sheetId = process.env.GOOGLE_SHEET_ID;
   if (!sheetId) return;
 
+  return runSerialized(async () => {
   try {
-    const dayTitle = dateKeyOf(row.startsAtIso);
+    const monthTitle = monthTitleOf(row.startsAtIso);
     const display = formatDisplay(row.startsAtIso);
 
-    await ensureSheetExists(sheetId, dayTitle, ["Имя", "Контакт", "Услуга", "Мастер", "Время", "Цена"]);
-    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${dayTitle}'!A:F`)}:append?valueInputOption=USER_ENTERED`, {
+    await ensureSheetExists(sheetId, monthTitle, ["Дата", "Имя", "Контакт", "Услуга", "Мастер", "Время", "Цена"]);
+    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${monthTitle}'!A:G`)}:append?valueInputOption=USER_ENTERED`, {
       method: "POST",
       body: JSON.stringify({
-        values: [[row.clientName, row.contact, row.serviceName, row.masterName, display, row.price]],
+        values: [
+          [
+            dateDisplay(row.startsAtIso),
+            row.clientName,
+            row.contact,
+            row.serviceName,
+            row.masterName,
+            timeDisplay(row.startsAtIso),
+            row.price,
+          ],
+        ],
       }),
     });
 
@@ -168,6 +219,7 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
   } catch (err) {
     console.warn("Google Sheets: ошибка записи", err instanceof Error ? err.message : err);
   }
+  });
 }
 
 // Мастер отметил визит выполненным — прибавляем сумму клиенту в «Клиенты».
@@ -176,6 +228,7 @@ export async function addClientSpend(clientKey: string, amount: number): Promise
   const sheetId = process.env.GOOGLE_SHEET_ID;
   if (!sheetId) return;
 
+  return runSerialized(async () => {
   try {
     const data = await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:F`)}`);
     const rows: string[][] = data.values ?? [];
@@ -191,4 +244,5 @@ export async function addClientSpend(clientKey: string, amount: number): Promise
   } catch (err) {
     console.warn("Google Sheets: ошибка обновления суммы клиента", err instanceof Error ? err.message : err);
   }
+  });
 }
