@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
-import { appendBookingRow } from "./sheets.js";
+import { appendBookingRow, addClientSpend } from "./sheets.js";
 
 export const api = Router();
 
@@ -298,9 +298,10 @@ api.post("/bookings", async (req, res) => {
   appendBookingRow({
     clientName: client_name ?? "Клиент",
     contact: client_username ? `@${client_username}` : `Telegram ID: ${client_telegram_id}`,
+    clientKey: String(client_telegram_id),
     serviceName: service.name,
     masterName: master.name,
-    startsAt: formatRuDateTime(starts_at),
+    startsAtIso: starts_at,
     price: service.price,
   });
 
@@ -394,9 +395,10 @@ api.post("/staff/bookings", async (req, res) => {
   appendBookingRow({
     clientName: client_name.trim(),
     contact: client_telegram_id ? `Telegram ID: ${client_telegram_id}` : (normalizedPhone ?? "-"),
+    clientKey: client_telegram_id ? String(client_telegram_id) : (normalizedPhone ?? ""),
     serviceName: service.name,
     masterName: master.name,
-    startsAt: formatRuDateTime(starts_at),
+    startsAtIso: starts_at,
     price: service.price,
   });
 
@@ -560,8 +562,15 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     return;
   }
 
-  const { rows } = await db.query("SELECT master_id FROM bookings WHERE id = $1", [id]);
-  const booking = rows[0] as { master_id: number } | undefined;
+  const { rows } = await db.query(
+    `SELECT b.master_id, b.client_telegram_id, b.client_phone, s.price
+     FROM bookings b JOIN services s ON s.id = b.service_id
+     WHERE b.id = $1`,
+    [id]
+  );
+  const booking = rows[0] as
+    | { master_id: number; client_telegram_id: string | null; client_phone: string | null; price: number }
+    | undefined;
   if (!booking) {
     res.status(404).json({ error: "Запись не найдена" });
     return;
@@ -573,6 +582,11 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
 
   await db.query("UPDATE bookings SET status = $1 WHERE id = $2", [status, id]);
   // При status = 'completed' — сюда позже подключим начисление бонусов на карту лояльности
+
+  if (status === "completed") {
+    const clientKey = booking.client_telegram_id ?? booking.client_phone;
+    if (clientKey) addClientSpend(clientKey, booking.price);
+  }
 
   res.json({ ok: true });
 });

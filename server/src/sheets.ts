@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 
-// Дублируем каждую новую запись клиента в Google Таблицу — админ видит все
-// записи в привычном виде, без доступа в саму базу данных (Supabase).
-// Если Google недоступен — запись клиента всё равно должна пройти, поэтому
-// вызывающий код должен звать это не блокируя ответ (см. appendBookingRow)
+// Дублируем записи клиентов в Google Таблицу — админ видит их в привычном
+// виде, без доступа в саму базу данных (Supabase). Если Google недоступен —
+// сама запись клиента всё равно должна пройти, поэтому все функции здесь
+// ловят свои ошибки и никогда не бросают наружу
 
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -49,12 +49,101 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
+
+async function sheetsRequest(sheetId: string, path: string, init: RequestInit = {}): Promise<any> {
+  const token = await getAccessToken();
+  const res = await fetch(`${SHEETS_API}/${sheetId}${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
+}
+
+// Список названий вкладок — короткий кэш, чтобы не запрашивать при каждой
+// записи подряд (например несколько записей на один день)
+let titlesCache: { titles: Set<string>; expiresAt: number } | null = null;
+
+async function getSheetTitles(sheetId: string): Promise<Set<string>> {
+  if (titlesCache && titlesCache.expiresAt > Date.now()) return titlesCache.titles;
+  const data = await sheetsRequest(sheetId, "");
+  const titles = new Set<string>(data.sheets.map((s: any) => s.properties.title));
+  titlesCache = { titles, expiresAt: Date.now() + 60_000 };
+  return titles;
+}
+
+async function ensureSheetExists(sheetId: string, title: string, header: string[]): Promise<void> {
+  const titles = await getSheetTitles(sheetId);
+  if (titles.has(title)) return;
+
+  await sheetsRequest(sheetId, ":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+  });
+  titlesCache = null;
+
+  await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${title}'!A1`)}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [header] }),
+  });
+}
+
+function dateKeyOf(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+}
+
+function formatDisplay(iso: string): string {
+  return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+}
+
+const CLIENTS_SHEET = "Клиенты";
+const CLIENTS_HEADER = ["Имя", "Контакт", "Визитов", "Последний визит", "Потрачено", "ID"];
+
+async function upsertClient(
+  sheetId: string,
+  params: { key: string; name: string; contact: string; visitDate: string }
+): Promise<void> {
+  await ensureSheetExists(sheetId, CLIENTS_SHEET, CLIENTS_HEADER);
+
+  const data = await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:F`)}`);
+  const rows: string[][] = data.values ?? [];
+  const rowIndex = rows.findIndex((r, i) => i > 0 && r[5] === params.key);
+
+  if (rowIndex === -1) {
+    await sheetsRequest(
+      sheetId,
+      `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:F`)}:append?valueInputOption=USER_ENTERED`,
+      {
+        method: "POST",
+        body: JSON.stringify({ values: [[params.name, params.contact, 1, params.visitDate, 0, params.key]] }),
+      }
+    );
+    return;
+  }
+
+  const visits = (parseInt(rows[rowIndex][2], 10) || 0) + 1;
+  const sheetRow = rowIndex + 1;
+  await sheetsRequest(
+    sheetId,
+    `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A${sheetRow}:D${sheetRow}`)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ values: [[params.name, params.contact, visits, params.visitDate]] }),
+    }
+  );
+}
+
 export interface SheetBookingRow {
   clientName: string;
   contact: string;
+  clientKey: string;
   serviceName: string;
   masterName: string;
-  startsAt: string;
+  startsAtIso: string;
   price: number;
 }
 
@@ -64,21 +153,42 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
   if (!sheetId) return;
 
   try {
-    const token = await getAccessToken();
-    const res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:F:append?valueInputOption=USER_ENTERED`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          values: [[row.clientName, row.contact, row.serviceName, row.masterName, row.startsAt, row.price]],
-        }),
-      }
-    );
-    if (!res.ok) {
-      console.warn("Google Sheets: не удалось записать строку", await res.text());
-    }
+    const dayTitle = dateKeyOf(row.startsAtIso);
+    const display = formatDisplay(row.startsAtIso);
+
+    await ensureSheetExists(sheetId, dayTitle, ["Имя", "Контакт", "Услуга", "Мастер", "Время", "Цена"]);
+    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${dayTitle}'!A:F`)}:append?valueInputOption=USER_ENTERED`, {
+      method: "POST",
+      body: JSON.stringify({
+        values: [[row.clientName, row.contact, row.serviceName, row.masterName, display, row.price]],
+      }),
+    });
+
+    await upsertClient(sheetId, { key: row.clientKey, name: row.clientName, contact: row.contact, visitDate: display });
   } catch (err) {
     console.warn("Google Sheets: ошибка записи", err instanceof Error ? err.message : err);
+  }
+}
+
+// Мастер отметил визит выполненным — прибавляем сумму клиенту в «Клиенты».
+// Если клиента там ещё нет (Google был недоступен при создании записи) — тихо пропускаем
+export async function addClientSpend(clientKey: string, amount: number): Promise<void> {
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  if (!sheetId) return;
+
+  try {
+    const data = await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:F`)}`);
+    const rows: string[][] = data.values ?? [];
+    const rowIndex = rows.findIndex((r, i) => i > 0 && r[5] === clientKey);
+    if (rowIndex === -1) return;
+
+    const current = parseInt((rows[rowIndex][4] ?? "0").toString().replace(/\D/g, ""), 10) || 0;
+    const sheetRow = rowIndex + 1;
+    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!E${sheetRow}`)}?valueInputOption=USER_ENTERED`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [[current + amount]] }),
+    });
+  } catch (err) {
+    console.warn("Google Sheets: ошибка обновления суммы клиента", err instanceof Error ? err.message : err);
   }
 }
