@@ -141,7 +141,7 @@ function formatDisplay(iso: string): string {
 }
 
 const CLIENTS_SHEET = "Клиенты";
-const CLIENTS_HEADER = ["Имя", "Контакт", "Визитов", "Последний визит", "Потрачено", "ID"];
+const CLIENTS_HEADER = ["Имя", "Контакт", "Визитов", "Последний визит", "Потрачено", "ID", "Аллергии", "Комментарий"];
 
 async function upsertClient(
   sheetId: string,
@@ -156,10 +156,10 @@ async function upsertClient(
   if (rowIndex === -1) {
     await sheetsRequest(
       sheetId,
-      `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:F`)}:append?valueInputOption=USER_ENTERED`,
+      `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:H`)}:append?valueInputOption=USER_ENTERED`,
       {
         method: "POST",
-        body: JSON.stringify({ values: [[params.name, params.contact, 1, params.visitDate, 0, params.key]] }),
+        body: JSON.stringify({ values: [[params.name, params.contact, 1, params.visitDate, 0, params.key, "", ""]] }),
       }
     );
     return;
@@ -175,6 +175,42 @@ async function upsertClient(
       body: JSON.stringify({ values: [[params.name, params.contact, visits, params.visitDate]] }),
     }
   );
+}
+
+// Заметка об аллергии или комментарий админа сохранились — обновляем нужный
+// столбец в уже существующей строке клиента. Если строки ещё нет (например
+// заметку сохранили до самой первой записи) — тихо ничего не делаем, при
+// следующей записи строка появится, а заметку можно будет обновить снова
+export async function syncClientExtraField(
+  field: "note" | "comment",
+  clientKey: string,
+  value: string | null
+): Promise<void> {
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  if (!sheetId) return;
+
+  return runSerialized(async () => {
+    try {
+      await ensureSheetExists(sheetId, CLIENTS_SHEET, CLIENTS_HEADER);
+      const data = await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!A:H`)}`);
+      const rows: string[][] = data.values ?? [];
+      const rowIndex = rows.findIndex((r, i) => i > 0 && r[5] === clientKey);
+      if (rowIndex === -1) return;
+
+      const column = field === "note" ? "G" : "H";
+      const sheetRow = rowIndex + 1;
+      await sheetsRequest(
+        sheetId,
+        `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!${column}${sheetRow}`)}?valueInputOption=USER_ENTERED`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ values: [[value ?? ""]] }),
+        }
+      );
+    } catch (err) {
+      console.warn("Google Sheets: ошибка синхронизации заметки/комментария", err instanceof Error ? err.message : err);
+    }
+  });
 }
 
 export interface SheetBookingRow {

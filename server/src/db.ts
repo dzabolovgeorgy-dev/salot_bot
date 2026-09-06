@@ -85,13 +85,16 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,
       client_telegram_id BIGINT UNIQUE,
-      note TEXT NOT NULL,
+      note TEXT,
       updated_at TIMESTAMP NOT NULL DEFAULT now(),
-      client_phone TEXT
+      client_phone TEXT,
+      admin_comment TEXT
     );
 
     ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS client_phone TEXT;
     ALTER TABLE client_notes ALTER COLUMN client_telegram_id DROP NOT NULL;
+    ALTER TABLE client_notes ALTER COLUMN note DROP NOT NULL;
+    ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS admin_comment TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS client_notes_phone_key ON client_notes (client_phone);
   `);
 

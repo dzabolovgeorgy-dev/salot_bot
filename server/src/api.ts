@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
-import { appendBookingRow, addClientSpend } from "./sheets.js";
+import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 
 export const api = Router();
 
@@ -964,11 +964,16 @@ api.get("/client-notes/:clientTelegramId", async (req, res) => {
     return;
   }
 
-  const { rows } = await db.query("SELECT note, updated_at FROM client_notes WHERE client_telegram_id = $1", [
-    clientTelegramId,
-  ]);
-  const row = rows[0] as { note: string; updated_at: string } | undefined;
-  res.json(row ? { note: row.note, updated_at: toIso(row.updated_at) } : { note: null, updated_at: null });
+  const { rows } = await db.query(
+    "SELECT note, admin_comment, updated_at FROM client_notes WHERE client_telegram_id = $1",
+    [clientTelegramId]
+  );
+  const row = rows[0] as { note: string | null; admin_comment: string | null; updated_at: string } | undefined;
+  res.json(
+    row
+      ? { note: row.note, admin_comment: row.admin_comment, updated_at: toIso(row.updated_at) }
+      : { note: null, admin_comment: null, updated_at: null }
+  );
 });
 
 interface ClientNoteBody {
@@ -990,6 +995,7 @@ api.put("/client-notes/:clientTelegramId", async (req, res) => {
      RETURNING note, updated_at`,
     [clientTelegramId, note]
   );
+  syncClientExtraField("note", String(clientTelegramId), note);
   res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
 });
 
@@ -1002,9 +1008,16 @@ api.get("/client-notes/by-phone/:phone", async (req, res) => {
     return;
   }
 
-  const { rows } = await db.query("SELECT note, updated_at FROM client_notes WHERE client_phone = $1", [phone]);
-  const row = rows[0] as { note: string; updated_at: string } | undefined;
-  res.json(row ? { note: row.note, updated_at: toIso(row.updated_at) } : { note: null, updated_at: null });
+  const { rows } = await db.query(
+    "SELECT note, admin_comment, updated_at FROM client_notes WHERE client_phone = $1",
+    [phone]
+  );
+  const row = rows[0] as { note: string | null; admin_comment: string | null; updated_at: string } | undefined;
+  res.json(
+    row
+      ? { note: row.note, admin_comment: row.admin_comment, updated_at: toIso(row.updated_at) }
+      : { note: null, admin_comment: null, updated_at: null }
+  );
 });
 
 api.put("/client-notes/by-phone/:phone", async (req, res) => {
@@ -1022,7 +1035,54 @@ api.put("/client-notes/by-phone/:phone", async (req, res) => {
      RETURNING note, updated_at`,
     [phone, note]
   );
+  syncClientExtraField("note", phone, note);
   res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
+});
+
+interface AdminCommentBody {
+  telegram_id: number;
+  client_telegram_id?: number;
+  client_phone?: string;
+  comment: string;
+}
+
+// Комментарий администратора о клиенте — отдельно от заметки об аллергии
+// (ту может писать и клиент, и мастер; этот — только админ, для себя)
+api.put("/staff/client-comment", async (req, res) => {
+  const { telegram_id, client_telegram_id, client_phone, comment } = req.body as Partial<AdminCommentBody>;
+  if (!telegram_id || !(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  if (!client_telegram_id && !client_phone) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const rows = client_telegram_id
+    ? (
+        await db.query(
+          `INSERT INTO client_notes (client_telegram_id, admin_comment, updated_at)
+           VALUES ($1, $2, now())
+           ON CONFLICT (client_telegram_id) DO UPDATE SET admin_comment = $2, updated_at = now()
+           RETURNING admin_comment, updated_at`,
+          [client_telegram_id, comment ?? null]
+        )
+      ).rows
+    : (
+        await db.query(
+          `INSERT INTO client_notes (client_phone, admin_comment, updated_at)
+           VALUES ($1, $2, now())
+           ON CONFLICT (client_phone) DO UPDATE SET admin_comment = $2, updated_at = now()
+           RETURNING admin_comment, updated_at`,
+          [normalizePhone(client_phone!), comment ?? null]
+        )
+      ).rows;
+
+  const clientKey = client_telegram_id ? String(client_telegram_id) : normalizePhone(client_phone!);
+  syncClientExtraField("comment", clientKey, comment ?? null);
+
+  res.json({ admin_comment: rows[0].admin_comment, updated_at: toIso(rows[0].updated_at) });
 });
 
 api.get("/staff", async (req, res) => {

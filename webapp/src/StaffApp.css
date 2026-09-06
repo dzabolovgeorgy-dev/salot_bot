@@ -753,6 +753,15 @@
   color: var(--text-h);
 }
 
+.staff-comment-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-h);
+  margin: 12px 0 8px;
+}
+
 .staff-checkbox-row {
   display: flex;
   flex-direction: row;

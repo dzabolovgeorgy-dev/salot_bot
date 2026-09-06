@@ -35,6 +35,9 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
   const [selectedClient, setSelectedClient] = useState<ClientSummary | null>(null)
   const [clientVisits, setClientVisits] = useState<ClientVisit[]>([])
   const [clientVisitsLoading, setClientVisitsLoading] = useState(false)
+  const [clientNote, setClientNote] = useState<string | null>(null)
+  const [comment, setComment] = useState('')
+  const [commentSaving, setCommentSaving] = useState(false)
 
   async function loadClients() {
     setLoading(true)
@@ -71,11 +74,49 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     } finally {
       setClientVisitsLoading(false)
     }
+
+    try {
+      const noteUrl = c.client_telegram_id
+        ? `${API_URL}/api/client-notes/${c.client_telegram_id}`
+        : `${API_URL}/api/client-notes/by-phone/${c.client_phone}`
+      const noteRes = await fetch(noteUrl)
+      const noteData = await noteRes.json()
+      setClientNote(noteData.note)
+      setComment(noteData.admin_comment ?? '')
+    } catch {
+      // тихо — заметка/комментарий необязательны для показа карточки
+    }
   }
 
   function closeClient() {
     setSelectedClient(null)
     setClientVisits([])
+    setClientNote(null)
+    setComment('')
+  }
+
+  async function saveComment() {
+    if (!selectedClient) return
+    setCommentSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/client-comment`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          client_telegram_id: selectedClient.client_telegram_id ?? undefined,
+          client_phone: selectedClient.client_telegram_id ? undefined : selectedClient.client_phone,
+          comment: comment.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setCommentSaving(false)
+    }
   }
 
   return (
@@ -148,6 +189,27 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
               <span className="staff-client-stat-label">потрачено</span>
             </div>
           </div>
+
+          {clientNote && (
+            <div className="staff-note-warning">
+              <span className="staff-note-warning-label">⚠ Аллергии/особенности</span>
+              <p>{clientNote}</p>
+            </div>
+          )}
+
+          <label className="staff-comment-label">
+            Комментарий администратора
+            <textarea
+              className="staff-note-textarea"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Например: VIP-клиент, предпочитает утренние часы…"
+              rows={3}
+            />
+          </label>
+          <button type="button" className="staff-add-btn" disabled={commentSaving} onClick={saveComment}>
+            {commentSaving ? 'Сохранение…' : 'Сохранить комментарий'}
+          </button>
 
           {clientVisitsLoading ? (
             <p className="staff-empty">Загрузка…</p>
