@@ -19,6 +19,22 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
+// Заметка об аллергии и комментарий админа на момент создания записи —
+// чтобы сразу были видны в журнале записей в Google Таблице, а не только
+// в «Клиентах». Если у клиента их ещё нет — вернёт пустые значения
+async function getClientExtraFields(
+  clientTelegramId: number | null,
+  clientPhone: string | null
+): Promise<{ note: string | null; adminComment: string | null }> {
+  const { rows } = await db.query(
+    clientTelegramId
+      ? "SELECT note, admin_comment FROM client_notes WHERE client_telegram_id = $1"
+      : "SELECT note, admin_comment FROM client_notes WHERE client_phone = $1",
+    [clientTelegramId ?? clientPhone]
+  );
+  return { note: rows[0]?.note ?? null, adminComment: rows[0]?.admin_comment ?? null };
+}
+
 function formatRuDateTime(value: string): string {
   return new Date(toIso(value)).toLocaleString("ru-RU", {
     day: "numeric",
@@ -295,14 +311,18 @@ api.post("/bookings", async (req, res) => {
   );
   notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
 
-  appendBookingRow({
-    clientName: client_name ?? "Клиент",
-    contact: client_username ? `@${client_username}` : `Telegram ID: ${client_telegram_id}`,
-    clientKey: String(client_telegram_id),
-    serviceName: service.name,
-    masterName: master.name,
-    startsAtIso: starts_at,
-    price: service.price,
+  getClientExtraFields(client_telegram_id, null).then(({ note, adminComment }) => {
+    appendBookingRow({
+      clientName: client_name ?? "Клиент",
+      contact: client_username ? `@${client_username}` : `Telegram ID: ${client_telegram_id}`,
+      clientKey: String(client_telegram_id),
+      serviceName: service.name,
+      masterName: master.name,
+      startsAtIso: starts_at,
+      price: service.price,
+      allergyNote: note,
+      adminComment,
+    });
   });
 
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
@@ -392,14 +412,18 @@ api.post("/staff/bookings", async (req, res) => {
   }
   notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
 
-  appendBookingRow({
-    clientName: client_name.trim(),
-    contact: client_telegram_id ? `Telegram ID: ${client_telegram_id}` : (normalizedPhone ?? "-"),
-    clientKey: client_telegram_id ? String(client_telegram_id) : (normalizedPhone ?? ""),
-    serviceName: service.name,
-    masterName: master.name,
-    startsAtIso: starts_at,
-    price: service.price,
+  getClientExtraFields(client_telegram_id ?? null, normalizedPhone).then(({ note, adminComment }) => {
+    appendBookingRow({
+      clientName: client_name.trim(),
+      contact: client_telegram_id ? `Telegram ID: ${client_telegram_id}` : (normalizedPhone ?? "-"),
+      clientKey: client_telegram_id ? String(client_telegram_id) : (normalizedPhone ?? ""),
+      serviceName: service.name,
+      masterName: master.name,
+      startsAtIso: starts_at,
+      price: service.price,
+      allergyNote: note,
+      adminComment,
+    });
   });
 
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });

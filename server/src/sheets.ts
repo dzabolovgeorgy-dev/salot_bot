@@ -221,6 +221,8 @@ export interface SheetBookingRow {
   masterName: string;
   startsAtIso: string;
   price: number;
+  allergyNote?: string | null;
+  adminComment?: string | null;
 }
 
 // Никогда не бросает наружу — сбой Google Таблицы не должен ломать запись клиента
@@ -233,8 +235,10 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
     const monthTitle = monthTitleOf(row.startsAtIso);
     const display = formatDisplay(row.startsAtIso);
 
-    await ensureSheetExists(sheetId, monthTitle, ["Дата", "Имя", "Контакт", "Услуга", "Мастер", "Время", "Цена"]);
-    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${monthTitle}'!A:G`)}:append?valueInputOption=USER_ENTERED`, {
+    await ensureSheetExists(sheetId, monthTitle, [
+      "Дата", "Имя", "Контакт", "Услуга", "Мастер", "Время", "Цена", "Аллергии", "Комментарий",
+    ]);
+    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${monthTitle}'!A:I`)}:append?valueInputOption=USER_ENTERED`, {
       method: "POST",
       body: JSON.stringify({
         values: [
@@ -246,6 +250,8 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
             row.masterName,
             timeDisplay(row.startsAtIso),
             row.price,
+            row.allergyNote ?? "",
+            row.adminComment ?? "",
           ],
         ],
       }),
