@@ -72,7 +72,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
-  const [scheduleEnabled, setScheduleEnabled] = useState(false)
+  const [scheduleMode, setScheduleMode] = useState<'none' | 'weekdays' | 'cycle'>('none')
+  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([])
   const [scheduleAnchorInput, setScheduleAnchorInput] = useState(todayKey())
   const [workDaysInput, setWorkDaysInput] = useState('2')
   const [offDaysInput, setOffDaysInput] = useState('2')
@@ -191,14 +192,28 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   // Подтягиваем текущий график мастера в форму, как только список мастеров загрузился
   useEffect(() => {
     if (!myMaster) return
-    setScheduleEnabled(!!(myMaster.schedule_anchor && myMaster.work_days && myMaster.off_days))
+    setScheduleMode(myMaster.schedule_type ?? 'none')
+    setSelectedWeekdays(myMaster.work_weekdays ?? [])
     setScheduleAnchorInput(myMaster.schedule_anchor ?? todayKey())
     setWorkDaysInput(myMaster.work_days ? String(myMaster.work_days) : '2')
     setOffDaysInput(myMaster.off_days ? String(myMaster.off_days) : '2')
     setWorkStartInput(myMaster.work_start_time ?? '09:00')
     setWorkEndInput(myMaster.work_end_time ?? '20:00')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myMaster?.schedule_anchor, myMaster?.work_days, myMaster?.off_days, myMaster?.work_start_time, myMaster?.work_end_time])
+  }, [
+    myMaster?.schedule_type,
+    myMaster?.schedule_anchor,
+    myMaster?.work_days,
+    myMaster?.off_days,
+    myMaster?.work_weekdays,
+    myMaster?.work_start_time,
+    myMaster?.work_end_time,
+  ])
+
+  function toggleWeekday(day: number) {
+    setSelectedWeekdays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()))
+    setScheduleSaved(false)
+  }
 
   async function saveMySchedule(e: FormEvent) {
     e.preventDefault()
@@ -211,9 +226,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           telegram_id: telegramId,
-          schedule_anchor: scheduleEnabled ? scheduleAnchorInput : null,
-          work_days: scheduleEnabled ? Number(workDaysInput) : null,
-          off_days: scheduleEnabled ? Number(offDaysInput) : null,
+          schedule_type: scheduleMode,
+          schedule_anchor: scheduleMode === 'cycle' ? scheduleAnchorInput : null,
+          work_days: scheduleMode === 'cycle' ? Number(workDaysInput) : null,
+          off_days: scheduleMode === 'cycle' ? Number(offDaysInput) : null,
+          work_weekdays: scheduleMode === 'weekdays' ? selectedWeekdays : null,
           work_start_time: workStartInput,
           work_end_time: workEndInput,
         }),
@@ -225,9 +242,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           m.id === masterId
             ? {
                 ...m,
+                schedule_type: data.schedule_type,
                 schedule_anchor: data.schedule_anchor,
                 work_days: data.work_days,
                 off_days: data.off_days,
+                work_weekdays: data.work_weekdays,
                 work_start_time: data.work_start_time,
                 work_end_time: data.work_end_time,
               }
@@ -524,9 +543,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const scheduleTodayIsWorkDay = myMaster
     ? isWorkDay(todayKey(), {
         ...myMaster,
-        schedule_anchor: scheduleEnabled ? scheduleAnchorInput : null,
-        work_days: scheduleEnabled ? Number(workDaysInput) || null : null,
-        off_days: scheduleEnabled ? Number(offDaysInput) || null : null,
+        schedule_type: scheduleMode === 'none' ? null : scheduleMode,
+        schedule_anchor: scheduleMode === 'cycle' ? scheduleAnchorInput : null,
+        work_days: scheduleMode === 'cycle' ? Number(workDaysInput) || null : null,
+        off_days: scheduleMode === 'cycle' ? Number(offDaysInput) || null : null,
+        work_weekdays: scheduleMode === 'weekdays' ? selectedWeekdays : null,
       })
     : true
 
@@ -1094,10 +1115,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       {activeTab === 'myschedule' && myMaster && (
         <section className="staff-admin-form">
           <h3>Мой график работы</h3>
-          <p className="staff-form-hint">
-            Повторяющийся цикл: сколько дней подряд работаете, потом сколько дней выходной. Если график выключен —
-            доступны все дни без ограничений.
-          </p>
           <form onSubmit={saveMySchedule}>
             <label>
               Начало рабочего дня
@@ -1123,18 +1140,66 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 required
               />
             </label>
-            <label className="staff-checkbox-row">
-              <input
-                type="checkbox"
-                checked={scheduleEnabled}
-                onChange={(e) => {
-                  setScheduleEnabled(e.target.checked)
-                  setScheduleSaved(false)
-                }}
-              />
-              Работаю по графику (не каждый день)
-            </label>
-            {scheduleEnabled && (
+
+            <div className="staff-checkbox-group">
+              <span className="staff-checkbox-label">Какие дни работаю</span>
+              <label className="staff-checkbox-row">
+                <input
+                  type="radio"
+                  name="schedule-mode"
+                  checked={scheduleMode === 'none'}
+                  onChange={() => {
+                    setScheduleMode('none')
+                    setScheduleSaved(false)
+                  }}
+                />
+                Работаю всегда, без графика
+              </label>
+              <label className="staff-checkbox-row">
+                <input
+                  type="radio"
+                  name="schedule-mode"
+                  checked={scheduleMode === 'weekdays'}
+                  onChange={() => {
+                    setScheduleMode('weekdays')
+                    setScheduleSaved(false)
+                  }}
+                />
+                По дням недели (например, вт–сб)
+              </label>
+              <label className="staff-checkbox-row">
+                <input
+                  type="radio"
+                  name="schedule-mode"
+                  checked={scheduleMode === 'cycle'}
+                  onChange={() => {
+                    setScheduleMode('cycle')
+                    setScheduleSaved(false)
+                  }}
+                />
+                Скользящий график (N дней работаю, потом N выходных)
+              </label>
+            </div>
+
+            {scheduleMode === 'weekdays' && (
+              <div>
+                <span className="staff-checkbox-label">Рабочие дни</span>
+                <div className="staff-time-grid">
+                  {WEEKDAY_LABELS.map((label, i) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={`staff-time-slot${selectedWeekdays.includes(i) ? ' active' : ''}`}
+                      onClick={() => toggleWeekday(i)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {scheduleMode === 'cycle' && (
               <>
                 <label>
                   Работаю подряд (дней)
@@ -1176,6 +1241,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 </label>
               </>
             )}
+
             <button type="submit" disabled={scheduleSaving}>
               {scheduleSaving ? 'Сохранение…' : 'Сохранить график'}
             </button>

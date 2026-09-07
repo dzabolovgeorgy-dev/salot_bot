@@ -23,7 +23,13 @@ export async function initDb(): Promise<void> {
       work_days INTEGER,
       off_days INTEGER,
       work_start_time TEXT NOT NULL DEFAULT '09:00',
-      work_end_time TEXT NOT NULL DEFAULT '20:00'
+      work_end_time TEXT NOT NULL DEFAULT '20:00',
+      -- 'cycle' = скользящий график (work_days/off_days), 'weekdays' = фиксированные
+      -- дни недели (work_weekdays), NULL = графика нет, работает всегда.
+      -- Проверка допустимых значений — на уровне приложения, не CHECK-constraint,
+      -- чтобы не усложнять идемпотентную миграцию при повторных запусках
+      schedule_type TEXT,
+      work_weekdays INTEGER[]
     );
 
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_anchor DATE;
@@ -31,6 +37,12 @@ export async function initDb(): Promise<void> {
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS off_days INTEGER;
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_start_time TEXT NOT NULL DEFAULT '09:00';
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_end_time TEXT NOT NULL DEFAULT '20:00';
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_type TEXT;
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_weekdays INTEGER[];
+    -- Мастера с уже заданным циклическим графиком (work_days/off_days) считаем
+    -- schedule_type='cycle' задним числом, чтобы их график не "потерялся"
+    UPDATE masters SET schedule_type = 'cycle'
+      WHERE schedule_type IS NULL AND schedule_anchor IS NOT NULL AND work_days IS NOT NULL AND off_days IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS services (
       id SERIAL PRIMARY KEY,

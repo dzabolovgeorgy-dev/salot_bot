@@ -1,9 +1,17 @@
 import type { Master } from './types'
 
-// Расчёт графика "N дней работает — N выходных", крутится по кругу от
-// даты начала (schedule_anchor). Без графика мастер работает всегда.
+// Два вида графика: 'cycle' — скользящий "N дней работает — N выходной" по
+// кругу от schedule_anchor; 'weekdays' — фиксированные дни недели (0=Пн…6=Вс,
+// как WEEKDAY_LABELS в calendar.ts). Без schedule_type мастер работает всегда.
 // Тот же расчёт используется на сервере (server/src/api.ts) — держать в синхроне
 export function isWorkDay(dateKey: string, master: Master): boolean {
+  if (master.schedule_type === 'weekdays') {
+    if (!master.work_weekdays || master.work_weekdays.length === 0) return true
+    const jsDay = new Date(`${dateKey}T00:00:00`).getDay()
+    const weekday = (jsDay + 6) % 7
+    return master.work_weekdays.includes(weekday)
+  }
+  if (master.schedule_type !== 'cycle') return true
   if (!master.schedule_anchor || !master.work_days || !master.off_days) return true
   const anchor = new Date(`${master.schedule_anchor}T00:00:00`)
   const date = new Date(`${dateKey}T00:00:00`)
