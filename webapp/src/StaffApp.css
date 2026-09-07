@@ -79,6 +79,30 @@
   border-color: var(--primary);
 }
 
+.staff-schedule-toggle {
+  margin-bottom: 14px;
+}
+
+.staff-more-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.staff-more-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
 .staff-month-day--off {
   color: var(--text);
   opacity: 0.35;

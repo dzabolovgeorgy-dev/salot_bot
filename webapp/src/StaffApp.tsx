@@ -9,7 +9,7 @@ import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule'
+type StaffTab = 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more'
 
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
@@ -59,7 +59,7 @@ function normalizePhoneForLink(phone: string): string {
 }
 
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
-  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'profile' : 'schedule')
+  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -668,29 +668,30 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         {role === 'master' && (
           <button
             type="button"
-            className={activeTab === 'profile' ? 'active' : ''}
-            onClick={() => setActiveTab('profile')}
+            className={activeTab === 'today' || activeTab === 'week' ? 'active' : ''}
+            onClick={() => {
+              if (activeTab !== 'today' && activeTab !== 'week') setActiveTab('today')
+            }}
           >
-            Профиль
-          </button>
-        )}
-        {role === 'master' && (
-          <button type="button" className={activeTab === 'today' ? 'active' : ''} onClick={() => setActiveTab('today')}>
-            Мой день
-          </button>
-        )}
-        {role === 'master' && (
-          <button type="button" className={activeTab === 'week' ? 'active' : ''} onClick={() => setActiveTab('week')}>
-            Неделя
+            📅 Расписание
           </button>
         )}
         {role === 'master' && (
           <button
             type="button"
-            className={activeTab === 'myschedule' ? 'active' : ''}
-            onClick={() => setActiveTab('myschedule')}
+            className={activeTab === 'profile' ? 'active' : ''}
+            onClick={() => setActiveTab('profile')}
           >
-            Мой график
+            👤 Профиль
+          </button>
+        )}
+        {role === 'master' && (
+          <button
+            type="button"
+            className={activeTab === 'more' || activeTab === 'myschedule' || activeTab === 'block' ? 'active' : ''}
+            onClick={() => setActiveTab('more')}
+          >
+            ⚙️ Ещё
           </button>
         )}
         {role === 'admin' && (
@@ -702,9 +703,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             Расписание
           </button>
         )}
-        <button type="button" className={activeTab === 'block' ? 'active' : ''} onClick={() => setActiveTab('block')}>
-          Заблокировать время
-        </button>
+        {role === 'admin' && (
+          <button type="button" className={activeTab === 'block' ? 'active' : ''} onClick={() => setActiveTab('block')}>
+            Заблокировать время
+          </button>
+        )}
         {role === 'admin' && (
           <button type="button" className={activeTab === 'clients' ? 'active' : ''} onClick={() => setActiveTab('clients')}>
             Клиенты
@@ -724,6 +727,28 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       )}
 
       {error && <div className="staff-error">{error}</div>}
+
+      {role === 'master' && (activeTab === 'today' || activeTab === 'week') && !selectedBooking && !notePromptBooking && (
+        <div className="staff-mode-toggle staff-schedule-toggle">
+          <button type="button" className={activeTab === 'today' ? 'active' : ''} onClick={() => setActiveTab('today')}>
+            Сегодня
+          </button>
+          <button type="button" className={activeTab === 'week' ? 'active' : ''} onClick={() => setActiveTab('week')}>
+            Неделя
+          </button>
+        </div>
+      )}
+
+      {role === 'master' && activeTab === 'more' && (
+        <section className="staff-more-menu">
+          <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('myschedule')}>
+            🗓 Мой график
+          </button>
+          <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
+            🚫 Заблокировать время
+          </button>
+        </section>
+      )}
 
       {activeTab === 'today' && !selectedBooking && !notePromptBooking && (
         <section className="staff-schedule">
@@ -1156,6 +1181,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       {activeTab === 'block' && (
         <section className="staff-block-form">
+          {role === 'master' && (
+            <button type="button" className="staff-back-btn" onClick={() => setActiveTab('more')}>
+              ← Ещё
+            </button>
+          )}
           <form onSubmit={submitBlock}>
             {role === 'admin' ? (
               <label>
@@ -1327,6 +1357,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
       {activeTab === 'myschedule' && myMaster && (
         <section className="staff-admin-form">
+          <button type="button" className="staff-back-btn" onClick={() => setActiveTab('more')}>
+            ← Ещё
+          </button>
           <h3>Мой график работы</h3>
 
           <div className="staff-shift-row">
