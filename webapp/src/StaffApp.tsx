@@ -785,8 +785,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             type="button"
             className="staff-hub-cta"
             onClick={() => {
-              setNewBookingMasterId(masterId ?? '')
-              setShowNewBooking((v) => !v)
+              const opening = !showNewBooking
+              if (opening) {
+                setNewBookingMasterId(masterId ?? '')
+                setDate(todayKey())
+              }
+              setShowNewBooking(opening)
             }}
           >
             {showNewBooking ? 'Отмена' : '+ Новая запись'}
@@ -797,7 +801,13 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               <p className="staff-form-hint">Для клиента, который позвонил или написал в WhatsApp, а не в Mini App.</p>
               <label>
                 Дата
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+                <input
+                  type="date"
+                  value={date}
+                  min={todayKey()}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
+                />
               </label>
               <label>
                 Услуга
