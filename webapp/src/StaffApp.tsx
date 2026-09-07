@@ -9,7 +9,7 @@ import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage'
+type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule'
 
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
@@ -82,6 +82,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [scheduleEnabled, setScheduleEnabled] = useState(false)
+  const [scheduleAnchorInput, setScheduleAnchorInput] = useState(todayKey())
+  const [workDaysInput, setWorkDaysInput] = useState('2')
+  const [offDaysInput, setOffDaysInput] = useState('2')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleSaved, setScheduleSaved] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blocks, setBlocks] = useState<BlockedSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -187,6 +193,51 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       .then(setServices)
       .catch(() => {})
   }, [])
+
+  const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
+
+  // Подтягиваем текущий график мастера в форму, как только список мастеров загрузился
+  useEffect(() => {
+    if (!myMaster) return
+    setScheduleEnabled(!!(myMaster.schedule_anchor && myMaster.work_days && myMaster.off_days))
+    setScheduleAnchorInput(myMaster.schedule_anchor ?? todayKey())
+    setWorkDaysInput(myMaster.work_days ? String(myMaster.work_days) : '2')
+    setOffDaysInput(myMaster.off_days ? String(myMaster.off_days) : '2')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myMaster?.schedule_anchor, myMaster?.work_days, myMaster?.off_days])
+
+  async function saveMySchedule(e: FormEvent) {
+    e.preventDefault()
+    setScheduleSaving(true)
+    setScheduleSaved(false)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/my-schedule`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          schedule_anchor: scheduleEnabled ? scheduleAnchorInput : null,
+          work_days: scheduleEnabled ? Number(workDaysInput) : null,
+          off_days: scheduleEnabled ? Number(offDaysInput) : null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+      setMasters((prev) =>
+        prev.map((m) =>
+          m.id === masterId
+            ? { ...m, schedule_anchor: data.schedule_anchor, work_days: data.work_days, off_days: data.off_days }
+            : m
+        )
+      )
+      setScheduleSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
 
   async function loadSchedule() {
     setLoading(true)
@@ -467,6 +518,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     ...blocks.map((b) => ({ kind: 'block' as const, time: formatTime(b.starts_at), block: b })),
   ].sort((a, b) => a.time.localeCompare(b.time))
 
+  const scheduleTodayIsWorkDay = myMaster
+    ? isWorkDay(todayKey(), {
+        ...myMaster,
+        schedule_anchor: scheduleEnabled ? scheduleAnchorInput : null,
+        work_days: scheduleEnabled ? Number(workDaysInput) || null : null,
+        off_days: scheduleEnabled ? Number(offDaysInput) || null : null,
+      })
+    : true
+
   return (
     <div className="staff-app">
       <header className="staff-header">
@@ -483,6 +543,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         {role === 'master' && (
           <button type="button" className={activeTab === 'week' ? 'active' : ''} onClick={() => setActiveTab('week')}>
             Неделя
+          </button>
+        )}
+        {role === 'master' && (
+          <button
+            type="button"
+            className={activeTab === 'myschedule' ? 'active' : ''}
+            onClick={() => setActiveTab('myschedule')}
+          >
+            Мой график
           </button>
         )}
         {role === 'admin' && (
@@ -1013,6 +1082,83 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {activeTab === 'myschedule' && myMaster && (
+        <section className="staff-admin-form">
+          <h3>Мой график работы</h3>
+          <p className="staff-form-hint">
+            Повторяющийся цикл: сколько дней подряд работаете, потом сколько дней выходной. Если график выключен —
+            доступны все дни без ограничений.
+          </p>
+          <form onSubmit={saveMySchedule}>
+            <label className="staff-checkbox-row">
+              <input
+                type="checkbox"
+                checked={scheduleEnabled}
+                onChange={(e) => {
+                  setScheduleEnabled(e.target.checked)
+                  setScheduleSaved(false)
+                }}
+              />
+              Работаю по графику (не каждый день)
+            </label>
+            {scheduleEnabled && (
+              <>
+                <label>
+                  Работаю подряд (дней)
+                  <input
+                    type="number"
+                    min={1}
+                    value={workDaysInput}
+                    onChange={(e) => {
+                      setWorkDaysInput(e.target.value)
+                      setScheduleSaved(false)
+                    }}
+                    required
+                  />
+                </label>
+                <label>
+                  Потом выходной (дней)
+                  <input
+                    type="number"
+                    min={1}
+                    value={offDaysInput}
+                    onChange={(e) => {
+                      setOffDaysInput(e.target.value)
+                      setScheduleSaved(false)
+                    }}
+                    required
+                  />
+                </label>
+                <label>
+                  Начиная с даты (в этот день — рабочий)
+                  <input
+                    type="date"
+                    value={scheduleAnchorInput}
+                    onChange={(e) => {
+                      setScheduleAnchorInput(e.target.value)
+                      setScheduleSaved(false)
+                    }}
+                    required
+                  />
+                </label>
+              </>
+            )}
+            <button type="submit" disabled={scheduleSaving}>
+              {scheduleSaving ? 'Сохранение…' : 'Сохранить график'}
+            </button>
+          </form>
+
+          <div className="staff-shift-row">
+            <span className={`staff-shift-chip${scheduleTodayIsWorkDay ? '' : ' staff-shift-chip--off'}`}>
+              Сегодня
+              <span className="staff-shift-dot" />
+              {scheduleTodayIsWorkDay ? 'рабочий день' : 'выходной'}
+            </span>
+          </div>
+          {scheduleSaved && <p className="staff-form-hint">Сохранено ✓ — видно клиентам и в вашем расписании сразу</p>}
         </section>
       )}
 

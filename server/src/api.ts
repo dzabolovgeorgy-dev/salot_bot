@@ -677,6 +677,47 @@ api.delete("/staff/blocked-slots/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+interface MyScheduleBody {
+  telegram_id: number;
+  schedule_anchor: string | null;
+  work_days: number | null;
+  off_days: number | null;
+}
+
+// Мастер сам настраивает свой повторяющийся график (N дней работает — N
+// выходной). Раньше это можно было поменять только напрямую в базе данных
+api.patch("/staff/my-schedule", async (req, res) => {
+  const { telegram_id, schedule_anchor, work_days, off_days } = req.body as Partial<MyScheduleBody>;
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  const role = await getRole(telegram_id);
+  if (role.role !== "master") {
+    res.status(403).json({ error: "Доступно только мастеру" });
+    return;
+  }
+
+  const hasSchedule = !!schedule_anchor && !!work_days && !!off_days;
+  const allEmpty = !schedule_anchor && !work_days && !off_days;
+  if (!hasSchedule && !allEmpty) {
+    res.status(400).json({ error: "Укажите дату начала и оба числа, либо уберите график полностью" });
+    return;
+  }
+  if (hasSchedule && (work_days! < 1 || off_days! < 1)) {
+    res.status(400).json({ error: "Число дней должно быть не меньше 1" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `UPDATE masters SET schedule_anchor = $1, work_days = $2, off_days = $3 WHERE id = $4
+     RETURNING id, name, schedule_anchor, work_days, off_days`,
+    [schedule_anchor ?? null, work_days ?? null, off_days ?? null, role.master_id]
+  );
+  res.json(rows[0]);
+});
+
 // ===== Управление мастерами, услугами и персоналом (только админ) =====
 
 interface MasterBody {
