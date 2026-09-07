@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
-import type { Master, Service, Booking } from './types'
+import type { Master, Service, Booking, MasterPhoto } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
 import { isWorkDay, generateTimeSlots } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
@@ -262,6 +262,8 @@ function App() {
   const [flowIndex, setFlowIndex] = useState(0)
   const [isDone, setIsDone] = useState(false)
   const [masterProfile, setMasterProfile] = useState<Master | null>(null)
+  const [masterProfilePhotos, setMasterProfilePhotos] = useState<MasterPhoto[]>([])
+  const [openPhoto, setOpenPhoto] = useState<MasterPhoto | null>(null)
 
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
@@ -420,10 +422,23 @@ function App() {
     setFlowIndex(0)
   }
 
+  // Фото работ мастера — подгружаем при открытии его профиля
+  useEffect(() => {
+    if (!masterProfile) {
+      setMasterProfilePhotos([])
+      return
+    }
+    fetch(`${API_URL}/api/masters/${masterProfile.id}/photos`)
+      .then((r) => r.json())
+      .then(setMasterProfilePhotos)
+      .catch(() => setMasterProfilePhotos([]))
+  }, [masterProfile])
+
   const goBack = () => {
     setError(null)
     if (masterProfile) {
       setMasterProfile(null)
+      setOpenPhoto(null)
       return
     }
     if (flowIndex === 0) exitFlow()
@@ -562,6 +577,23 @@ function App() {
         <div className="content">
           {error && <p className="error">{error}</p>}
           {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
+          {masterProfilePhotos.length > 0 && (
+            <>
+              <div className="section-title">Фото работ</div>
+              <div className="profile-portfolio-grid">
+                {masterProfilePhotos.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="profile-portfolio-thumb"
+                    onClick={() => setOpenPhoto(p)}
+                  >
+                    <img src={p.url} alt="Фото работы" />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <div className="section-title">Услуги мастера</div>
           <div className="list">
             {masterServices.map((s) => (
@@ -569,6 +601,11 @@ function App() {
             ))}
           </div>
         </div>
+        {openPhoto && (
+          <div className="profile-photo-lightbox" onClick={() => setOpenPhoto(null)}>
+            <img src={openPhoto.url} alt="Фото работы" />
+          </div>
+        )}
       </motion.div>
     )
   }

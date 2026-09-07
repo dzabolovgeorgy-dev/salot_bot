@@ -1025,6 +1025,47 @@
   line-height: 1.5;
 }
 
+.profile-portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.profile-portfolio-thumb {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  aspect-ratio: 1;
+  cursor: pointer;
+  background: var(--surface-muted);
+}
+
+.profile-portfolio-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-photo-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.profile-photo-lightbox img {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+}
+
 .error {
   color: var(--danger);
   font-size: 14px;
