@@ -69,7 +69,16 @@ function normalizePhoneForLink(phone: string): string {
 }
 
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
-  const [activeTab, setActiveTab] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
+  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
+
+  // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
+  // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
+  // даже если запись принадлежит другому дню
+  function setActiveTab(tab: StaffTab) {
+    setActiveTabRaw(tab)
+    setSelectedBooking(null)
+    setNotePromptBooking(null)
+  }
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
