@@ -14,6 +14,11 @@ export interface Master {
   work_end_time: string
 }
 
+export interface MasterPhoto {
+  id: number
+  url: string
+}
+
 export interface Service {
   id: number
   name: string

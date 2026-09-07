@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Master, Service, Booking, BlockedSlot } from './types'
+import type { Master, Service, Booking, BlockedSlot, MasterPhoto } from './types'
 import { isWorkDay, generateTimeSlots } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
@@ -9,7 +9,7 @@ import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule'
+type StaffTab = 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule'
 
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
@@ -59,7 +59,7 @@ function normalizePhoneForLink(phone: string): string {
 }
 
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
-  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
+  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'profile' : 'schedule')
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -82,6 +82,14 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [schedulePreviewMonth, setSchedulePreviewMonth] = useState(() => startOfMonth(new Date()))
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaved, setScheduleSaved] = useState(false)
+  const [bioInput, setBioInput] = useState('')
+  const [bioSaving, setBioSaving] = useState(false)
+  const [bioSaved, setBioSaved] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [profilePhotos, setProfilePhotos] = useState<MasterPhoto[]>([])
+  const [photosLoading, setPhotosLoading] = useState(true)
+  const [portfolioUploading, setPortfolioUploading] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState<MasterPhoto | null>(null)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blocks, setBlocks] = useState<BlockedSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -259,6 +267,101 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
       setScheduleSaving(false)
+    }
+  }
+
+  // Подтягиваем текущее описание "о себе" в форму, как только мастер загрузился
+  useEffect(() => {
+    if (myMaster) setBioInput(myMaster.bio ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myMaster?.bio])
+
+  async function saveBio(e: FormEvent) {
+    e.preventDefault()
+    setBioSaving(true)
+    setBioSaved(false)
+    setError('')
+    try {
+      const res = await fetch(`${API_URL}/api/staff/my-profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, bio: bioInput }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+      setMasters((prev) => prev.map((m) => (m.id === masterId ? { ...m, bio: data.bio } : m)))
+      setBioSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setBioSaving(false)
+    }
+  }
+
+  async function uploadAvatar(file: File) {
+    setAvatarUploading(true)
+    setError('')
+    try {
+      const form = new FormData()
+      form.append('telegram_id', String(telegramId))
+      form.append('photo', file)
+      const res = await fetch(`${API_URL}/api/staff/my-avatar`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
+      setMasters((prev) => prev.map((m) => (m.id === masterId ? { ...m, photo_url: data.photo_url } : m)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить фото')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
+  async function loadProfilePhotos() {
+    if (role !== 'master' || !masterId) return
+    setPhotosLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/api/masters/${masterId}/photos`)
+      setProfilePhotos(await res.json())
+    } catch {
+      // тихо — сетка просто останется пустой
+    } finally {
+      setPhotosLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadProfilePhotos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, masterId])
+
+  async function uploadPortfolioPhoto(file: File) {
+    setPortfolioUploading(true)
+    setError('')
+    try {
+      const form = new FormData()
+      form.append('telegram_id', String(telegramId))
+      form.append('photo', file)
+      const res = await fetch(`${API_URL}/api/staff/portfolio-photos`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
+      setProfilePhotos((prev) => [data, ...prev])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить фото')
+    } finally {
+      setPortfolioUploading(false)
+    }
+  }
+
+  async function deletePortfolioPhoto(id: number) {
+    try {
+      const res = await fetch(`${API_URL}/api/staff/portfolio-photos/${id}?telegram_id=${telegramId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('Не удалось удалить фото')
+      setProfilePhotos((prev) => prev.filter((p) => p.id !== id))
+      setPhotoPreview(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить фото')
     }
   }
 
@@ -562,6 +665,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       </header>
 
       <nav className="staff-tabs">
+        {role === 'master' && (
+          <button
+            type="button"
+            className={activeTab === 'profile' ? 'active' : ''}
+            onClick={() => setActiveTab('profile')}
+          >
+            Профиль
+          </button>
+        )}
         {role === 'master' && (
           <button type="button" className={activeTab === 'today' ? 'active' : ''} onClick={() => setActiveTab('today')}>
             Мой день
@@ -1111,6 +1223,104 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'profile' && myMaster && (
+        <section className="staff-admin-form staff-profile">
+          <div className="staff-profile-avatar-row">
+            <label className="staff-avatar-upload">
+              {myMaster.photo_url ? (
+                <img src={myMaster.photo_url} alt={myMaster.name} className="staff-avatar-img" />
+              ) : (
+                <span className="staff-avatar-placeholder">{myMaster.name.charAt(0)}</span>
+              )}
+              <span className="staff-avatar-edit-badge">{avatarUploading ? '…' : '✎'}</span>
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                disabled={avatarUploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) uploadAvatar(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            <div>
+              <h3>{myMaster.name}</h3>
+              <span className="staff-profile-hint">Нажмите на фото, чтобы поменять</span>
+            </div>
+          </div>
+
+          <form onSubmit={saveBio} className="staff-profile-bio-form">
+            <label>
+              О себе
+              <textarea
+                rows={4}
+                value={bioInput}
+                placeholder="Расскажите клиентам о себе: специализация, опыт, стиль работы…"
+                onChange={(e) => {
+                  setBioInput(e.target.value)
+                  setBioSaved(false)
+                }}
+              />
+            </label>
+            <button type="submit" disabled={bioSaving}>
+              {bioSaving ? 'Сохранение…' : 'Сохранить описание'}
+            </button>
+            {bioSaved && <p className="staff-form-hint">Сохранено ✓</p>}
+          </form>
+
+          <div className="staff-portfolio">
+            <div className="staff-portfolio-header">
+              <span className="staff-checkbox-label">Фото работ</span>
+              <label className="staff-portfolio-add">
+                {portfolioUploading ? 'Загрузка…' : '+ Добавить фото'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={portfolioUploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) uploadPortfolioPhoto(file)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+            </div>
+            {photosLoading ? (
+              <p className="staff-empty">Загрузка…</p>
+            ) : profilePhotos.length === 0 ? (
+              <p className="staff-empty">Пока нет ни одного фото — добавьте примеры своих работ</p>
+            ) : (
+              <div className="staff-portfolio-grid">
+                {profilePhotos.map((p) => (
+                  <button key={p.id} type="button" className="staff-portfolio-thumb" onClick={() => setPhotoPreview(p)}>
+                    <img src={p.url} alt="Фото работы" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {photoPreview && (
+            <div className="staff-photo-lightbox" onClick={() => setPhotoPreview(null)}>
+              <img src={photoPreview.url} alt="Фото работы" onClick={(e) => e.stopPropagation()} />
+              <button
+                type="button"
+                className="staff-photo-lightbox-delete"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  deletePortfolioPhoto(photoPreview.id)
+                }}
+              >
+                Удалить фото
+              </button>
+            </div>
           )}
         </section>
       )}

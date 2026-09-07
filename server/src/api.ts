@@ -1,7 +1,19 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
+import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
+
+// Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
+// Storage. 8 МБ с запасом хватает на фото с телефона
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+
+function extFromMimeType(mimeType: string): string {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  return "jpg";
+}
 
 export const api = Router();
 
@@ -783,6 +795,126 @@ api.patch("/staff/my-schedule", async (req, res) => {
     ]
   );
   res.json(rows[0]);
+});
+
+// ===== Профиль мастера: аватар, описание, фото работ (портфолио) =====
+
+// Описание "о себе" — отдельно от графика, чтобы не грузить лишним один эндпоинт
+api.patch("/staff/my-profile", async (req, res) => {
+  const { telegram_id, bio } = req.body as { telegram_id?: number; bio?: string };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  const role = await getRole(telegram_id);
+  if (role.role !== "master") {
+    res.status(403).json({ error: "Доступно только мастеру" });
+    return;
+  }
+  const { rows } = await db.query(`UPDATE masters SET bio = $1 WHERE id = $2 RETURNING id, bio`, [
+    bio ?? null,
+    role.master_id,
+  ]);
+  res.json(rows[0]);
+});
+
+api.post("/staff/my-avatar", upload.single("photo"), async (req, res) => {
+  const telegram_id = Number(req.body.telegram_id);
+  if (!telegram_id || !req.file) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!req.file.mimetype.startsWith("image/")) {
+    res.status(400).json({ error: "Файл должен быть изображением" });
+    return;
+  }
+  const role = await getRole(telegram_id);
+  if (role.role !== "master") {
+    res.status(403).json({ error: "Доступно только мастеру" });
+    return;
+  }
+
+  const { rows: prevRows } = await db.query("SELECT photo_url FROM masters WHERE id = $1", [role.master_id]);
+  const prevUrl: string | null = prevRows[0]?.photo_url ?? null;
+
+  const path = `avatars/${role.master_id}-${Date.now()}.${extFromMimeType(req.file.mimetype)}`;
+  const url = await uploadPhoto(path, req.file.buffer, req.file.mimetype);
+
+  const { rows } = await db.query(`UPDATE masters SET photo_url = $1 WHERE id = $2 RETURNING id, photo_url`, [
+    url,
+    role.master_id,
+  ]);
+
+  const prevPath = prevUrl ? pathFromPublicUrl(prevUrl) : null;
+  if (prevPath) deletePhoto(prevPath).catch(() => {});
+
+  res.json(rows[0]);
+});
+
+api.get("/masters/:id/photos", async (req, res) => {
+  const masterId = Number(req.params.id);
+  const { rows } = await db.query(
+    "SELECT id, url FROM master_photos WHERE master_id = $1 ORDER BY created_at DESC",
+    [masterId]
+  );
+  res.json(rows);
+});
+
+api.post("/staff/portfolio-photos", upload.single("photo"), async (req, res) => {
+  const telegram_id = Number(req.body.telegram_id);
+  if (!telegram_id || !req.file) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!req.file.mimetype.startsWith("image/")) {
+    res.status(400).json({ error: "Файл должен быть изображением" });
+    return;
+  }
+  const role = await getRole(telegram_id);
+  if (role.role !== "master") {
+    res.status(403).json({ error: "Доступно только мастеру" });
+    return;
+  }
+
+  const path = `portfolio/${role.master_id}/${Date.now()}-${Math.round(Math.random() * 1e6)}.${extFromMimeType(
+    req.file.mimetype
+  )}`;
+  const url = await uploadPhoto(path, req.file.buffer, req.file.mimetype);
+
+  const { rows } = await db.query(
+    `INSERT INTO master_photos (master_id, url, storage_path) VALUES ($1, $2, $3) RETURNING id, url`,
+    [role.master_id, url, path]
+  );
+  res.status(201).json(rows[0]);
+});
+
+api.delete("/staff/portfolio-photos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegram_id = Number(req.query.telegram_id);
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows } = await db.query("SELECT master_id, storage_path FROM master_photos WHERE id = $1", [id]);
+  const photo = rows[0];
+  if (!photo) {
+    res.status(404).json({ error: "Фото не найдено" });
+    return;
+  }
+  if (role.role === "master" && photo.master_id !== role.master_id) {
+    res.status(403).json({ error: "Это фото другого мастера" });
+    return;
+  }
+
+  await db.query("DELETE FROM master_photos WHERE id = $1", [id]);
+  deletePhoto(photo.storage_path).catch(() => {});
+  res.json({ ok: true });
 });
 
 // ===== Управление мастерами, услугами и персоналом (только админ) =====

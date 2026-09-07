@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { initDb } from "./db.js";
+import { initStorage } from "./storage.js";
 import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
 
@@ -13,6 +14,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 await initDb();
+await initStorage();
 
 const app = express();
 app.use(express.json());

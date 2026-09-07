@@ -849,3 +849,156 @@
   font-size: 0.95rem;
   cursor: pointer;
 }
+
+/* ===== Профиль мастера: аватар, описание, фото работ ===== */
+
+.staff-profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.staff-avatar-upload {
+  position: relative;
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  cursor: pointer;
+  overflow: visible;
+}
+
+.staff-avatar-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.staff-avatar-placeholder {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent-foreground);
+  font-family: var(--serif);
+  font-size: 1.6rem;
+}
+
+.staff-avatar-edit-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  border: 2px solid var(--surface);
+}
+
+.staff-profile-avatar-row h3 {
+  font-family: var(--serif);
+  color: var(--text-h);
+  font-size: 1.1rem;
+  margin: 0 0 4px;
+}
+
+.staff-profile-hint {
+  font-size: 0.78rem;
+  color: var(--text);
+  opacity: 0.65;
+}
+
+.staff-profile-bio-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.staff-portfolio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.staff-portfolio-add {
+  font-size: 0.82rem;
+  color: var(--accent-foreground);
+  background: var(--accent-soft);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.staff-portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.staff-portfolio-thumb {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  aspect-ratio: 1;
+  cursor: pointer;
+  background: var(--soft-white);
+}
+
+.staff-portfolio-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.staff-photo-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  z-index: 50;
+}
+
+.staff-photo-lightbox img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+}
+
+.staff-photo-lightbox-delete {
+  padding: 10px 18px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--danger);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  cursor: pointer;
+}

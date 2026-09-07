@@ -98,6 +98,14 @@ export async function initDb(): Promise<void> {
       note TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS master_photos (
+      id SERIAL PRIMARY KEY,
+      master_id INTEGER NOT NULL REFERENCES masters(id),
+      url TEXT NOT NULL,
+      storage_path TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,
       client_telegram_id BIGINT UNIQUE,
