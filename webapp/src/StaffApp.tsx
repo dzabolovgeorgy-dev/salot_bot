@@ -9,7 +9,13 @@ import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more'
+type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more'
+
+interface MyStats {
+  income: number
+  bookings_count: number
+  clients_count: number
+}
 
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
@@ -59,7 +65,8 @@ function normalizePhoneForLink(phone: string): string {
 }
 
 export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
-  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'today' : 'schedule')
+  const [activeTab, setActiveTabRaw] = useState<StaffTab>(role === 'master' ? 'main' : 'schedule')
+  const [myStats, setMyStats] = useState<MyStats | null>(null)
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -461,6 +468,17 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, masterId, telegramId, weekOffset])
 
+  // Главная — доход/записи/клиенты мастера за текущий календарный месяц
+  useEffect(() => {
+    if (role !== 'master' || !masterId) return
+    fetch(`${API_URL}/api/staff/my-stats?telegram_id=${telegramId}`)
+      .then((r) => r.json())
+      .then((data) => setMyStats(data))
+      .catch(() => {
+        // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
+      })
+  }, [role, masterId, telegramId])
+
   const [notePromptBooking, setNotePromptBooking] = useState<Booking | null>(null)
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
@@ -657,44 +675,23 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   const scheduleTodayIsWorkDay = schedulePreviewMaster ? isWorkDay(todayKey(), schedulePreviewMaster) : true
 
+  // Главная — ближайшие 3 предстоящие записи мастера (из уже загруженных данных недели)
+  const now = Date.now()
+  const upcomingForHub = Object.values(weekData)
+    .flat()
+    .filter((b) => b.status === 'upcoming' && new Date(b.starts_at).getTime() >= now)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .slice(0, 3)
+
   return (
-    <div className="staff-app">
+    <div className={`staff-app${role === 'master' ? ' staff-app--with-bottom-nav' : ''}`}>
       <header className="staff-header">
         <h1>Персонал</h1>
         <span className="staff-role-badge">{role === 'admin' ? 'Администратор' : `Мастер: ${masterName}`}</span>
       </header>
 
-      <nav className="staff-tabs">
-        {role === 'master' && (
-          <button
-            type="button"
-            className={activeTab === 'today' || activeTab === 'week' ? 'active' : ''}
-            onClick={() => {
-              if (activeTab !== 'today' && activeTab !== 'week') setActiveTab('today')
-            }}
-          >
-            📅 Расписание
-          </button>
-        )}
-        {role === 'master' && (
-          <button
-            type="button"
-            className={activeTab === 'profile' ? 'active' : ''}
-            onClick={() => setActiveTab('profile')}
-          >
-            👤 Профиль
-          </button>
-        )}
-        {role === 'master' && (
-          <button
-            type="button"
-            className={activeTab === 'more' || activeTab === 'myschedule' || activeTab === 'block' ? 'active' : ''}
-            onClick={() => setActiveTab('more')}
-          >
-            ⚙️ Ещё
-          </button>
-        )}
-        {role === 'admin' && (
+      {role === 'admin' && (
+        <nav className="staff-tabs">
           <button
             type="button"
             className={activeTab === 'schedule' ? 'active' : ''}
@@ -702,23 +699,17 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           >
             Расписание
           </button>
-        )}
-        {role === 'admin' && (
           <button type="button" className={activeTab === 'block' ? 'active' : ''} onClick={() => setActiveTab('block')}>
             Заблокировать время
           </button>
-        )}
-        {role === 'admin' && (
           <button type="button" className={activeTab === 'clients' ? 'active' : ''} onClick={() => setActiveTab('clients')}>
             Клиенты
           </button>
-        )}
-        {role === 'admin' && (
           <button type="button" className={activeTab === 'manage' ? 'active' : ''} onClick={() => setActiveTab('manage')}>
             Управление
           </button>
-        )}
-      </nav>
+        </nav>
+      )}
 
       {activeTab === 'block' && (
         <div className="staff-date-nav">
@@ -727,6 +718,64 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       )}
 
       {error && <div className="staff-error">{error}</div>}
+
+      {activeTab === 'main' && myMaster && (
+        <section className="staff-hub">
+          <p className="staff-hub-greeting">Привет, {masterName?.split(' ')[0] ?? myMaster.name}! 👋</p>
+          <p className="staff-hub-subgreeting">Хорошего дня</p>
+
+          <div className="staff-hub-stats">
+            <span className="staff-hub-stats-label">Доход за месяц</span>
+            <span className="staff-hub-stats-income">
+              {myStats ? `${myStats.income.toLocaleString('ru-RU')} ₽` : '—'}
+            </span>
+            <div className="staff-hub-stats-row">
+              <div>
+                <span className="staff-hub-stats-num">{myStats ? myStats.bookings_count : '—'}</span>
+                <span className="staff-hub-stats-sub">Записей</span>
+              </div>
+              <div>
+                <span className="staff-hub-stats-num">{myStats ? myStats.clients_count : '—'}</span>
+                <span className="staff-hub-stats-sub">Клиентов</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="staff-hub-section-head">
+            <h3>Ближайшие записи</h3>
+            <button type="button" className="staff-hub-see-all" onClick={() => setActiveTab('today')}>
+              Все
+            </button>
+          </div>
+
+          {upcomingForHub.length === 0 ? (
+            <p className="staff-empty">Записей нет</p>
+          ) : (
+            <ul className="staff-list">
+              {upcomingForHub.map((b) => (
+                <li
+                  key={b.id}
+                  className="staff-list-item staff-list-item--clickable"
+                  onClick={() => {
+                    setActiveTab('today')
+                    setSelectedBooking(b)
+                  }}
+                >
+                  <span className="staff-list-time">{formatTime(b.starts_at)}</span>
+                  <span className="staff-list-body">
+                    {b.client_name ?? 'Клиент'} — {b.service_name}
+                    {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <button type="button" className="staff-hub-cta" onClick={() => setActiveTab('block')}>
+            + Заблокировать время
+          </button>
+        </section>
+      )}
 
       {role === 'master' && (activeTab === 'today' || activeTab === 'week') && !selectedBooking && !notePromptBooking && (
         <div className="staff-mode-toggle staff-schedule-toggle">
@@ -1544,6 +1593,45 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       {activeTab === 'clients' && <ClientsPanel telegramId={telegramId} />}
 
       {activeTab === 'manage' && <AdminManage telegramId={telegramId} />}
+
+      {role === 'master' && (
+        <nav className="staff-bottom-nav">
+          <button
+            type="button"
+            className={activeTab === 'main' ? 'active' : ''}
+            onClick={() => setActiveTab('main')}
+          >
+            <span className="staff-bottom-nav-icon">🏠</span>
+            Главная
+          </button>
+          <button
+            type="button"
+            className={activeTab === 'today' || activeTab === 'week' ? 'active' : ''}
+            onClick={() => {
+              if (activeTab !== 'today' && activeTab !== 'week') setActiveTab('today')
+            }}
+          >
+            <span className="staff-bottom-nav-icon">📅</span>
+            Записи
+          </button>
+          <button
+            type="button"
+            className={activeTab === 'profile' ? 'active' : ''}
+            onClick={() => setActiveTab('profile')}
+          >
+            <span className="staff-bottom-nav-icon">👤</span>
+            Профиль
+          </button>
+          <button
+            type="button"
+            className={activeTab === 'more' || activeTab === 'myschedule' || activeTab === 'block' ? 'active' : ''}
+            onClick={() => setActiveTab('more')}
+          >
+            <span className="staff-bottom-nav-icon">⚙️</span>
+            Ещё
+          </button>
+        </nav>
+      )}
     </div>
   )
 }
