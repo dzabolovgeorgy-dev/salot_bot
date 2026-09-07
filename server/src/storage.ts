@@ -1,28 +1,62 @@
-import { createClient } from "@supabase/supabase-js";
-
 const BUCKET = "master-photos";
 
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
+// Как и в sheets.ts — обращаемся к Supabase Storage напрямую через fetch, без
+// библиотеки @supabase/supabase-js: она в этой версии тянет за собой лишнюю
+// зависимость (iceberg-js) и на Render зависала на реальной загрузке файла
+// без ошибки (без таймаута fetch мог ждать ответ бесконечно)
+function baseUrl(): string {
+  return process.env.SUPABASE_URL!.replace(/\/$/, "");
+}
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const key = process.env.SUPABASE_SERVICE_KEY!;
+  return { Authorization: `Bearer ${key}`, apikey: key, ...extra };
+}
+
+function withTimeout(): AbortSignal {
+  return AbortSignal.timeout(20000);
+}
 
 // Бакет ("папка" в файловом хранилище Supabase) создаётся сам при первом
 // запуске сервера — не нужно ничего настраивать руками в дашборде.
 // public: true — чтобы фото открывались обычной ссылкой <img src="...">
 export async function initStorage(): Promise<void> {
-  const { data: buckets } = await supabase.storage.listBuckets();
-  if (buckets?.some((b) => b.name === BUCKET)) return;
-  const { error } = await supabase.storage.createBucket(BUCKET, { public: true });
-  if (error) console.warn("Не удалось создать бакет для фото:", error.message);
+  const res = await fetch(`${baseUrl()}/storage/v1/bucket`, { headers: authHeaders(), signal: withTimeout() });
+  if (!res.ok) {
+    console.warn("Не удалось получить список бакетов для фото:", res.status, await res.text());
+    return;
+  }
+  const buckets = (await res.json()) as { name: string }[];
+  if (buckets.some((b) => b.name === BUCKET)) return;
+
+  const createRes = await fetch(`${baseUrl()}/storage/v1/bucket`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ name: BUCKET, public: true }),
+    signal: withTimeout(),
+  });
+  if (!createRes.ok) console.warn("Не удалось создать бакет для фото:", createRes.status, await createRes.text());
 }
 
 // Загружает файл и возвращает публичную ссылку на него
 export async function uploadPhoto(path: string, buffer: Buffer, contentType: string): Promise<string> {
-  const { error } = await supabase.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: true });
-  if (error) throw new Error(error.message);
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  const res = await fetch(`${baseUrl()}/storage/v1/object/${BUCKET}/${path}`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": contentType, "x-upsert": "true" }),
+    body: new Uint8Array(buffer),
+    signal: withTimeout(),
+  });
+  if (!res.ok) throw new Error(`Supabase Storage: ${res.status} ${await res.text()}`);
+  return `${baseUrl()}/storage/v1/object/public/${BUCKET}/${path}`;
 }
 
 export async function deletePhoto(path: string): Promise<void> {
-  await supabase.storage.from(BUCKET).remove([path]);
+  await fetch(`${baseUrl()}/storage/v1/object/${BUCKET}`, {
+    method: "DELETE",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ prefixes: [path] }),
+    signal: withTimeout(),
+  });
 }
 
 // Из публичной ссылки достаём путь внутри бакета — нужен, чтобы удалить
