@@ -18,7 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
-import { isWorkDay } from './schedule'
+import { isWorkDay, generateTimeSlots } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
@@ -54,7 +54,6 @@ const STEP_TITLES: Record<FlowStep, string> = {
   confirm: 'Подтвердите запись',
 }
 
-const TIME_SLOTS = ['10:00', '11:30', '13:00', '15:00', '16:30', '18:00']
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
@@ -614,9 +613,13 @@ function App() {
   const today = startOfDay(new Date())
   const todayKey = dateKeyOf(today)
   const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
-  const availableTimeSlots = (dateKey === todayKey ? TIME_SLOTS.filter((t) => t > nowHHMM) : TIME_SLOTS).filter(
-    (t) => isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots)
-  )
+  const timeSlotMaster = reschedule ? reschedule.master : selectedMaster
+  const masterTimeSlots = timeSlotMaster
+    ? generateTimeSlots(timeSlotMaster.work_start_time, timeSlotMaster.work_end_time)
+    : []
+  const availableTimeSlots = (
+    dateKey === todayKey ? masterTimeSlots.filter((t) => t > nowHHMM) : masterTimeSlots
+  ).filter((t) => isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots))
   const isCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
   const pickDate = (key: string) => {

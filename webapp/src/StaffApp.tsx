@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service, Booking, BlockedSlot } from './types'
-import { isWorkDay } from './schedule'
+import { isWorkDay, generateTimeSlots } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
@@ -14,16 +14,6 @@ type StaffTab = 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' |
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
 ]
-
-// Сетка времени для ручной записи админом — с 9:00 до 20:00 каждые 30 минут,
-// чтобы не листать нативный time-picker
-const ADMIN_TIME_SLOTS: string[] = (() => {
-  const slots: string[] = []
-  for (let m = 9 * 60; m <= 20 * 60; m += 30) {
-    slots.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
-  }
-  return slots
-})()
 
 // 7 дат начиная с сегодня + смещение в неделях
 function weekDates(weekOffset: number): Date[] {
@@ -86,6 +76,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [scheduleAnchorInput, setScheduleAnchorInput] = useState(todayKey())
   const [workDaysInput, setWorkDaysInput] = useState('2')
   const [offDaysInput, setOffDaysInput] = useState('2')
+  const [workStartInput, setWorkStartInput] = useState('09:00')
+  const [workEndInput, setWorkEndInput] = useState('20:00')
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaved, setScheduleSaved] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -203,8 +195,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setScheduleAnchorInput(myMaster.schedule_anchor ?? todayKey())
     setWorkDaysInput(myMaster.work_days ? String(myMaster.work_days) : '2')
     setOffDaysInput(myMaster.off_days ? String(myMaster.off_days) : '2')
+    setWorkStartInput(myMaster.work_start_time ?? '09:00')
+    setWorkEndInput(myMaster.work_end_time ?? '20:00')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myMaster?.schedule_anchor, myMaster?.work_days, myMaster?.off_days])
+  }, [myMaster?.schedule_anchor, myMaster?.work_days, myMaster?.off_days, myMaster?.work_start_time, myMaster?.work_end_time])
 
   async function saveMySchedule(e: FormEvent) {
     e.preventDefault()
@@ -220,6 +214,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           schedule_anchor: scheduleEnabled ? scheduleAnchorInput : null,
           work_days: scheduleEnabled ? Number(workDaysInput) : null,
           off_days: scheduleEnabled ? Number(offDaysInput) : null,
+          work_start_time: workStartInput,
+          work_end_time: workEndInput,
         }),
       })
       const data = await res.json()
@@ -227,7 +223,14 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       setMasters((prev) =>
         prev.map((m) =>
           m.id === masterId
-            ? { ...m, schedule_anchor: data.schedule_anchor, work_days: data.work_days, off_days: data.off_days }
+            ? {
+                ...m,
+                schedule_anchor: data.schedule_anchor,
+                work_days: data.work_days,
+                off_days: data.off_days,
+                work_start_time: data.work_start_time,
+                work_end_time: data.work_end_time,
+              }
             : m
         )
       )
@@ -864,7 +867,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 <div>
                   <span className="staff-checkbox-label">Время</span>
                   <div className="staff-time-grid">
-                    {ADMIN_TIME_SLOTS.map((t) => {
+                    {generateTimeSlots(
+                      newBookingMaster?.work_start_time ?? '09:00',
+                      newBookingMaster?.work_end_time ?? '20:00'
+                    ).map((t) => {
                       const past = new Date(`${date}T${t}`).getTime() < Date.now()
                       const taken = !past && isTimeTakenForNewBooking(t)
                       return (
@@ -1093,6 +1099,30 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             доступны все дни без ограничений.
           </p>
           <form onSubmit={saveMySchedule}>
+            <label>
+              Начало рабочего дня
+              <input
+                type="time"
+                value={workStartInput}
+                onChange={(e) => {
+                  setWorkStartInput(e.target.value)
+                  setScheduleSaved(false)
+                }}
+                required
+              />
+            </label>
+            <label>
+              Конец рабочего дня
+              <input
+                type="time"
+                value={workEndInput}
+                onChange={(e) => {
+                  setWorkEndInput(e.target.value)
+                  setScheduleSaved(false)
+                }}
+                required
+              />
+            </label>
             <label className="staff-checkbox-row">
               <input
                 type="checkbox"

@@ -133,7 +133,7 @@ async function hasConflict(
 
 api.get("/masters", async (_req, res) => {
   const { rows: masters } = await db.query(
-    "SELECT id, name, bio, experience_years, photo_url, schedule_anchor, work_days, off_days FROM masters"
+    "SELECT id, name, bio, experience_years, photo_url, schedule_anchor, work_days, off_days, work_start_time, work_end_time FROM masters"
   );
   const { rows: relations } = await db.query("SELECT master_id, service_id FROM master_services");
 
@@ -682,12 +682,18 @@ interface MyScheduleBody {
   schedule_anchor: string | null;
   work_days: number | null;
   off_days: number | null;
+  work_start_time: string;
+  work_end_time: string;
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 // Мастер сам настраивает свой повторяющийся график (N дней работает — N
-// выходной). Раньше это можно было поменять только напрямую в базе данных
+// выходной) и часы работы в течение дня. Раньше это можно было поменять
+// только напрямую в базе данных
 api.patch("/staff/my-schedule", async (req, res) => {
-  const { telegram_id, schedule_anchor, work_days, off_days } = req.body as Partial<MyScheduleBody>;
+  const { telegram_id, schedule_anchor, work_days, off_days, work_start_time, work_end_time } =
+    req.body as Partial<MyScheduleBody>;
   if (!telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -710,10 +716,21 @@ api.patch("/staff/my-schedule", async (req, res) => {
     return;
   }
 
+  if (!work_start_time || !work_end_time || !TIME_RE.test(work_start_time) || !TIME_RE.test(work_end_time)) {
+    res.status(400).json({ error: "Укажите часы работы в формате ЧЧ:ММ" });
+    return;
+  }
+  if (work_start_time >= work_end_time) {
+    res.status(400).json({ error: "Время начала должно быть раньше времени окончания" });
+    return;
+  }
+
   const { rows } = await db.query(
-    `UPDATE masters SET schedule_anchor = $1, work_days = $2, off_days = $3 WHERE id = $4
-     RETURNING id, name, schedule_anchor, work_days, off_days`,
-    [schedule_anchor ?? null, work_days ?? null, off_days ?? null, role.master_id]
+    `UPDATE masters SET schedule_anchor = $1, work_days = $2, off_days = $3,
+       work_start_time = $4, work_end_time = $5
+     WHERE id = $6
+     RETURNING id, name, schedule_anchor, work_days, off_days, work_start_time, work_end_time`,
+    [schedule_anchor ?? null, work_days ?? null, off_days ?? null, work_start_time, work_end_time, role.master_id]
   );
   res.json(rows[0]);
 });

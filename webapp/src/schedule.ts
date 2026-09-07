@@ -12,3 +12,20 @@ export function isWorkDay(dateKey: string, master: Master): boolean {
   const position = ((diffDays % cycle) + cycle) % cycle
   return position < master.work_days
 }
+
+// Слоты времени каждые 30 минут в пределах часов работы мастера —
+// используется и у клиента при записи, и у админа при ручной записи
+export function generateTimeSlots(startTime: string, endTime: string, stepMinutes = 30): string[] {
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return h * 60 + m
+  }
+  const start = toMinutes(startTime)
+  const end = toMinutes(endTime)
+  const slots: string[] = []
+  for (let m = start; m <= end; m += stepMinutes) {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    slots.push(`${pad(Math.floor(m / 60))}:${pad(m % 60)}`)
+  }
+  return slots
+}

@@ -8,6 +8,8 @@ export interface Master {
   schedule_anchor: string | null
   work_days: number | null
   off_days: number | null
+  work_start_time: string
+  work_end_time: string
 }
 
 export interface Service {

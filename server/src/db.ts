@@ -21,12 +21,16 @@ export async function initDb(): Promise<void> {
       photo_url TEXT,
       schedule_anchor DATE,
       work_days INTEGER,
-      off_days INTEGER
+      off_days INTEGER,
+      work_start_time TEXT NOT NULL DEFAULT '09:00',
+      work_end_time TEXT NOT NULL DEFAULT '20:00'
     );
 
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_anchor DATE;
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_days INTEGER;
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS off_days INTEGER;
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_start_time TEXT NOT NULL DEFAULT '09:00';
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_end_time TEXT NOT NULL DEFAULT '20:00';
 
     CREATE TABLE IF NOT EXISTS services (
       id SERIAL PRIMARY KEY,
