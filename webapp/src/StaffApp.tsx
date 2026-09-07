@@ -1118,6 +1118,57 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       {activeTab === 'myschedule' && myMaster && (
         <section className="staff-admin-form">
           <h3>Мой график работы</h3>
+
+          <div className="staff-shift-row">
+            <span className={`staff-shift-chip${scheduleTodayIsWorkDay ? '' : ' staff-shift-chip--off'}`}>
+              Сегодня
+              <span className="staff-shift-dot" />
+              {scheduleTodayIsWorkDay ? 'рабочий день' : 'выходной'}
+            </span>
+          </div>
+
+          {schedulePreviewMaster && (
+            <div className="staff-month-calendar">
+              <div className="staff-month-nav">
+                <button
+                  type="button"
+                  className="staff-month-arrow"
+                  onClick={() => setSchedulePreviewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                  aria-label="Предыдущий месяц"
+                >
+                  ‹
+                </button>
+                <span className="staff-month-label">
+                  {MONTH_NAMES[schedulePreviewMonth.getMonth()]} {schedulePreviewMonth.getFullYear()}
+                </span>
+                <button
+                  type="button"
+                  className="staff-month-arrow"
+                  onClick={() => setSchedulePreviewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                  aria-label="Следующий месяц"
+                >
+                  ›
+                </button>
+              </div>
+              <div className="staff-month-weekdays">
+                {WEEKDAY_LABELS.map((w) => (
+                  <span key={w}>{w}</span>
+                ))}
+              </div>
+              <div className="staff-month-grid">
+                {buildMonthCells(schedulePreviewMonth).map((d, i) => {
+                  if (!d) return <span key={`empty-${i}`} className="staff-month-day staff-month-day-empty" />
+                  const working = isWorkDay(dateKeyOf(d), schedulePreviewMaster)
+                  return (
+                    <span key={dateKeyOf(d)} className={`staff-month-day${working ? '' : ' staff-month-day--off'}`}>
+                      {d.getDate()}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <form onSubmit={saveMySchedule}>
             <label>
               Начало рабочего дня
@@ -1243,57 +1294,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               {scheduleSaving ? 'Сохранение…' : 'Сохранить график'}
             </button>
           </form>
-
-          <div className="staff-shift-row">
-            <span className={`staff-shift-chip${scheduleTodayIsWorkDay ? '' : ' staff-shift-chip--off'}`}>
-              Сегодня
-              <span className="staff-shift-dot" />
-              {scheduleTodayIsWorkDay ? 'рабочий день' : 'выходной'}
-            </span>
-          </div>
           {scheduleSaved && <p className="staff-form-hint">Сохранено ✓ — видно клиентам и в вашем расписании сразу</p>}
-
-          {schedulePreviewMaster && (
-            <div className="staff-month-calendar">
-              <div className="staff-month-nav">
-                <button
-                  type="button"
-                  className="staff-month-arrow"
-                  onClick={() => setSchedulePreviewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-                  aria-label="Предыдущий месяц"
-                >
-                  ‹
-                </button>
-                <span className="staff-month-label">
-                  {MONTH_NAMES[schedulePreviewMonth.getMonth()]} {schedulePreviewMonth.getFullYear()}
-                </span>
-                <button
-                  type="button"
-                  className="staff-month-arrow"
-                  onClick={() => setSchedulePreviewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-                  aria-label="Следующий месяц"
-                >
-                  ›
-                </button>
-              </div>
-              <div className="staff-month-weekdays">
-                {WEEKDAY_LABELS.map((w) => (
-                  <span key={w}>{w}</span>
-                ))}
-              </div>
-              <div className="staff-month-grid">
-                {buildMonthCells(schedulePreviewMonth).map((d, i) => {
-                  if (!d) return <span key={`empty-${i}`} className="staff-month-day staff-month-day-empty" />
-                  const working = isWorkDay(dateKeyOf(d), schedulePreviewMaster)
-                  return (
-                    <span key={dateKeyOf(d)} className={`staff-month-day${working ? '' : ' staff-month-day--off'}`}>
-                      {d.getDate()}
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          )}
         </section>
       )}
 
