@@ -123,7 +123,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [blockSubmitting, setBlockSubmitting] = useState(false)
 
   const [showNewBooking, setShowNewBooking] = useState(false)
-  const [newBookingMasterId, setNewBookingMasterId] = useState<number | ''>('')
+  const [newBookingMasterId, setNewBookingMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
   const [newBookingServiceId, setNewBookingServiceId] = useState<number | ''>('')
   const [newBookingTime, setNewBookingTime] = useState('')
   const [newBookingClientName, setNewBookingClientName] = useState('')
@@ -469,14 +469,19 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   }, [role, masterId, telegramId, weekOffset])
 
   // Главная — доход/записи/клиенты мастера за текущий календарный месяц
-  useEffect(() => {
+  async function loadMyStats() {
     if (role !== 'master' || !masterId) return
-    fetch(`${API_URL}/api/staff/my-stats?telegram_id=${telegramId}`)
-      .then((r) => r.json())
-      .then((data) => setMyStats(data))
-      .catch(() => {
-        // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
-      })
+    try {
+      const res = await fetch(`${API_URL}/api/staff/my-stats?telegram_id=${telegramId}`)
+      setMyStats(await res.json())
+    } catch {
+      // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
+    }
+  }
+
+  useEffect(() => {
+    loadMyStats()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, masterId, telegramId])
 
   const [notePromptBooking, setNotePromptBooking] = useState<Booking | null>(null)
@@ -627,7 +632,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       }
 
       setShowNewBooking(false)
-      setNewBookingMasterId('')
+      setNewBookingMasterId(role === 'master' ? masterId ?? '' : '')
       setNewBookingServiceId('')
       setNewBookingTime('')
       setNewBookingClientName('')
@@ -636,6 +641,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       setNewBookingContact('phone')
       setNewBookingNote('')
       await loadSchedule()
+      if (role === 'master') {
+        loadToday()
+        loadWeek()
+        loadMyStats()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
@@ -771,9 +781,165 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             </ul>
           )}
 
-          <button type="button" className="staff-hub-cta" onClick={() => setActiveTab('block')}>
-            + Заблокировать время
+          <button
+            type="button"
+            className="staff-hub-cta"
+            onClick={() => {
+              setNewBookingMasterId(masterId ?? '')
+              setShowNewBooking((v) => !v)
+            }}
+          >
+            {showNewBooking ? 'Отмена' : '+ Новая запись'}
           </button>
+
+          {showNewBooking && (
+            <form className="staff-admin-form staff-new-booking-form" onSubmit={submitNewBooking}>
+              <p className="staff-form-hint">Для клиента, который позвонил или написал в WhatsApp, а не в Mini App.</p>
+              <label>
+                Дата
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+              </label>
+              <label>
+                Услуга
+                <select
+                  value={newBookingServiceId}
+                  onChange={(e) => {
+                    setNewBookingServiceId(Number(e.target.value))
+                    setNewBookingTime('')
+                  }}
+                  required
+                >
+                  <option value="" disabled>
+                    Выберите услугу
+                  </option>
+                  {services
+                    .filter((s) => myMaster.service_ids.includes(s.id))
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — {s.price} ₽
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {newBookingMasterOffDuty && (
+                <p className="staff-error">У вас выходной {formatSelectedDate(date)} — выберите другую дату</p>
+              )}
+              {newBookingServiceId && !newBookingMasterOffDuty && (
+                <div>
+                  <span className="staff-checkbox-label">Время</span>
+                  <div className="staff-time-grid">
+                    {generateTimeSlots(myMaster.work_start_time, myMaster.work_end_time).map((t) => {
+                      const past = new Date(`${date}T${t}`).getTime() < Date.now()
+                      const taken = !past && isTimeTakenForNewBooking(t)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`staff-time-slot${newBookingTime === t ? ' active' : ''}`}
+                          disabled={past || taken}
+                          title={taken ? 'Уже занято' : past ? 'Уже прошло' : undefined}
+                          onClick={() => setNewBookingTime(t)}
+                        >
+                          {t}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {!newBookingMasterOffDuty && newBookingBlockReason && <p className="staff-error">{newBookingBlockReason}</p>}
+              <label>
+                Имя клиента
+                <input
+                  type="text"
+                  value={newBookingClientName}
+                  onChange={(e) => setNewBookingClientName(e.target.value)}
+                  required
+                />
+              </label>
+              <div className="staff-checkbox-group">
+                <span className="staff-checkbox-label">Как связаться с клиентом</span>
+                <label className="staff-checkbox-row">
+                  <input
+                    type="radio"
+                    name="new-booking-contact-hub"
+                    checked={newBookingContact === 'phone'}
+                    onChange={() => setNewBookingContact('phone')}
+                  />
+                  Телефон (звонок / WhatsApp)
+                </label>
+                <label className="staff-checkbox-row">
+                  <input
+                    type="radio"
+                    name="new-booking-contact-hub"
+                    checked={newBookingContact === 'telegram'}
+                    onChange={() => setNewBookingContact('telegram')}
+                  />
+                  Telegram ID (если известен)
+                </label>
+              </div>
+              {newBookingContact === 'phone' ? (
+                <label>
+                  Телефон
+                  <input
+                    type="tel"
+                    value={newBookingPhone}
+                    onChange={(e) => setNewBookingPhone(e.target.value)}
+                    onBlur={checkExistingNoteForNewBooking}
+                    placeholder="+7 999 123-45-67"
+                    required
+                  />
+                </label>
+              ) : (
+                <label>
+                  Telegram ID
+                  <input
+                    type="number"
+                    value={newBookingTelegramId}
+                    onChange={(e) => setNewBookingTelegramId(e.target.value)}
+                    onBlur={checkExistingNoteForNewBooking}
+                    placeholder="Узнать можно через @userinfobot"
+                    required
+                  />
+                </label>
+              )}
+              {newBookingService?.requires_allergy_check && (
+                <label>
+                  Заметка о клиенте (аллергии/особенности) — необязательно
+                  <textarea
+                    className="staff-note-textarea"
+                    value={newBookingNote}
+                    onChange={(e) => setNewBookingNote(e.target.value)}
+                    placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
+                    rows={3}
+                  />
+                </label>
+              )}
+              <button type="submit" disabled={newBookingSaving || !!newBookingBlockReason}>
+                {newBookingSaving ? 'Сохранение…' : 'Записать'}
+              </button>
+            </form>
+          )}
+
+          {whatsappConfirmLink && (
+            <div className="staff-confirm-callout">
+              <p>Запись для «{whatsappConfirmLink.clientName}» создана. Продублировать детали клиенту?</p>
+              <div className="staff-confirm-callout-actions">
+                <a
+                  className="staff-telegram-link"
+                  href={whatsappConfirmLink.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setWhatsappConfirmLink(null)}
+                >
+                  💬 Отправить подтверждение в WhatsApp
+                </a>
+                <button type="button" className="staff-confirm-dismiss" onClick={() => setWhatsappConfirmLink(null)}>
+                  Не сейчас
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

@@ -377,12 +377,23 @@ interface AdminCreateBookingBody {
 // либо телефон — но не оба сразу, чтобы не путать одного и того же клиента
 // с разными карточками в «Клиенты»
 api.post("/staff/bookings", async (req, res) => {
-  const { telegram_id, master_id, service_id, starts_at, client_name, client_telegram_id, client_phone } =
+  const { telegram_id, service_id, starts_at, client_name, client_telegram_id, client_phone } =
     req.body as Partial<AdminCreateBookingBody>;
+  let { master_id } = req.body as Partial<AdminCreateBookingBody>;
 
-  if (!telegram_id || !(await requireAdmin(telegram_id))) {
-    res.status(403).json({ error: "Доступно только администратору" });
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
     return;
+  }
+  const role = await getRole(telegram_id);
+  if (role.role === "client") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+  // Мастер может записать клиента только к себе — id мастера берётся из его
+  // роли, а не из тела запроса, иначе он мог бы записать «к себе» на самом деле к другому мастеру
+  if (role.role === "master") {
+    master_id = role.master_id;
   }
 
   if (!master_id || !service_id || !starts_at || !client_name?.trim()) {
@@ -452,7 +463,11 @@ api.post("/staff/bookings", async (req, res) => {
       `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\n\nЖдём вас в салоне!`
     );
   }
-  notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
+  // Если мастер завёл запись сам себе — он и так видит подтверждение в приложении,
+  // уведомление в Telegram нужно только когда запись создал кто-то другой (клиент или админ)
+  if (role.role !== "master") {
+    notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
+  }
 
   getClientExtraFields(client_telegram_id ?? null, normalizedPhone).then(({ note, adminComment }) => {
     appendBookingRow({
