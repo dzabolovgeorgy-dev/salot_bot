@@ -79,6 +79,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [offDaysInput, setOffDaysInput] = useState('2')
   const [workStartInput, setWorkStartInput] = useState('09:00')
   const [workEndInput, setWorkEndInput] = useState('20:00')
+  const [schedulePreviewMonth, setSchedulePreviewMonth] = useState(() => startOfMonth(new Date()))
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaved, setScheduleSaved] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -540,16 +541,18 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     ...blocks.map((b) => ({ kind: 'block' as const, time: formatTime(b.starts_at), block: b })),
   ].sort((a, b) => a.time.localeCompare(b.time))
 
-  const scheduleTodayIsWorkDay = myMaster
-    ? isWorkDay(todayKey(), {
+  const schedulePreviewMaster = myMaster
+    ? {
         ...myMaster,
         schedule_type: scheduleMode === 'none' ? null : scheduleMode,
         schedule_anchor: scheduleMode === 'cycle' ? scheduleAnchorInput : null,
         work_days: scheduleMode === 'cycle' ? Number(workDaysInput) || null : null,
         off_days: scheduleMode === 'cycle' ? Number(offDaysInput) || null : null,
         work_weekdays: scheduleMode === 'weekdays' ? selectedWeekdays : null,
-      })
-    : true
+      }
+    : null
+
+  const scheduleTodayIsWorkDay = schedulePreviewMaster ? isWorkDay(todayKey(), schedulePreviewMaster) : true
 
   return (
     <div className="staff-app">
@@ -1141,44 +1144,38 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               />
             </label>
 
-            <div className="staff-checkbox-group">
-              <span className="staff-checkbox-label">Какие дни работаю</span>
-              <label className="staff-checkbox-row">
-                <input
-                  type="radio"
-                  name="schedule-mode"
-                  checked={scheduleMode === 'none'}
-                  onChange={() => {
-                    setScheduleMode('none')
-                    setScheduleSaved(false)
-                  }}
-                />
-                Работаю всегда, без графика
-              </label>
-              <label className="staff-checkbox-row">
-                <input
-                  type="radio"
-                  name="schedule-mode"
-                  checked={scheduleMode === 'weekdays'}
-                  onChange={() => {
-                    setScheduleMode('weekdays')
-                    setScheduleSaved(false)
-                  }}
-                />
-                По дням недели (например, вт–сб)
-              </label>
-              <label className="staff-checkbox-row">
-                <input
-                  type="radio"
-                  name="schedule-mode"
-                  checked={scheduleMode === 'cycle'}
-                  onChange={() => {
-                    setScheduleMode('cycle')
-                    setScheduleSaved(false)
-                  }}
-                />
-                Скользящий график (N дней работаю, потом N выходных)
-              </label>
+            <span className="staff-checkbox-label">Какие дни работаю</span>
+            <div className="staff-mode-toggle">
+              <button
+                type="button"
+                className={scheduleMode === 'none' ? 'active' : ''}
+                onClick={() => {
+                  setScheduleMode('none')
+                  setScheduleSaved(false)
+                }}
+              >
+                Всегда
+              </button>
+              <button
+                type="button"
+                className={scheduleMode === 'weekdays' ? 'active' : ''}
+                onClick={() => {
+                  setScheduleMode('weekdays')
+                  setScheduleSaved(false)
+                }}
+              >
+                По дням недели
+              </button>
+              <button
+                type="button"
+                className={scheduleMode === 'cycle' ? 'active' : ''}
+                onClick={() => {
+                  setScheduleMode('cycle')
+                  setScheduleSaved(false)
+                }}
+              >
+                Скользящий
+              </button>
             </div>
 
             {scheduleMode === 'weekdays' && (
@@ -1255,6 +1252,48 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
             </span>
           </div>
           {scheduleSaved && <p className="staff-form-hint">Сохранено ✓ — видно клиентам и в вашем расписании сразу</p>}
+
+          {schedulePreviewMaster && (
+            <div className="staff-month-calendar">
+              <div className="staff-month-nav">
+                <button
+                  type="button"
+                  className="staff-month-arrow"
+                  onClick={() => setSchedulePreviewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                  aria-label="Предыдущий месяц"
+                >
+                  ‹
+                </button>
+                <span className="staff-month-label">
+                  {MONTH_NAMES[schedulePreviewMonth.getMonth()]} {schedulePreviewMonth.getFullYear()}
+                </span>
+                <button
+                  type="button"
+                  className="staff-month-arrow"
+                  onClick={() => setSchedulePreviewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                  aria-label="Следующий месяц"
+                >
+                  ›
+                </button>
+              </div>
+              <div className="staff-month-weekdays">
+                {WEEKDAY_LABELS.map((w) => (
+                  <span key={w}>{w}</span>
+                ))}
+              </div>
+              <div className="staff-month-grid">
+                {buildMonthCells(schedulePreviewMonth).map((d, i) => {
+                  if (!d) return <span key={`empty-${i}`} className="staff-month-day staff-month-day-empty" />
+                  const working = isWorkDay(dateKeyOf(d), schedulePreviewMaster)
+                  return (
+                    <span key={dateKeyOf(d)} className={`staff-month-day${working ? '' : ' staff-month-day--off'}`}>
+                      {d.getDate()}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
 

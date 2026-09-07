@@ -54,6 +54,36 @@
   border-color: var(--primary);
 }
 
+.staff-mode-toggle {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+
+.staff-mode-toggle button {
+  flex: 1;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.staff-mode-toggle button.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.staff-month-day--off {
+  color: var(--text);
+  opacity: 0.35;
+}
+
 .staff-date-nav {
   margin-bottom: 16px;
 }
