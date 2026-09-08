@@ -14,6 +14,11 @@ function formatDate(iso: string): string {
   return new Date(iso.replace(' ', 'T')).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// Ключ дня для группировки клиентов в "папки" — по дате последнего визита
+function dayKey(iso: string): string {
+  return iso.replace(' ', 'T').slice(0, 10)
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso.replace(' ', 'T')).toLocaleString('ru-RU', {
     day: 'numeric',
@@ -31,6 +36,9 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
   const [clients, setClients] = useState<ClientSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // "Папки" по дню последнего визита — чтобы длинный список клиентов не был
+  // одной сплошной кучей. Открыта по умолчанию только самая свежая
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set())
 
   const [selectedClient, setSelectedClient] = useState<ClientSummary | null>(null)
   const [clientVisits, setClientVisits] = useState<ClientVisit[]>([])
@@ -47,11 +55,21 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить')
       setClients(data)
+      if (data.length > 0) setOpenDays(new Set([dayKey(data[0].last_visit)]))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить')
     } finally {
       setLoading(false)
     }
+  }
+
+  function toggleDay(key: string) {
+    setOpenDays((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   useEffect(() => {
@@ -119,6 +137,16 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     }
   }
 
+  // Группируем уже отсортированный (по дате последнего визита, свежие сверху)
+  // список клиентов в "папки" по дню
+  const dayGroups: { key: string; label: string; clients: ClientSummary[] }[] = []
+  clients.forEach((c) => {
+    const key = dayKey(c.last_visit)
+    const group = dayGroups.find((g) => g.key === key)
+    if (group) group.clients.push(c)
+    else dayGroups.push({ key, label: formatDate(c.last_visit), clients: [c] })
+  })
+
   return (
     <div className="staff-admin">
       {error && <div className="staff-error">{error}</div>}
@@ -130,22 +158,39 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
           ) : clients.length === 0 ? (
             <p className="staff-empty">Пока никто не записывался</p>
           ) : (
-            <ul className="staff-list">
-              {clients.map((c) => (
-                <li
-                  key={c.client_telegram_id ?? c.client_phone}
-                  className="staff-list-item staff-list-item--clickable"
-                  onClick={() => openClient(c)}
-                >
-                  <span className="staff-list-body">
-                    {c.name ?? 'Без имени'}
-                    <span className="staff-client-meta">
-                      {c.visits} {c.visits === 1 ? 'визит' : 'визита'} · последний {formatDate(c.last_visit)}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="staff-day-folders">
+              {dayGroups.map((group) => {
+                const isOpen = openDays.has(group.key)
+                return (
+                  <div key={group.key} className="staff-day-folder">
+                    <button type="button" className="staff-day-folder-header" onClick={() => toggleDay(group.key)}>
+                      <span>
+                        {isOpen ? '📂' : '📁'} {group.label}
+                      </span>
+                      <span className="staff-day-folder-count">{group.clients.length}</span>
+                    </button>
+                    {isOpen && (
+                      <ul className="staff-list">
+                        {group.clients.map((c) => (
+                          <li
+                            key={c.client_telegram_id ?? c.client_phone}
+                            className="staff-list-item staff-list-item--clickable"
+                            onClick={() => openClient(c)}
+                          >
+                            <span className="staff-list-body">
+                              {c.name ?? 'Без имени'}
+                              <span className="staff-client-meta">
+                                {c.visits} {c.visits === 1 ? 'визит' : 'визита'} · последний {formatDate(c.last_visit)}
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           )}
         </section>
       )}

@@ -1158,3 +1158,40 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Клиенты — "папки" по дню последнего визита */
+
+.staff-day-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.staff-day-folder-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.staff-day-folder-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-foreground);
+  background: var(--accent);
+  padding: 2px 9px;
+  border-radius: var(--radius-lg);
+}
+
+.staff-day-folder .staff-list {
+  margin-top: 8px;
+}

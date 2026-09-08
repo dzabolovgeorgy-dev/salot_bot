@@ -722,10 +722,23 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   // Главная у админа — кто из мастеров сегодня на смене
   const mastersOnShiftToday = masters.filter((m) => isWorkDay(todayKey(), m))
 
+  const tabTitles: Record<StaffTab, string> = {
+    main: 'Главная',
+    today: role === 'admin' ? 'Расписание' : 'Записи',
+    week: role === 'admin' ? 'Расписание' : 'Записи',
+    schedule: 'Расписание',
+    block: 'Заблокировать время',
+    clients: 'Клиенты',
+    manage: 'Управление',
+    profile: 'Профиль',
+    myschedule: 'Мой график',
+    more: 'Ещё',
+  }
+
   return (
     <div className="staff-app staff-app--with-bottom-nav">
       <header className="staff-header">
-        <h1>Персонал</h1>
+        <h1>{tabTitles[activeTab]}</h1>
         <span className="staff-role-badge">{role === 'admin' ? 'Администратор' : `Мастер: ${masterName}`}</span>
       </header>
 
