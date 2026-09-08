@@ -673,8 +673,8 @@ api.get("/staff/my-stats", async (req, res) => {
   });
 });
 
-// Главная у админа — то же самое, что my-stats у мастера, но по всему салону
-// (без фильтра по master_id)
+// Главная у админа — похоже на my-stats у мастера (только за сегодня, а не за
+// месяц) и по всему салону (без фильтра по master_id)
 api.get("/staff/salon-stats", async (req, res) => {
   const telegramId = Number(req.query.telegram_id);
   if (!telegramId) {
@@ -694,8 +694,8 @@ api.get("/staff/salon-stats", async (req, res) => {
        COUNT(DISTINCT COALESCE(b.client_telegram_id::text, b.client_phone)) AS clients_count
      FROM bookings b
      JOIN services s ON s.id = b.service_id
-     WHERE b.starts_at >= date_trunc('month', now())
-       AND b.starts_at < date_trunc('month', now()) + interval '1 month'`
+     WHERE b.starts_at >= date_trunc('day', now())
+       AND b.starts_at < date_trunc('day', now()) + interval '1 day'`
   );
 
   const row = rows[0];

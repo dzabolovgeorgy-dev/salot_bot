@@ -980,7 +980,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <p className="staff-hub-subgreeting">Хорошего дня</p>
 
           <div className="staff-hub-stats">
-            <span className="staff-hub-stats-label">Доход салона за месяц</span>
+            <span className="staff-hub-stats-label">Доход салона за сегодня</span>
             <span className="staff-hub-stats-income">
               {salonStats ? `${salonStats.income.toLocaleString('ru-RU')} ₽` : '—'}
             </span>
