@@ -96,18 +96,23 @@ async function getRole(
   return { role: "admin" };
 }
 
-// Два вида графика: 'cycle' — скользящий "N дней работает — N выходной" по
-// кругу от schedule_anchor; 'weekdays' — фиксированные дни недели (0=Пн…6=Вс,
-// как WEEKDAY_LABELS во фронтенде). Без schedule_type мастер работает всегда
-// (обратная совместимость с мастерами без графика)
+// Три вида графика: 'weekdays' — фиксированные дни недели (0=Пн…6=Вс, как
+// WEEKDAY_LABELS во фронтенде); 'month' — выходные дни отмечены вручную на
+// конкретный месяц (schedule_month "YYYY-MM" + номера дней в schedule_month_off_days),
+// для другого месяца это поведение не действует (мастер работает всегда, пока
+// не настроит и его); 'cycle' — устаревший скользящий график, в интерфейсе
+// больше не выбирается, но старые данные читаем для обратной совместимости.
+// Без schedule_type мастер работает всегда
 function isWorkDay(
   dateStr: string,
   master: {
-    schedule_type: "cycle" | "weekdays" | null;
+    schedule_type: "cycle" | "weekdays" | "month" | null;
     schedule_anchor: string | null;
     work_days: number | null;
     off_days: number | null;
     work_weekdays: number[] | null;
+    schedule_month: string | null;
+    schedule_month_off_days: number[] | null;
   }
 ): boolean {
   if (master.schedule_type === "weekdays") {
@@ -115,6 +120,11 @@ function isWorkDay(
     const jsDay = new Date(`${dateStr}T00:00:00`).getDay();
     const weekday = (jsDay + 6) % 7;
     return master.work_weekdays.includes(weekday);
+  }
+  if (master.schedule_type === "month") {
+    if (master.schedule_month !== dateStr.slice(0, 7)) return true;
+    const dayOfMonth = Number(dateStr.slice(8, 10));
+    return !(master.schedule_month_off_days ?? []).includes(dayOfMonth);
   }
   if (master.schedule_type !== "cycle") return true;
   if (!master.schedule_anchor || !master.work_days || !master.off_days) return true;
@@ -159,7 +169,7 @@ async function hasConflict(
 
 api.get("/masters", async (_req, res) => {
   const { rows: masters } = await db.query(
-    "SELECT id, name, bio, experience_years, photo_url, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, work_start_time, work_end_time FROM masters"
+    "SELECT id, name, bio, experience_years, photo_url, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, work_start_time, work_end_time FROM masters"
   );
   const { rows: relations } = await db.query("SELECT master_id, service_id FROM master_services");
 
@@ -286,18 +296,20 @@ api.post("/bookings", async (req, res) => {
   }
 
   const { rows: masterRows } = await db.query(
-    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays FROM masters WHERE id = $1",
+    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days FROM masters WHERE id = $1",
     [master_id]
   );
   const master = masterRows[0] as
     | {
         id: number;
         name: string;
-        schedule_type: "cycle" | "weekdays" | null;
+        schedule_type: "cycle" | "weekdays" | "month" | null;
         schedule_anchor: string | null;
         work_days: number | null;
         off_days: number | null;
         work_weekdays: number[] | null;
+        schedule_month: string | null;
+        schedule_month_off_days: number[] | null;
       }
     | undefined;
   if (!master) {
@@ -410,18 +422,20 @@ api.post("/staff/bookings", async (req, res) => {
   }
 
   const { rows: masterRows } = await db.query(
-    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays FROM masters WHERE id = $1",
+    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days FROM masters WHERE id = $1",
     [master_id]
   );
   const master = masterRows[0] as
     | {
         id: number;
         name: string;
-        schedule_type: "cycle" | "weekdays" | null;
+        schedule_type: "cycle" | "weekdays" | "month" | null;
         schedule_anchor: string | null;
         work_days: number | null;
         off_days: number | null;
         work_weekdays: number[] | null;
+        schedule_month: string | null;
+        schedule_month_off_days: number[] | null;
       }
     | undefined;
   if (!master) {
@@ -503,7 +517,8 @@ api.patch("/bookings/:id", async (req, res) => {
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
             s.name AS service_name, s.duration_minutes,
-            m.schedule_type, m.schedule_anchor, m.work_days, m.off_days, m.work_weekdays
+            m.schedule_type, m.schedule_anchor, m.work_days, m.off_days, m.work_weekdays,
+            m.schedule_month, m.schedule_month_off_days
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -518,11 +533,13 @@ api.patch("/bookings/:id", async (req, res) => {
         master_name: string;
         service_name: string;
         duration_minutes: number;
-        schedule_type: "cycle" | "weekdays" | null;
+        schedule_type: "cycle" | "weekdays" | "month" | null;
         schedule_anchor: string | null;
         work_days: number | null;
         off_days: number | null;
         work_weekdays: number[] | null;
+        schedule_month: string | null;
+        schedule_month_off_days: number[] | null;
       }
     | undefined;
 
@@ -772,23 +789,25 @@ api.delete("/staff/blocked-slots/:id", async (req, res) => {
 
 interface MyScheduleBody {
   telegram_id: number;
-  schedule_type: "none" | "cycle" | "weekdays";
-  schedule_anchor: string | null;
-  work_days: number | null;
-  off_days: number | null;
+  schedule_type: "none" | "weekdays" | "month";
   work_weekdays: number[] | null;
+  schedule_month: string | null;
+  schedule_month_off_days: number[] | null;
   work_start_time: string;
   work_end_time: string;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Мастер сам настраивает свой график и часы работы в течение дня. Раньше это
 // можно было поменять только напрямую в базе данных. Два вида графика на
-// выбор: фиксированные дни недели (проще для большинства) или скользящий
-// цикл "N дней работает — N выходной" (для сменного графика)
+// выбор: фиксированные дни недели (проще для большинства) или отметить
+// выходные дни вручную на конкретный месяц (для нерегулярного графика —
+// настраивается заново каждый месяц). Старый режим 'cycle' (скользящий
+// N-через-N) в интерфейсе больше не выбирается — см. isWorkDay()
 api.patch("/staff/my-schedule", async (req, res) => {
-  const { telegram_id, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, work_start_time, work_end_time } =
+  const { telegram_id, schedule_type, work_weekdays, schedule_month, schedule_month_off_days, work_start_time, work_end_time } =
     req.body as Partial<MyScheduleBody>;
   if (!telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
@@ -801,17 +820,23 @@ api.patch("/staff/my-schedule", async (req, res) => {
     return;
   }
 
-  if (!schedule_type || !["none", "cycle", "weekdays"].includes(schedule_type)) {
+  if (!schedule_type || !["none", "weekdays", "month"].includes(schedule_type)) {
     res.status(400).json({ error: "Не хватает параметров" });
-    return;
-  }
-  if (schedule_type === "cycle" && (!schedule_anchor || !work_days || !off_days || work_days < 1 || off_days < 1)) {
-    res.status(400).json({ error: "Укажите дату начала и оба числа (не меньше 1)" });
     return;
   }
   if (schedule_type === "weekdays" && (!work_weekdays || work_weekdays.length === 0)) {
     res.status(400).json({ error: "Отметьте хотя бы один день недели" });
     return;
+  }
+  if (schedule_type === "month") {
+    if (!schedule_month || !MONTH_RE.test(schedule_month)) {
+      res.status(400).json({ error: "Не указан месяц" });
+      return;
+    }
+    if (!Array.isArray(schedule_month_off_days) || schedule_month_off_days.some((d) => d < 1 || d > 31)) {
+      res.status(400).json({ error: "Некорректные выходные дни" });
+      return;
+    }
   }
 
   if (!work_start_time || !work_end_time || !TIME_RE.test(work_start_time) || !TIME_RE.test(work_end_time)) {
@@ -823,21 +848,22 @@ api.patch("/staff/my-schedule", async (req, res) => {
     return;
   }
 
-  const isCycle = schedule_type === "cycle";
   const isWeekdays = schedule_type === "weekdays";
+  const isMonth = schedule_type === "month";
 
   const { rows } = await db.query(
     `UPDATE masters SET
-       schedule_type = $1, schedule_anchor = $2, work_days = $3, off_days = $4, work_weekdays = $5,
-       work_start_time = $6, work_end_time = $7
-     WHERE id = $8
-     RETURNING id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, work_start_time, work_end_time`,
+       schedule_type = $1, schedule_anchor = NULL, work_days = NULL, off_days = NULL, work_weekdays = $2,
+       schedule_month = $3, schedule_month_off_days = $4,
+       work_start_time = $5, work_end_time = $6
+     WHERE id = $7
+     RETURNING id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays,
+               schedule_month, schedule_month_off_days, work_start_time, work_end_time`,
     [
       schedule_type === "none" ? null : schedule_type,
-      isCycle ? schedule_anchor : null,
-      isCycle ? work_days : null,
-      isCycle ? off_days : null,
       isWeekdays ? work_weekdays : null,
+      isMonth ? schedule_month : null,
+      isMonth ? schedule_month_off_days : null,
       work_start_time,
       work_end_time,
       role.master_id,

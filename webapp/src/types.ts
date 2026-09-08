@@ -5,11 +5,13 @@ export interface Master {
   experience_years: number | null
   photo_url: string | null
   service_ids: number[]
-  schedule_type: 'cycle' | 'weekdays' | null
+  schedule_type: 'cycle' | 'weekdays' | 'month' | null
   schedule_anchor: string | null
   work_days: number | null
   off_days: number | null
   work_weekdays: number[] | null
+  schedule_month: string | null
+  schedule_month_off_days: number[] | null
   work_start_time: string
   work_end_time: string
 }

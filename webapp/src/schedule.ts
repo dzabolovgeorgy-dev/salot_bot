@@ -1,15 +1,23 @@
 import type { Master } from './types'
 
-// Два вида графика: 'cycle' — скользящий "N дней работает — N выходной" по
-// кругу от schedule_anchor; 'weekdays' — фиксированные дни недели (0=Пн…6=Вс,
-// как WEEKDAY_LABELS в calendar.ts). Без schedule_type мастер работает всегда.
-// Тот же расчёт используется на сервере (server/src/api.ts) — держать в синхроне
+// Три вида графика: 'weekdays' — фиксированные дни недели (0=Пн…6=Вс, как
+// WEEKDAY_LABELS в calendar.ts); 'month' — выходные дни отмечены вручную на
+// конкретный месяц (schedule_month "YYYY-MM" + номера дней в
+// schedule_month_off_days), для другого месяца не действует; 'cycle' —
+// устаревший скользящий график, в интерфейсе больше не выбирается, но старые
+// данные читаем для обратной совместимости. Без schedule_type мастер работает
+// всегда. Тот же расчёт используется на сервере (server/src/api.ts) — держать в синхроне
 export function isWorkDay(dateKey: string, master: Master): boolean {
   if (master.schedule_type === 'weekdays') {
     if (!master.work_weekdays || master.work_weekdays.length === 0) return true
     const jsDay = new Date(`${dateKey}T00:00:00`).getDay()
     const weekday = (jsDay + 6) % 7
     return master.work_weekdays.includes(weekday)
+  }
+  if (master.schedule_type === 'month') {
+    if (master.schedule_month !== dateKey.slice(0, 7)) return true
+    const dayOfMonth = Number(dateKey.slice(8, 10))
+    return !(master.schedule_month_off_days ?? []).includes(dayOfMonth)
   }
   if (master.schedule_type !== 'cycle') return true
   if (!master.schedule_anchor || !master.work_days || !master.off_days) return true

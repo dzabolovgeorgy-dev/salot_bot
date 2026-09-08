@@ -56,6 +56,11 @@ function formatTime(iso: string): string {
   return iso.slice(11, 16)
 }
 
+function monthKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
+}
+
 function formatSelectedDate(dateKey: string): string {
   return new Date(`${dateKey}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
 }
@@ -79,11 +84,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
-  const [scheduleMode, setScheduleMode] = useState<'none' | 'weekdays' | 'cycle'>('none')
+  const [scheduleMode, setScheduleMode] = useState<'none' | 'weekdays' | 'month'>('none')
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([])
-  const [scheduleAnchorInput, setScheduleAnchorInput] = useState(todayKey())
-  const [workDaysInput, setWorkDaysInput] = useState('2')
-  const [offDaysInput, setOffDaysInput] = useState('2')
+  const [monthOffDays, setMonthOffDays] = useState<number[]>([])
   const [workStartInput, setWorkStartInput] = useState('09:00')
   const [workEndInput, setWorkEndInput] = useState('20:00')
   const [schedulePreviewMonth, setSchedulePreviewMonth] = useState(() => startOfMonth(new Date()))
@@ -205,29 +208,34 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
 
-  // Подтягиваем текущий график мастера в форму, как только список мастеров загрузился
+  // Подтягиваем текущий график мастера в форму, как только список мастеров загрузился.
+  // 'cycle' — устаревший режим, в переключателе его больше нет, показываем как «Всегда»
+  // (реальные данные в базе не трогаем, пока мастер сам не сохранит новый график)
   useEffect(() => {
     if (!myMaster) return
-    setScheduleMode(myMaster.schedule_type ?? 'none')
+    setScheduleMode(myMaster.schedule_type === 'cycle' ? 'none' : (myMaster.schedule_type ?? 'none'))
     setSelectedWeekdays(myMaster.work_weekdays ?? [])
-    setScheduleAnchorInput(myMaster.schedule_anchor ?? todayKey())
-    setWorkDaysInput(myMaster.work_days ? String(myMaster.work_days) : '2')
-    setOffDaysInput(myMaster.off_days ? String(myMaster.off_days) : '2')
     setWorkStartInput(myMaster.work_start_time ?? '09:00')
     setWorkEndInput(myMaster.work_end_time ?? '20:00')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    myMaster?.schedule_type,
-    myMaster?.schedule_anchor,
-    myMaster?.work_days,
-    myMaster?.off_days,
-    myMaster?.work_weekdays,
-    myMaster?.work_start_time,
-    myMaster?.work_end_time,
-  ])
+  }, [myMaster?.schedule_type, myMaster?.work_weekdays, myMaster?.work_start_time, myMaster?.work_end_time])
+
+  // Режим «По месяцу» настраивается заново на каждый месяц — при заходе на экран
+  // или перелистывании превью-календаря подтягиваем сохранённые выходные дни,
+  // только если они относятся именно к показанному месяцу, иначе месяц ещё не настроен
+  useEffect(() => {
+    if (!myMaster) return
+    setMonthOffDays(myMaster.schedule_month === monthKey(schedulePreviewMonth) ? (myMaster.schedule_month_off_days ?? []) : [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myMaster?.schedule_month, myMaster?.schedule_month_off_days, schedulePreviewMonth])
 
   function toggleWeekday(day: number) {
     setSelectedWeekdays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()))
+    setScheduleSaved(false)
+  }
+
+  function toggleMonthDay(day: number) {
+    setMonthOffDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)))
     setScheduleSaved(false)
   }
 
@@ -243,10 +251,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
         body: JSON.stringify({
           telegram_id: telegramId,
           schedule_type: scheduleMode,
-          schedule_anchor: scheduleMode === 'cycle' ? scheduleAnchorInput : null,
-          work_days: scheduleMode === 'cycle' ? Number(workDaysInput) : null,
-          off_days: scheduleMode === 'cycle' ? Number(offDaysInput) : null,
           work_weekdays: scheduleMode === 'weekdays' ? selectedWeekdays : null,
+          schedule_month: scheduleMode === 'month' ? monthKey(schedulePreviewMonth) : null,
+          schedule_month_off_days: scheduleMode === 'month' ? monthOffDays : null,
           work_start_time: workStartInput,
           work_end_time: workEndInput,
         }),
@@ -263,6 +270,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 work_days: data.work_days,
                 off_days: data.off_days,
                 work_weekdays: data.work_weekdays,
+                schedule_month: data.schedule_month,
+                schedule_month_off_days: data.schedule_month_off_days,
                 work_start_time: data.work_start_time,
                 work_end_time: data.work_end_time,
               }
@@ -676,10 +685,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     ? {
         ...myMaster,
         schedule_type: scheduleMode === 'none' ? null : scheduleMode,
-        schedule_anchor: scheduleMode === 'cycle' ? scheduleAnchorInput : null,
-        work_days: scheduleMode === 'cycle' ? Number(workDaysInput) || null : null,
-        off_days: scheduleMode === 'cycle' ? Number(offDaysInput) || null : null,
         work_weekdays: scheduleMode === 'weekdays' ? selectedWeekdays : null,
+        schedule_month: scheduleMode === 'month' ? monthKey(schedulePreviewMonth) : null,
+        schedule_month_off_days: scheduleMode === 'month' ? monthOffDays : null,
       }
     : null
 
@@ -1627,6 +1635,18 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 {buildMonthCells(schedulePreviewMonth).map((d, i) => {
                   if (!d) return <span key={`empty-${i}`} className="staff-month-day staff-month-day-empty" />
                   const working = isWorkDay(dateKeyOf(d), schedulePreviewMaster)
+                  if (scheduleMode === 'month') {
+                    return (
+                      <button
+                        key={dateKeyOf(d)}
+                        type="button"
+                        className={`staff-month-day${working ? '' : ' staff-month-day--off'}`}
+                        onClick={() => toggleMonthDay(d.getDate())}
+                      >
+                        {d.getDate()}
+                      </button>
+                    )
+                  }
                   return (
                     <span key={dateKeyOf(d)} className={`staff-month-day${working ? '' : ' staff-month-day--off'}`}>
                       {d.getDate()}
@@ -1634,6 +1654,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   )
                 })}
               </div>
+              {scheduleMode === 'month' && (
+                <p className="staff-form-hint">
+                  Нажимайте на дни, чтобы отметить выходные — сохранится только для показанного месяца.
+                  На следующий месяц нужно будет настроить заново.
+                </p>
+              )}
             </div>
           )}
 
@@ -1687,13 +1713,13 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               </button>
               <button
                 type="button"
-                className={scheduleMode === 'cycle' ? 'active' : ''}
+                className={scheduleMode === 'month' ? 'active' : ''}
                 onClick={() => {
-                  setScheduleMode('cycle')
+                  setScheduleMode('month')
                   setScheduleSaved(false)
                 }}
               >
-                Скользящий
+                По месяцу
               </button>
             </div>
 
@@ -1715,47 +1741,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               </div>
             )}
 
-            {scheduleMode === 'cycle' && (
-              <>
-                <label>
-                  Работаю подряд (дней)
-                  <input
-                    type="number"
-                    min={1}
-                    value={workDaysInput}
-                    onChange={(e) => {
-                      setWorkDaysInput(e.target.value)
-                      setScheduleSaved(false)
-                    }}
-                    required
-                  />
-                </label>
-                <label>
-                  Потом выходной (дней)
-                  <input
-                    type="number"
-                    min={1}
-                    value={offDaysInput}
-                    onChange={(e) => {
-                      setOffDaysInput(e.target.value)
-                      setScheduleSaved(false)
-                    }}
-                    required
-                  />
-                </label>
-                <label>
-                  Начиная с даты (в этот день — рабочий)
-                  <input
-                    type="date"
-                    value={scheduleAnchorInput}
-                    onChange={(e) => {
-                      setScheduleAnchorInput(e.target.value)
-                      setScheduleSaved(false)
-                    }}
-                    required
-                  />
-                </label>
-              </>
+            {scheduleMode === 'month' && (
+              <p className="staff-form-hint">Отметьте выходные дни в календаре выше.</p>
             )}
 
             <button type="submit" disabled={scheduleSaving}>

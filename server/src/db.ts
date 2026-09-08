@@ -24,12 +24,18 @@ export async function initDb(): Promise<void> {
       off_days INTEGER,
       work_start_time TEXT NOT NULL DEFAULT '09:00',
       work_end_time TEXT NOT NULL DEFAULT '20:00',
-      -- 'cycle' = скользящий график (work_days/off_days), 'weekdays' = фиксированные
-      -- дни недели (work_weekdays), NULL = графика нет, работает всегда.
+      -- 'cycle' = скользящий график (work_days/off_days) — устаревший режим,
+      -- больше не выбирается в интерфейсе, но старые мастера могут на нём остаться;
+      -- 'weekdays' = фиксированные дни недели (work_weekdays);
+      -- 'month' = выходные дни отмечены вручную на конкретный месяц
+      -- (schedule_month + schedule_month_off_days), настраивается заново каждый месяц;
+      -- NULL = графика нет, работает всегда.
       -- Проверка допустимых значений — на уровне приложения, не CHECK-constraint,
       -- чтобы не усложнять идемпотентную миграцию при повторных запусках
       schedule_type TEXT,
-      work_weekdays INTEGER[]
+      work_weekdays INTEGER[],
+      schedule_month TEXT,
+      schedule_month_off_days INTEGER[]
     );
 
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_anchor DATE;
@@ -39,6 +45,8 @@ export async function initDb(): Promise<void> {
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_end_time TEXT NOT NULL DEFAULT '20:00';
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_type TEXT;
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_weekdays INTEGER[];
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_month TEXT;
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_month_off_days INTEGER[];
     -- Мастера с уже заданным циклическим графиком (work_days/off_days) считаем
     -- schedule_type='cycle' задним числом, чтобы их график не "потерялся"
     UPDATE masters SET schedule_type = 'cycle'
