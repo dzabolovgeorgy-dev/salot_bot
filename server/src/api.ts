@@ -673,6 +673,39 @@ api.get("/staff/my-stats", async (req, res) => {
   });
 });
 
+// Главная у админа — то же самое, что my-stats у мастера, но по всему салону
+// (без фильтра по master_id)
+api.get("/staff/salon-stats", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT
+       COALESCE(SUM(s.price) FILTER (WHERE b.status = 'completed'), 0)::int AS income,
+       COUNT(*) AS bookings_count,
+       COUNT(DISTINCT COALESCE(b.client_telegram_id::text, b.client_phone)) AS clients_count
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     WHERE b.starts_at >= date_trunc('month', now())
+       AND b.starts_at < date_trunc('month', now()) + interval '1 month'`
+  );
+
+  const row = rows[0];
+  res.json({
+    income: row.income,
+    bookings_count: Number(row.bookings_count),
+    clients_count: Number(row.clients_count),
+  });
+});
+
 interface BookingStatusBody {
   telegram_id: number;
   status: "upcoming" | "completed" | "no_show";

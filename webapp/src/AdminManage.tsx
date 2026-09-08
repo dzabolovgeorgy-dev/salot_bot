@@ -18,12 +18,13 @@ interface StaffMember {
 
 interface AdminManageProps {
   telegramId: number
+  onBack?: () => void
 }
 
 const emptyMasterForm = { name: '', bio: '', experience_years: '', photo_url: '', accessTelegramId: '' }
 const emptyServiceForm = { name: '', duration_minutes: '', price: '', requiresAllergyCheck: false }
 
-export default function AdminManage({ telegramId }: AdminManageProps) {
+export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   const [section, setSection] = useState<Section>('menu')
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
@@ -319,6 +320,13 @@ export default function AdminManage({ telegramId }: AdminManageProps) {
 
       {section === 'menu' && (
         <ul className="staff-menu">
+          {onBack && (
+            <li>
+              <button type="button" className="staff-back-btn" onClick={onBack}>
+                ← Ещё
+              </button>
+            </li>
+          )}
           <li>
             <button type="button" className="staff-menu-row" onClick={() => openSection('masters')}>
               <span>Мастера</span>
