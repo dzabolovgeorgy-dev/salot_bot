@@ -1301,6 +1301,40 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
               })}
             </div>
           )}
+
+          {loading ? (
+            <p className="staff-empty">Загрузка…</p>
+          ) : dayItems.length === 0 ? (
+            <p className="staff-empty">На этот день ничего нет</p>
+          ) : (
+            <ul className="staff-list">
+              {dayItems.map((entry) =>
+                entry.kind === 'booking' ? (
+                  <li key={`booking-${entry.booking.id}`} className="staff-list-item">
+                    <span className="staff-list-time">{entry.time}</span>
+                    <span className="staff-list-body">
+                      {entry.booking.service_name} — {entry.booking.master_name}
+                      {entry.booking.client_name && (
+                        <span className="staff-client-meta">{entry.booking.client_name}</span>
+                      )}
+                    </span>
+                  </li>
+                ) : (
+                  <li key={`block-${entry.block.id}`} className="staff-list-item staff-list-item--block">
+                    <span className="staff-list-time">{entry.time}</span>
+                    <span className="staff-list-body">
+                      Заблокировано ({entry.block.master_name}
+                      {entry.block.note ? `, ${entry.block.note}` : ''})
+                    </span>
+                    <button type="button" className="staff-remove-btn" onClick={() => removeBlock(entry.block.id)}>
+                      Убрать
+                    </button>
+                  </li>
+                )
+              )}
+            </ul>
+          )}
+
           <button type="button" className="staff-add-btn" onClick={() => setShowNewBooking((v) => !v)}>
             {showNewBooking ? 'Отмена' : '+ Новая запись'}
           </button>
@@ -1474,39 +1508,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 </button>
               </div>
             </div>
-          )}
-
-          {loading ? (
-            <p className="staff-empty">Загрузка…</p>
-          ) : dayItems.length === 0 ? (
-            <p className="staff-empty">На этот день ничего нет</p>
-          ) : (
-            <ul className="staff-list">
-              {dayItems.map((entry) =>
-                entry.kind === 'booking' ? (
-                  <li key={`booking-${entry.booking.id}`} className="staff-list-item">
-                    <span className="staff-list-time">{entry.time}</span>
-                    <span className="staff-list-body">
-                      {entry.booking.service_name} — {entry.booking.master_name}
-                      {entry.booking.client_name && (
-                        <span className="staff-client-meta">{entry.booking.client_name}</span>
-                      )}
-                    </span>
-                  </li>
-                ) : (
-                  <li key={`block-${entry.block.id}`} className="staff-list-item staff-list-item--block">
-                    <span className="staff-list-time">{entry.time}</span>
-                    <span className="staff-list-body">
-                      Заблокировано ({entry.block.master_name}
-                      {entry.block.note ? `, ${entry.block.note}` : ''})
-                    </span>
-                    <button type="button" className="staff-remove-btn" onClick={() => removeBlock(entry.block.id)}>
-                      Убрать
-                    </button>
-                  </li>
-                )
-              )}
-            </ul>
           )}
         </section>
       )}
