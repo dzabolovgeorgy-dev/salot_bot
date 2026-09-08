@@ -137,8 +137,9 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     }
   }
 
-  // Группируем уже отсортированный (по дате последнего визита, свежие сверху)
-  // список клиентов в "папки" по дню
+  // Группируем клиентов в "папки" по дню последнего визита — сами папки
+  // по возрастанию даты (как страницы календаря), но самая свежая всё равно
+  // открыта по умолчанию (см. loadClients)
   const dayGroups: { key: string; label: string; clients: ClientSummary[] }[] = []
   clients.forEach((c) => {
     const key = dayKey(c.last_visit)
@@ -146,6 +147,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     if (group) group.clients.push(c)
     else dayGroups.push({ key, label: formatDate(c.last_visit), clients: [c] })
   })
+  dayGroups.reverse()
 
   return (
     <div className="staff-admin">
