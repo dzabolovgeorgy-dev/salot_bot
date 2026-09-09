@@ -47,9 +47,11 @@ const BOOK_BUTTON_TEXT = "📅 Записаться в чате";
 bot.start(async (ctx) => {
   const webAppUrl = getWebAppUrl();
 
+  // .persistent() — иначе Telegram на телефоне сворачивает эту кнопку в
+  // маленькую иконку клавиатуры после первого нажатия, и кажется, что она пропала
   await ctx.reply(
     `Привет! Я помогу записаться в салон красоты.\n\nДля быстрой записи прямо здесь, в чате, нажмите кнопку «${BOOK_BUTTON_TEXT}» внизу — она всегда под рукой.`,
-    Markup.keyboard([[BOOK_BUTTON_TEXT]]).resize()
+    Markup.keyboard([[BOOK_BUTTON_TEXT]]).resize().persistent()
   );
 
   if (webAppUrl) {
