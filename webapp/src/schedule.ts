@@ -29,6 +29,12 @@ export function isWorkDay(dateKey: string, master: Master): boolean {
   return position < master.work_days
 }
 
+// Минимальный перерыв (в минутах) между соседними записями/блокировками у
+// одного мастера — время убраться/подготовиться, чтобы записи не шли впритык
+// друг к другу. То же значение отдельно задано в server/src/schedule.ts —
+// держать в синхроне
+export const BUFFER_MINUTES = 15
+
 // Слоты времени каждые 30 минут в пределах часов работы мастера —
 // используется и у клиента при записи, и у админа при ручной записи
 export function generateTimeSlots(startTime: string, endTime: string, stepMinutes = 30): string[] {

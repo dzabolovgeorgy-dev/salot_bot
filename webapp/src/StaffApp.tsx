@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service, Booking, BlockedSlot, MasterPhoto } from './types'
-import { isWorkDay, generateTimeSlots } from './schedule'
+import { isWorkDay, generateTimeSlots, BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
@@ -153,16 +153,19 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     if (!newBookingMasterId || !newBookingService) return false
     const start = new Date(`${date}T${time}`).getTime()
     const end = start + newBookingService.duration_minutes * 60000
+    const bufferMs = BUFFER_MINUTES * 60000
     const bookingHit = bookings.some((b) => {
       if (b.master_id !== newBookingMasterId) return false
-      const bStart = new Date(b.starts_at).getTime()
-      const bEnd = bStart + b.duration_minutes * 60000
+      const bStart = new Date(b.starts_at).getTime() - bufferMs
+      const bEnd = bStart + b.duration_minutes * 60000 + 2 * bufferMs
       return start < bEnd && bStart < end
     })
     if (bookingHit) return true
     return blocks.some((bl) => {
       if (bl.master_id !== newBookingMasterId) return false
-      return start < new Date(bl.ends_at).getTime() && new Date(bl.starts_at).getTime() < end
+      const bStart = new Date(bl.starts_at).getTime() - bufferMs
+      const bEnd = new Date(bl.ends_at).getTime() + bufferMs
+      return start < bEnd && bStart < end
     })
   }
 

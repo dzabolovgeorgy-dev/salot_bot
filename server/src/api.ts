@@ -4,7 +4,7 @@ import { db } from "./db.js";
 import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
-import { isWorkDay } from "./schedule.js";
+import { isWorkDay, BUFFER_MINUTES } from "./schedule.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -113,8 +113,9 @@ async function requireAdmin(telegramId: number): Promise<boolean> {
 }
 
 // Проверка, что у мастера нет другой записи или заблокированного времени,
-// пересекающегося по времени. excludeBookingId — чтобы при переносе запись
-// не конфликтовала сама с собой
+// пересекающегося по времени — с учётом BUFFER_MINUTES: соседние записи должны
+// быть разнесены минимум на этот перерыв, впритык друг к другу нельзя.
+// excludeBookingId — чтобы при переносе запись не конфликтовала сама с собой
 async function hasConflict(
   masterId: number,
   startsAt: string,
@@ -126,14 +127,14 @@ async function hasConflict(
      JOIN services s ON s.id = b.service_id
      WHERE b.master_id = $1
        AND ($4::int IS NULL OR b.id != $4)
-       AND b.starts_at < ($2::timestamp + ($3 * interval '1 minute'))
-       AND $2::timestamp < (b.starts_at + (s.duration_minutes * interval '1 minute'))
+       AND (b.starts_at - ($5 * interval '1 minute')) < ($2::timestamp + ($3 * interval '1 minute'))
+       AND $2::timestamp < (b.starts_at + (s.duration_minutes * interval '1 minute') + ($5 * interval '1 minute'))
      UNION ALL
      SELECT bs.id FROM blocked_slots bs
      WHERE bs.master_id = $1
-       AND bs.starts_at < ($2::timestamp + ($3 * interval '1 minute'))
-       AND $2::timestamp < bs.ends_at`,
-    [masterId, startsAt, durationMinutes, excludeBookingId ?? null]
+       AND (bs.starts_at - ($5 * interval '1 minute')) < ($2::timestamp + ($3 * interval '1 minute'))
+       AND $2::timestamp < (bs.ends_at + ($5 * interval '1 minute'))`,
+    [masterId, startsAt, durationMinutes, excludeBookingId ?? null, BUFFER_MINUTES]
   );
   return rows.length > 0;
 }

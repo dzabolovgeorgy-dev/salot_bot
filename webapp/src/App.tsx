@@ -18,7 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking, MasterPhoto } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
-import { isWorkDay, generateTimeSlots } from './schedule'
+import { isWorkDay, generateTimeSlots, BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
@@ -112,8 +112,8 @@ function isSlotFree(
   const slotStart = minutesOf(slotTime)
   const slotEnd = slotStart + durationMinutes
   return !busy.some((b) => {
-    const busyStart = minutesOf(b.starts_at.slice(11, 16))
-    const busyEnd = busyStart + b.duration_minutes
+    const busyStart = minutesOf(b.starts_at.slice(11, 16)) - BUFFER_MINUTES
+    const busyEnd = busyStart + b.duration_minutes + 2 * BUFFER_MINUTES
     return slotStart < busyEnd && busyStart < slotEnd
   })
 }

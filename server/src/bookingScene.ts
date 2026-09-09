@@ -1,5 +1,5 @@
 import { Context, Scenes } from "telegraf";
-import { isWorkDay, generateTimeSlots, type MasterSchedule } from "./schedule.js";
+import { isWorkDay, generateTimeSlots, BUFFER_MINUTES, type MasterSchedule } from "./schedule.js";
 
 interface InlineButton {
   text: string;
@@ -206,8 +206,8 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
     if (slotStart < now) return false;
     const slotEnd = slotStart + duration * 60000;
     return !busy.some((b) => {
-      const bStart = new Date(b.starts_at).getTime();
-      const bEnd = bStart + b.duration_minutes * 60000;
+      const bStart = new Date(b.starts_at).getTime() - BUFFER_MINUTES * 60000;
+      const bEnd = bStart + b.duration_minutes * 60000 + 2 * BUFFER_MINUTES * 60000;
       return slotStart < bEnd && bStart < slotEnd;
     });
   });
