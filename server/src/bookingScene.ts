@@ -204,7 +204,9 @@ bookingScene.action("cancel", async (ctx) => {
 bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const serviceId = Number(ctx.match[1]);
-  const res = await fetch(`${API_BASE}/services`);
+  // Оба запроса не зависят друг от друга — запускаем сразу вместе, а не по
+  // очереди, чтобы каждый шаг диалога отвечал быстрее
+  const [res, mastersRes] = await Promise.all([fetch(`${API_BASE}/services`), fetch(`${API_BASE}/masters`)]);
   const services = (await res.json()) as Service[];
   const service = services.find((s) => s.id === serviceId);
   if (!service) {
@@ -219,7 +221,6 @@ bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
     servicePrice: service.price,
   });
 
-  const mastersRes = await fetch(`${API_BASE}/masters`);
   const masters = (await mastersRes.json()) as Master[];
   const available = masters.filter((m) => m.service_ids.includes(serviceId));
   if (available.length === 0) {
@@ -262,11 +263,12 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
   const date = ctx.match[1];
   state(ctx).date = date;
 
-  const mastersRes = await fetch(`${API_BASE}/masters`);
+  const [mastersRes, busyRes] = await Promise.all([
+    fetch(`${API_BASE}/masters`),
+    fetch(`${API_BASE}/masters/${masterId}/bookings?date=${date}`),
+  ]);
   const masters = (await mastersRes.json()) as Master[];
   const master = masters.find((m) => m.id === masterId)!;
-
-  const busyRes = await fetch(`${API_BASE}/masters/${masterId}/bookings?date=${date}`);
   const busy = (await busyRes.json()) as { starts_at: string; duration_minutes: number }[];
 
   const now = Date.now();
