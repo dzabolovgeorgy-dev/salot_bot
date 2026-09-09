@@ -1,6 +1,6 @@
 import { Telegraf, Markup, Scenes, session } from "telegraf";
 import { db } from "./db.js";
-import { bookingScene, type BotContext } from "./bookingScene.js";
+import { bookingScene, BOOK_BUTTON_TEXT, type BotContext } from "./bookingScene.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -39,10 +39,6 @@ export async function setupMenuButton(): Promise<void> {
     console.warn("Не удалось настроить кнопку меню:", err instanceof Error ? err.message : err);
   }
 }
-
-// Текст кнопки быстрой записи — одна и та же строка и на самой кнопке,
-// и в обработчике нажатия ниже (bot.hears), чтобы не разъехались
-const BOOK_BUTTON_TEXT = "📅 Записаться в чате";
 
 bot.start(async (ctx) => {
   const webAppUrl = getWebAppUrl();

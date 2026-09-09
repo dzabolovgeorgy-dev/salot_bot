@@ -8,6 +8,11 @@ interface InlineButton {
 
 const API_BASE = `http://localhost:${process.env.PORT ?? 3000}/api`;
 
+// Текст постоянной кнопки быстрой записи внизу чата (задаётся в bot.ts) —
+// экспортируем отсюда, чтобы bot.ts мог её импортировать, не создавая
+// круговую зависимость (bot.ts и так уже импортирует эту сцену)
+export const BOOK_BUTTON_TEXT = "📅 Записаться в чате";
+
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
 interface BookingSceneState {
@@ -82,7 +87,7 @@ async function requireField<K extends keyof BookingSceneState>(
   const value = state(ctx)[field];
   if (value === undefined) {
     await ctx.answerCbQuery("Сессия сброшена — начните заново");
-    await ctx.reply("Похоже, сервер перезапускался и диалог сбросился. Наберите /book, чтобы начать заново.");
+    await ctx.reply(`Похоже, сервер перезапускался и диалог сбросился. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`);
     await ctx.scene.leave();
   }
   return value;
@@ -108,7 +113,7 @@ bookingScene.enter(async (ctx) => {
 
 bookingScene.action("cancel", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.editMessageText("Запись отменена. Наберите /book, если захотите начать заново.");
+  await ctx.editMessageText(`Запись отменена. Если захотите начать заново — нажмите «${BOOK_BUTTON_TEXT}».`);
   await ctx.scene.leave();
 });
 
@@ -119,7 +124,7 @@ bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
   const services = (await res.json()) as Service[];
   const service = services.find((s) => s.id === serviceId);
   if (!service) {
-    await ctx.editMessageText("Эта услуга уже недоступна. Наберите /book заново.");
+    await ctx.editMessageText(`Эта услуга уже недоступна. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`);
     await ctx.scene.leave();
     return;
   }
@@ -134,7 +139,7 @@ bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
   const masters = (await mastersRes.json()) as Master[];
   const available = masters.filter((m) => m.service_ids.includes(serviceId));
   if (available.length === 0) {
-    await ctx.editMessageText("Для этой услуги пока нет мастеров. Наберите /book, чтобы выбрать другую услугу.");
+    await ctx.editMessageText(`Для этой услуги пока нет мастеров. Нажмите «${BOOK_BUTTON_TEXT}», чтобы выбрать другую услугу.`);
     await ctx.scene.leave();
     return;
   }
@@ -155,7 +160,7 @@ bookingScene.action(/^mst:(\d+)$/, async (ctx) => {
   const masters = (await mastersRes.json()) as Master[];
   const master = masters.find((m) => m.id === masterId);
   if (!master) {
-    await ctx.editMessageText("Этот мастер уже недоступен. Наберите /book заново.");
+    await ctx.editMessageText(`Этот мастер уже недоступен. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`);
     await ctx.scene.leave();
     return;
   }
@@ -172,7 +177,9 @@ bookingScene.action(/^mst:(\d+)$/, async (ctx) => {
     if (isWorkDay(dateKey(d), master)) days.push(d);
   }
   if (days.length === 0) {
-    await ctx.editMessageText(`У мастера ${master.name} нет рабочих дней в ближайший месяц. Наберите /book заново.`);
+    await ctx.editMessageText(
+      `У мастера ${master.name} нет рабочих дней в ближайший месяц. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`
+    );
     await ctx.scene.leave();
     return;
   }
@@ -215,7 +222,9 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
   });
 
   if (freeSlots.length === 0) {
-    await ctx.editMessageText("На этот день свободного времени не осталось. Выберите другой день командой /book.");
+    await ctx.editMessageText(
+      `На этот день свободного времени не осталось. Нажмите «${BOOK_BUTTON_TEXT}», чтобы выбрать другой день.`
+    );
     await ctx.scene.leave();
     return;
   }
@@ -284,7 +293,9 @@ bookingScene.action("confirm", async (ctx) => {
   });
   const data = await res.json();
   if (!res.ok) {
-    await ctx.editMessageText(`Не получилось записать: ${data.error ?? "неизвестная ошибка"}. Наберите /book, чтобы попробовать снова.`);
+    await ctx.editMessageText(
+      `Не получилось записать: ${data.error ?? "неизвестная ошибка"}. Нажмите «${BOOK_BUTTON_TEXT}», чтобы попробовать снова.`
+    );
     await ctx.scene.leave();
     return;
   }
