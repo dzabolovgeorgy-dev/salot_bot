@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service, Booking, BlockedSlot, MasterPhoto } from './types'
-import { isWorkDay, generateTimeSlots, DEFAULT_BUFFER_MINUTES } from './schedule'
+import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
@@ -872,7 +872,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 <div>
                   <span className="staff-checkbox-label">Время</span>
                   <div className="staff-time-grid">
-                    {generateTimeSlots(myMaster.work_start_time, myMaster.work_end_time).map((t) => {
+                    {generateTimeSlots(
+                      myMaster.work_start_time,
+                      myMaster.work_end_time,
+                      slotStep(myMaster.buffer_minutes)
+                    ).map((t) => {
                       const past = new Date(`${date}T${t}`).getTime() < Date.now()
                       const taken = !past && isTimeTakenForNewBooking(t)
                       return (
@@ -1409,7 +1413,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   <div className="staff-time-grid">
                     {generateTimeSlots(
                       newBookingMaster?.work_start_time ?? '09:00',
-                      newBookingMaster?.work_end_time ?? '20:00'
+                      newBookingMaster?.work_end_time ?? '20:00',
+                      slotStep(newBookingMaster?.buffer_minutes ?? DEFAULT_BUFFER_MINUTES)
                     ).map((t) => {
                       const past = new Date(`${date}T${t}`).getTime() < Date.now()
                       const taken = !past && isTimeTakenForNewBooking(t)

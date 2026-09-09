@@ -44,7 +44,16 @@ export function isWorkDay(dateStr: string, master: MasterSchedule): boolean {
 // webapp/src/schedule.ts — держать в синхроне
 export const DEFAULT_BUFFER_MINUTES = 15;
 
-// Слоты времени каждые 30 минут в пределах часов работы мастера
+// Шаг сетки времени подстраивается под перерыв мастера — иначе перерыв,
+// который не делится на 30 минут (например 15), "съедал" бы лишнее время:
+// сетка на 30 минут не может предложить время ровно там, где мастер
+// освобождается. Если перерыва нет ("Без перерыва") — берём 15 минут,
+// чтобы сетка не была слишком дробной. То же самое в webapp/src/schedule.ts
+export function slotStep(bufferMinutes: number): number {
+  return bufferMinutes > 0 ? bufferMinutes : 15;
+}
+
+// Слоты времени с заданным шагом (см. slotStep) в пределах часов работы мастера
 export function generateTimeSlots(startTime: string, endTime: string, stepMinutes = 30): string[] {
   const toMinutes = (t: string) => {
     const [h, m] = t.split(":").map(Number);

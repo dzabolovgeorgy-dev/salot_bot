@@ -18,7 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking, MasterPhoto } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
-import { isWorkDay, generateTimeSlots, DEFAULT_BUFFER_MINUTES } from './schedule'
+import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
@@ -653,7 +653,11 @@ function App() {
   const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
   const timeSlotMaster = reschedule ? reschedule.master : selectedMaster
   const masterTimeSlots = timeSlotMaster
-    ? generateTimeSlots(timeSlotMaster.work_start_time, timeSlotMaster.work_end_time)
+    ? generateTimeSlots(
+        timeSlotMaster.work_start_time,
+        timeSlotMaster.work_end_time,
+        slotStep(timeSlotMaster.buffer_minutes)
+      )
     : []
   const availableTimeSlots = (
     dateKey === todayKey ? masterTimeSlots.filter((t) => t > nowHHMM) : masterTimeSlots
