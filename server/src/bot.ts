@@ -40,19 +40,28 @@ export async function setupMenuButton(): Promise<void> {
   }
 }
 
-bot.start((ctx) => {
+// Текст кнопки быстрой записи — одна и та же строка и на самой кнопке,
+// и в обработчике нажатия ниже (bot.hears), чтобы не разъехались
+const BOOK_BUTTON_TEXT = "📅 Записаться в чате";
+
+bot.start(async (ctx) => {
   const webAppUrl = getWebAppUrl();
+
+  await ctx.reply(
+    `Привет! Я помогу записаться в салон красоты.\n\nДля быстрой записи прямо здесь, в чате, нажмите кнопку «${BOOK_BUTTON_TEXT}» внизу — она всегда под рукой.`,
+    Markup.keyboard([[BOOK_BUTTON_TEXT]]).resize()
+  );
+
   if (webAppUrl) {
-    ctx.reply(
-      "Привет! Я помогу записаться в салон красоты.\n\nМожно записаться через кнопку ниже, а можно прямо в этом чате командой /book.",
-      Markup.inlineKeyboard([Markup.button.webApp("Записаться", webAppUrl)])
+    await ctx.reply(
+      "А в приложении можно подробнее посмотреть всех мастеров и услуги — с фото и описанием.",
+      Markup.inlineKeyboard([Markup.button.webApp("Открыть приложение", webAppUrl)])
     );
-  } else {
-    ctx.reply("Привет! Я помогу записаться в салон красоты.\n\nНаберите /book, чтобы записаться прямо в этом чате.");
   }
 });
 
 bot.command("book", (ctx) => ctx.scene.enter("booking"));
+bot.hears(BOOK_BUTTON_TEXT, (ctx) => ctx.scene.enter("booking"));
 
 bot.command("masters", async (ctx) => {
   const { rows: masters } = await db.query<{ name: string }>("SELECT name FROM masters");
