@@ -77,6 +77,16 @@ async function notifyMaster(masterId: number, text: string) {
   });
 }
 
+// Уведомление всем админам сразу (админов может быть несколько)
+async function notifyAdmins(text: string) {
+  const { rows } = await db.query<{ telegram_id: string }>("SELECT telegram_id FROM staff WHERE role = 'admin'");
+  rows.forEach((r) => {
+    bot.telegram.sendMessage(r.telegram_id, text).catch((err) => {
+      console.warn("Не удалось отправить уведомление админу:", err instanceof Error ? err.message : err);
+    });
+  });
+}
+
 // Роль пользователя по Telegram ID: клиент (нет в staff), мастер или админ
 async function getRole(
   telegramId: number
@@ -787,6 +797,14 @@ api.post("/staff/blocked-slots", async (req, res) => {
     `INSERT INTO blocked_slots (master_id, starts_at, ends_at, note) VALUES ($1, $2, $3, $4) RETURNING *`,
     [master_id, starts_at, ends_at, note ?? null]
   );
+
+  // Если время заблокировал сам мастер — сообщаем об этом админу (например, мастер ушёл на обед)
+  if (role.role === "master") {
+    const endTime = toIso(ends_at).slice(11, 16);
+    notifyAdmins(
+      `🚫 У мастера ${role.master_name} заблокировано время\n\n${formatRuDateTime(starts_at)}–${endTime}${note ? `\n${note}` : ""}`
+    );
+  }
 
   res.status(201).json({ ...rows[0], starts_at: toIso(rows[0].starts_at), ends_at: toIso(rows[0].ends_at) });
 });
