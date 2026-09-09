@@ -18,6 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking, MasterPhoto } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
+import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
@@ -312,14 +313,14 @@ function App() {
   }, [])
 
   const fetchBookings = () =>
-    fetch(`${API_URL}/api/bookings?client_telegram_id=${clientTelegramId}`)
+    apiFetch(`${API_URL}/api/bookings?client_telegram_id=${clientTelegramId}`)
       .then((r) => r.json())
       .then(setBookings)
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API_URL}/api/services`).then((r) => r.json()),
-      fetch(`${API_URL}/api/masters`).then((r) => r.json()),
+      apiFetch(`${API_URL}/api/services`).then((r) => r.json()),
+      apiFetch(`${API_URL}/api/masters`).then((r) => r.json()),
       fetchBookings(),
     ])
       .then(([servicesData, mastersData]) => {
@@ -344,7 +345,7 @@ function App() {
       return
     }
     const excludeParam = reschedule ? `&exclude_booking_id=${reschedule.booking.id}` : ''
-    fetch(`${API_URL}/api/masters/${master.id}/bookings?date=${dateKey}${excludeParam}`)
+    apiFetch(`${API_URL}/api/masters/${master.id}/bookings?date=${dateKey}${excludeParam}`)
       .then((r) => r.json())
       .then(setBusySlots)
       .catch(() => setBusySlots([]))
@@ -359,7 +360,7 @@ function App() {
       return
     }
     setAllergyStage('loading')
-    fetch(`${API_URL}/api/client-notes/${clientTelegramId}`)
+    apiFetch(`${API_URL}/api/client-notes/${clientTelegramId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.note) {
@@ -383,7 +384,7 @@ function App() {
     }
     setAllergySaving(true)
     try {
-      await fetch(`${API_URL}/api/client-notes/${clientTelegramId}`, {
+      await apiFetch(`${API_URL}/api/client-notes/${clientTelegramId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: allergyDraft.trim() }),
@@ -429,7 +430,7 @@ function App() {
       setMasterProfilePhotos([])
       return
     }
-    fetch(`${API_URL}/api/masters/${masterProfile.id}/photos`)
+    apiFetch(`${API_URL}/api/masters/${masterProfile.id}/photos`)
       .then((r) => r.json())
       .then(setMasterProfilePhotos)
       .catch(() => setMasterProfilePhotos([]))
@@ -476,7 +477,7 @@ function App() {
     setRescheduling(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/bookings/${reschedule.booking.id}`, {
+      const res = await apiFetch(`${API_URL}/api/bookings/${reschedule.booking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_telegram_id: clientTelegramId, starts_at: startsAt }),
@@ -499,7 +500,7 @@ function App() {
     if (!window.confirm('Отменить эту запись?')) return
     setCancellingId(id)
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${API_URL}/api/bookings/${id}?client_telegram_id=${clientTelegramId}`,
         { method: 'DELETE' }
       )
@@ -520,7 +521,7 @@ function App() {
     setSubmitting(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/bookings`, {
+      const res = await apiFetch(`${API_URL}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

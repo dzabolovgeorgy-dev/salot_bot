@@ -8,6 +8,7 @@ import {
   type BotContext,
   type RescheduleEntryState,
 } from "./bookingScene.js";
+import { internalHeaders } from "./internalAuth.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -74,7 +75,7 @@ bot.hears(BOOK_BUTTON_TEXT, (ctx) => ctx.scene.enter("booking"));
 bot.action(/^resched:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const bookingId = Number(ctx.match[1]);
-  const res = await fetch(`${API_BASE}/bookings?client_telegram_id=${ctx.from.id}`);
+  const res = await fetch(`${API_BASE}/bookings?client_telegram_id=${ctx.from.id}`, { headers: internalHeaders() });
   const bookings = (await res.json()) as {
     id: number;
     master_id: number;
@@ -119,7 +120,10 @@ bot.action(/^cancelbk:(\d+)$/, async (ctx) => {
 bot.action(/^cancelbk_yes:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const id = ctx.match[1];
-  const res = await fetch(`${API_BASE}/bookings/${id}?client_telegram_id=${ctx.from.id}`, { method: "DELETE" });
+  const res = await fetch(`${API_BASE}/bookings/${id}?client_telegram_id=${ctx.from.id}`, {
+    method: "DELETE",
+    headers: internalHeaders(),
+  });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     await ctx.reply(`Не получилось отменить: ${data.error ?? "неизвестная ошибка"}`);

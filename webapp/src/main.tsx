@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import StaffApp from './StaffApp.tsx'
 import { getTelegramUserId } from './telegram'
+import { apiFetch } from './apiFetch'
 import type { StaffRole } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -16,7 +17,7 @@ function Gate() {
 
   useEffect(() => {
     const telegramId = getTelegramUserId()
-    fetch(`${API_URL}/api/me?telegram_id=${telegramId}`)
+    apiFetch(`${API_URL}/api/me?telegram_id=${telegramId}`)
       .then((r) => r.json())
       .then((data: StaffRole) => setRole(data))
       .catch(() => setRole({ role: 'client' }))

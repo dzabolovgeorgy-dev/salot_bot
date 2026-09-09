@@ -15,3 +15,11 @@ export function getTelegramUsername(): string | null {
   const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user
   return tgUser?.username ?? null
 }
+
+// "Подписанный конверт" от Telegram — сырая строка initData (не initDataUnsafe).
+// В отличие от initDataUnsafe (её любой может подделать в браузере), эту строку
+// сервер может проверить: она подписана секретным ключом бота, подделать её
+// без ключа нельзя. Отправляем её на сервер с каждым запросом (см. apiFetch.ts)
+export function getInitData(): string {
+  return (window as any).Telegram?.WebApp?.initData ?? ''
+}

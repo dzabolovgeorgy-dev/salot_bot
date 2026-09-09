@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service } from './types'
+import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -34,9 +35,9 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   async function loadAll() {
     try {
       const [mRes, sRes, stRes] = await Promise.all([
-        fetch(`${API_URL}/api/masters`),
-        fetch(`${API_URL}/api/services`),
-        fetch(`${API_URL}/api/staff?telegram_id=${telegramId}`),
+        apiFetch(`${API_URL}/api/masters`),
+        apiFetch(`${API_URL}/api/services`),
+        apiFetch(`${API_URL}/api/staff?telegram_id=${telegramId}`),
       ])
       setMasters(await mRes.json())
       setServices(await sRes.json())
@@ -100,7 +101,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     setMasterSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/masters`, {
+      const res = await apiFetch(`${API_URL}/api/masters`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,7 +130,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     setMasterSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/masters/${editingMasterId}`, {
+      const res = await apiFetch(`${API_URL}/api/masters/${editingMasterId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -144,7 +145,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
 
-      await fetch(`${API_URL}/api/masters/${editingMasterId}/services`, {
+      await apiFetch(`${API_URL}/api/masters/${editingMasterId}/services`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: telegramId, service_ids: masterServiceIds }),
@@ -167,7 +168,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     if (!window.confirm('Удалить мастера? Это возможно, только если у него нет записей.')) return
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/masters/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
+      const res = await apiFetch(`${API_URL}/api/masters/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить')
       await loadAll()
@@ -223,7 +224,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
         price: Number(serviceForm.price),
         requires_allergy_check: serviceForm.requiresAllergyCheck,
       }
-      const res = await fetch(
+      const res = await apiFetch(
         editingServiceId ? `${API_URL}/api/services/${editingServiceId}` : `${API_URL}/api/services`,
         {
           method: editingServiceId ? 'PATCH' : 'POST',
@@ -235,7 +236,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
 
       const serviceId = editingServiceId ?? data.id
-      await fetch(`${API_URL}/api/services/${serviceId}/masters`, {
+      await apiFetch(`${API_URL}/api/services/${serviceId}/masters`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: telegramId, master_ids: serviceMasterIds }),
@@ -254,7 +255,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     if (!window.confirm('Удалить услугу? Это возможно, только если она не используется в записях.')) return
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/services/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
+      const res = await apiFetch(`${API_URL}/api/services/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить')
       if (editingServiceId === id) startNewService()
@@ -275,7 +276,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     setStaffSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff`, {
+      const res = await apiFetch(`${API_URL}/api/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -299,7 +300,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     if (!window.confirm('Забрать доступ у этого сотрудника?')) return
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
+      const res = await apiFetch(`${API_URL}/api/staff/${id}?telegram_id=${telegramId}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить')
       await loadAll()

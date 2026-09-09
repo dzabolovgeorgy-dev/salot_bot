@@ -1,5 +1,6 @@
 import { Context, Scenes } from "telegraf";
 import { isWorkDay, generateTimeSlots, slotStep, type MasterSchedule } from "./schedule.js";
+import { internalHeaders } from "./internalAuth.js";
 
 interface InlineButton {
   text: string;
@@ -351,7 +352,7 @@ bookingScene.action("confirm", async (ctx) => {
     await ctx.editMessageText("Переношу…");
     const res = await fetch(`${API_BASE}/bookings/${s.rescheduleBookingId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: internalHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ client_telegram_id: from.id, starts_at: startsAt }),
     });
     const data = await res.json();
@@ -370,7 +371,7 @@ bookingScene.action("confirm", async (ctx) => {
   await ctx.editMessageText("Записываю…");
   const res = await fetch(`${API_BASE}/bookings`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: internalHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       client_telegram_id: from.id,
       client_username: from.username,

@@ -4,6 +4,7 @@ import { initDb } from "./db.js";
 import { initStorage } from "./storage.js";
 import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
+import { attachTelegramIdentity } from "./telegramAuthMiddleware.js";
 
 // Сервер на Render по умолчанию работает по UTC, а салон — по своему местному
 // времени. Даты/время клиента и мастера везде считаются в браузере (там уже
@@ -30,7 +31,7 @@ app.use(express.json());
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, PATCH, PUT");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data");
   next();
 });
 
@@ -38,7 +39,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use("/api", api);
+app.use("/api", attachTelegramIdentity, api);
 
 const port = process.env.PORT ?? 3000;
 app.listen(port, () => {

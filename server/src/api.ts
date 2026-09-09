@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import multer from "multer";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
@@ -117,6 +118,40 @@ async function requireAdmin(telegramId: number): Promise<boolean> {
   return role.role === "admin";
 }
 
+// Проверка подписи Telegram (см. server/src/telegramAuthMiddleware.ts): убеждаемся,
+// что claimedId — это реально тот Telegram-аккаунт, который сейчас обращается к
+// серверу, а не произвольный ID, вписанный в запрос вручную (например, из
+// консоли браузера). internalTrusted — запрос от самого сервера (диалог в чате),
+// там личность уже подтвердил Telegram, доставив сообщение боту
+function isVerifiedTelegramId(req: Request, claimedId: number): boolean {
+  if (req.internalTrusted) return true;
+  return req.verifiedTelegramId != null && req.verifiedTelegramId === claimedId;
+}
+
+function rejectIfNotVerified(req: Request, res: Response, claimedId: number): boolean {
+  if (isVerifiedTelegramId(req, claimedId)) return false;
+  res.status(403).json({ error: "Не удалось подтвердить личность в Telegram" });
+  return true;
+}
+
+// Для эндпоинтов, доступных и клиенту (о себе), и персоналу (о любом клиенте) —
+// заметки о клиенте, где в самом запросе нет отдельного поля "кто спрашивает"
+async function canAccessClientNotes(req: Request, clientTelegramId: number): Promise<boolean> {
+  if (isVerifiedTelegramId(req, clientTelegramId)) return true;
+  if (req.verifiedTelegramId == null) return false;
+  const role = await getRole(req.verifiedTelegramId);
+  return role.role !== "client";
+}
+
+// Заметки клиента без Telegram (записан по телефону) — доступны только
+// персоналу, самого клиента здесь по определению нет
+async function isVerifiedStaff(req: Request): Promise<boolean> {
+  if (req.internalTrusted) return true;
+  if (req.verifiedTelegramId == null) return false;
+  const role = await getRole(req.verifiedTelegramId);
+  return role.role !== "client";
+}
+
 // Проверка, что у мастера нет другой записи или заблокированного времени,
 // пересекающегося по времени — с учётом перерыва между записями (у каждого
 // мастера свой, masters.buffer_minutes): соседние записи должны быть разнесены
@@ -202,6 +237,7 @@ api.get("/bookings", async (req, res) => {
     res.status(400).json({ error: "Не хватает client_telegram_id" });
     return;
   }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
@@ -225,6 +261,7 @@ api.delete("/bookings/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name, s.name AS service_name
@@ -273,6 +310,7 @@ api.post("/bookings", async (req, res) => {
     res.status(400).json({ error: "Не хватает полей запроса" });
     return;
   }
+  if (rejectIfNotVerified(req, res, client_telegram_id)) return;
 
   const { rows: masterRows } = await db.query(
     "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, buffer_minutes FROM masters WHERE id = $1",
@@ -378,6 +416,7 @@ api.post("/staff/bookings", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   const role = await getRole(telegram_id);
   if (role.role === "client") {
     res.status(403).json({ error: "Доступно только персоналу" });
@@ -496,6 +535,7 @@ api.patch("/bookings/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, client_telegram_id)) return;
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
@@ -572,6 +612,7 @@ api.get("/me", async (req, res) => {
     res.status(400).json({ error: "Не хватает telegram_id" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   res.json(await getRole(telegramId));
 });
 
@@ -584,6 +625,7 @@ api.get("/staff/schedule", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
 
   const role = await getRole(telegramId);
   if (role.role === "client") {
@@ -630,6 +672,7 @@ api.get("/staff/my-stats", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
 
   const role = await getRole(telegramId);
   if (role.role !== "master") {
@@ -666,6 +709,7 @@ api.get("/staff/salon-stats", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
 
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
@@ -707,6 +751,7 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     res.status(400).json({ error: "Некорректный статус" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
 
   const role = await getRole(telegram_id);
   if (role.role === "client") {
@@ -757,6 +802,7 @@ api.post("/staff/blocked-slots", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
 
   const role = await getRole(telegram_id);
   if (role.role === "client") {
@@ -791,6 +837,7 @@ api.delete("/staff/blocked-slots/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
 
   const role = await getRole(telegramId);
   if (role.role === "client") {
@@ -851,6 +898,7 @@ api.patch("/staff/my-schedule", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
 
   const role = await getRole(telegram_id);
   if (role.role !== "master") {
@@ -924,6 +972,7 @@ api.patch("/staff/my-profile", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   const role = await getRole(telegram_id);
   if (role.role !== "master") {
     res.status(403).json({ error: "Доступно только мастеру" });
@@ -946,6 +995,7 @@ api.post("/staff/my-avatar", upload.single("photo"), async (req, res) => {
     res.status(400).json({ error: "Файл должен быть изображением" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   const role = await getRole(telegram_id);
   if (role.role !== "master") {
     res.status(403).json({ error: "Доступно только мастеру" });
@@ -988,6 +1038,7 @@ api.post("/staff/portfolio-photos", upload.single("photo"), async (req, res) => 
     res.status(400).json({ error: "Файл должен быть изображением" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   const role = await getRole(telegram_id);
   if (role.role !== "master") {
     res.status(403).json({ error: "Доступно только мастеру" });
@@ -1013,6 +1064,7 @@ api.delete("/staff/portfolio-photos/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   const role = await getRole(telegram_id);
   if (role.role !== "master" && role.role !== "admin") {
     res.status(403).json({ error: "Доступно только персоналу" });
@@ -1071,6 +1123,7 @@ api.post("/masters", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1094,6 +1147,7 @@ api.patch("/masters/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1124,6 +1178,7 @@ api.delete("/masters/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1156,6 +1211,7 @@ api.post("/services", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1176,6 +1232,7 @@ api.patch("/services/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1204,6 +1261,7 @@ api.delete("/services/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1234,6 +1292,7 @@ api.put("/masters/:id/services", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1259,6 +1318,7 @@ api.put("/services/:id/masters", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1280,6 +1340,7 @@ api.get("/staff/clients", async (req, res) => {
     res.status(400).json({ error: "Не хватает telegram_id" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1311,6 +1372,7 @@ api.get("/staff/clients/:clientKey", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1345,6 +1407,10 @@ api.get("/client-notes/:clientTelegramId", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (!(await canAccessClientNotes(req, clientTelegramId))) {
+    res.status(403).json({ error: "Не удалось подтвердить личность в Telegram" });
+    return;
+  }
 
   const { rows } = await db.query(
     "SELECT note, admin_comment, updated_at FROM client_notes WHERE client_telegram_id = $1",
@@ -1369,6 +1435,10 @@ api.put("/client-notes/:clientTelegramId", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (!(await canAccessClientNotes(req, clientTelegramId))) {
+    res.status(403).json({ error: "Не удалось подтвердить личность в Telegram" });
+    return;
+  }
 
   const { rows } = await db.query(
     `INSERT INTO client_notes (client_telegram_id, note, updated_at)
@@ -1389,6 +1459,10 @@ api.get("/client-notes/by-phone/:phone", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (!(await isVerifiedStaff(req))) {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
 
   const { rows } = await db.query(
     "SELECT note, admin_comment, updated_at FROM client_notes WHERE client_phone = $1",
@@ -1407,6 +1481,10 @@ api.put("/client-notes/by-phone/:phone", async (req, res) => {
   const { note } = req.body as Partial<ClientNoteBody>;
   if (!phone || !note) {
     res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!(await isVerifiedStaff(req))) {
+    res.status(403).json({ error: "Доступно только персоналу" });
     return;
   }
 
@@ -1432,7 +1510,8 @@ interface AdminCommentBody {
 // (ту может писать и клиент, и мастер; этот — только админ, для себя)
 api.put("/staff/client-comment", async (req, res) => {
   const { telegram_id, client_telegram_id, client_phone, comment } = req.body as Partial<AdminCommentBody>;
-  if (!telegram_id || !(await requireAdmin(telegram_id))) {
+  if (!telegram_id || rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
   }
@@ -1473,6 +1552,7 @@ api.get("/staff", async (req, res) => {
     res.status(400).json({ error: "Не хватает telegram_id" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1500,6 +1580,7 @@ api.post("/staff", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
   if (!(await requireAdmin(telegram_id))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
@@ -1527,6 +1608,7 @@ api.delete("/staff/:id", async (req, res) => {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
   if (!(await requireAdmin(telegramId))) {
     res.status(403).json({ error: "Доступно только администратору" });
     return;

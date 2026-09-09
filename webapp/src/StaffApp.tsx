@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service, Booking, BlockedSlot, MasterPhoto } from './types'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
+import { apiFetch } from './apiFetch'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
@@ -192,7 +193,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           : null
     if (!url) return
     try {
-      const res = await fetch(url)
+      const res = await apiFetch(url)
       const data = await res.json()
       if (data.note) setNewBookingNote(data.note)
     } catch {
@@ -201,11 +202,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   }
 
   useEffect(() => {
-    fetch(`${API_URL}/api/masters`)
+    apiFetch(`${API_URL}/api/masters`)
       .then((r) => r.json())
       .then(setMasters)
       .catch(() => {})
-    fetch(`${API_URL}/api/services`)
+    apiFetch(`${API_URL}/api/services`)
       .then((r) => r.json())
       .then(setServices)
       .catch(() => {})
@@ -257,7 +258,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setScheduleSaved(false)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/my-schedule`, {
+      const res = await apiFetch(`${API_URL}/api/staff/my-schedule`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -312,7 +313,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setBioSaved(false)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/my-profile`, {
+      const res = await apiFetch(`${API_URL}/api/staff/my-profile`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: telegramId, bio: bioInput }),
@@ -335,7 +336,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       const form = new FormData()
       form.append('telegram_id', String(telegramId))
       form.append('photo', file)
-      const res = await fetch(`${API_URL}/api/staff/my-avatar`, { method: 'POST', body: form })
+      const res = await apiFetch(`${API_URL}/api/staff/my-avatar`, { method: 'POST', body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
       setMasters((prev) => prev.map((m) => (m.id === masterId ? { ...m, photo_url: data.photo_url } : m)))
@@ -350,7 +351,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     if (role !== 'master' || !masterId) return
     setPhotosLoading(true)
     try {
-      const res = await fetch(`${API_URL}/api/masters/${masterId}/photos`)
+      const res = await apiFetch(`${API_URL}/api/masters/${masterId}/photos`)
       setProfilePhotos(await res.json())
     } catch {
       // тихо — сетка просто останется пустой
@@ -371,7 +372,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       const form = new FormData()
       form.append('telegram_id', String(telegramId))
       form.append('photo', file)
-      const res = await fetch(`${API_URL}/api/staff/portfolio-photos`, { method: 'POST', body: form })
+      const res = await apiFetch(`${API_URL}/api/staff/portfolio-photos`, { method: 'POST', body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
       setProfilePhotos((prev) => [data, ...prev])
@@ -384,7 +385,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
 
   async function deletePortfolioPhoto(id: number) {
     try {
-      const res = await fetch(`${API_URL}/api/staff/portfolio-photos/${id}?telegram_id=${telegramId}`, {
+      const res = await apiFetch(`${API_URL}/api/staff/portfolio-photos/${id}?telegram_id=${telegramId}`, {
         method: 'DELETE',
       })
       if (!res.ok) throw new Error('Не удалось удалить фото')
@@ -399,7 +400,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${date}`)
+      const res = await apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${date}`)
       if (!res.ok) throw new Error('Не удалось загрузить расписание')
       const data = await res.json()
       setBookings(data.bookings)
@@ -423,7 +424,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       const days = buildMonthCells(scheduleMonth).filter((d): d is Date => d !== null)
       const results = await Promise.all(
         days.map((d) =>
-          fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) => r.json())
+          apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) => r.json())
         )
       )
       const counts: Record<string, number> = {}
@@ -447,7 +448,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   async function loadToday() {
     setTodayLoading(true)
     try {
-      const res = await fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${todayKey()}`)
+      const res = await apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${todayKey()}`)
       const data = await res.json()
       // Сервер сам возвращает только записи этого мастера для роли master и все — для admin
       setTodayBookings(data.bookings as Booking[])
@@ -471,7 +472,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       const days = weekDates(weekOffset)
       const results = await Promise.all(
         days.map((d) =>
-          fetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) => r.json())
+          apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) => r.json())
         )
       )
       const map: Record<string, Booking[]> = {}
@@ -495,7 +496,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   async function loadMyStats() {
     if (role !== 'master' || !masterId) return
     try {
-      const res = await fetch(`${API_URL}/api/staff/my-stats?telegram_id=${telegramId}`)
+      const res = await apiFetch(`${API_URL}/api/staff/my-stats?telegram_id=${telegramId}`)
       setMyStats(await res.json())
     } catch {
       // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
@@ -511,7 +512,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   async function loadSalonStats() {
     if (role !== 'admin') return
     try {
-      const res = await fetch(`${API_URL}/api/staff/salon-stats?telegram_id=${telegramId}`)
+      const res = await apiFetch(`${API_URL}/api/staff/salon-stats?telegram_id=${telegramId}`)
       setSalonStats(await res.json())
     } catch {
       // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
@@ -531,7 +532,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setStatusSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/bookings/${bookingId}/status`, {
+      const res = await apiFetch(`${API_URL}/api/staff/bookings/${bookingId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: telegramId, status }),
@@ -570,7 +571,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       const url = booking.client_telegram_id
         ? `${API_URL}/api/client-notes/${booking.client_telegram_id}`
         : `${API_URL}/api/client-notes/by-phone/${booking.client_phone}`
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: noteText.trim() }),
@@ -594,7 +595,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setBlockSubmitting(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/blocked-slots`, {
+      const res = await apiFetch(`${API_URL}/api/staff/blocked-slots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -631,7 +632,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setNewBookingSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/bookings`, {
+      const res = await apiFetch(`${API_URL}/api/staff/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -652,7 +653,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           newBookingContact === 'telegram'
             ? `${API_URL}/api/client-notes/${newBookingTelegramId.trim()}`
             : `${API_URL}/api/client-notes/by-phone/${encodeURIComponent(newBookingPhone.trim())}`
-        fetch(noteUrl, {
+        apiFetch(noteUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ note: newBookingNote.trim() }),
@@ -695,7 +696,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   async function removeBlock(id: number) {
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/blocked-slots/${id}?telegram_id=${telegramId}`, {
+      const res = await apiFetch(`${API_URL}/api/staff/blocked-slots/${id}?telegram_id=${telegramId}`, {
         method: 'DELETE',
       })
       const data = await res.json()

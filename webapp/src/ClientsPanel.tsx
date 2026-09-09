@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ClientSummary, ClientVisit } from './types'
+import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -51,7 +52,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/clients?telegram_id=${telegramId}`)
+      const res = await apiFetch(`${API_URL}/api/staff/clients?telegram_id=${telegramId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить')
       setClients(data)
@@ -83,7 +84,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     setError('')
     try {
       const clientKey = c.client_telegram_id ?? `phone-${c.client_phone}`
-      const res = await fetch(`${API_URL}/api/staff/clients/${clientKey}?telegram_id=${telegramId}`)
+      const res = await apiFetch(`${API_URL}/api/staff/clients/${clientKey}?telegram_id=${telegramId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить')
       setClientVisits(data)
@@ -97,7 +98,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
       const noteUrl = c.client_telegram_id
         ? `${API_URL}/api/client-notes/${c.client_telegram_id}`
         : `${API_URL}/api/client-notes/by-phone/${c.client_phone}`
-      const noteRes = await fetch(noteUrl)
+      const noteRes = await apiFetch(noteUrl)
       const noteData = await noteRes.json()
       setClientNote(noteData.note)
       setComment(noteData.admin_comment ?? '')
@@ -118,7 +119,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
     setCommentSaving(true)
     setError('')
     try {
-      const res = await fetch(`${API_URL}/api/staff/client-comment`, {
+      const res = await apiFetch(`${API_URL}/api/staff/client-comment`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
