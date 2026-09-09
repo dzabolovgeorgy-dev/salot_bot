@@ -36,7 +36,8 @@ bot.use(session());
 bot.use(stage.middleware());
 
 // Кнопка слева от поля ввода в чате — открывает Mini App в один клик,
-// без необходимости писать /start
+// без необходимости писать /start. По умолчанию (для тех, кто ещё не писал
+// /start) стоит клиентский текст — большинство открывающих бота впервые это клиенты
 export async function setupMenuButton(): Promise<void> {
   const webAppUrl = getWebAppUrl();
   if (!webAppUrl) return;
@@ -46,6 +47,20 @@ export async function setupMenuButton(): Promise<void> {
     });
   } catch (err) {
     console.warn("Не удалось настроить кнопку меню:", err instanceof Error ? err.message : err);
+  }
+}
+
+// Персональная кнопка меню для конкретного чата — у персонала (мастер/админ)
+// она должна называться иначе, чем у клиента. setChatMenuButton с chat_id
+// переопределяет глобальную кнопку только для этого одного собеседника
+async function setPersonalMenuButton(chatId: number, text: string, webAppUrl: string): Promise<void> {
+  try {
+    await bot.telegram.setChatMenuButton({
+      chatId,
+      menuButton: { type: "web_app", text, web_app: { url: webAppUrl } },
+    });
+  } catch (err) {
+    console.warn("Не удалось настроить персональную кнопку меню:", err instanceof Error ? err.message : err);
   }
 }
 
@@ -66,6 +81,7 @@ bot.start(async (ctx) => {
         "Нажмите, чтобы открыть:",
         Markup.inlineKeyboard([Markup.button.webApp("Панель", webAppUrl)])
       );
+      await setPersonalMenuButton(ctx.chat.id, "Панель", webAppUrl);
     }
     return;
   }
@@ -82,6 +98,9 @@ bot.start(async (ctx) => {
       "А в приложении можно подробнее посмотреть всех мастеров и услуги — с фото и описанием.",
       Markup.inlineKeyboard([Markup.button.webApp("Открыть приложение", webAppUrl)])
     );
+    // На случай, если у этого чата раньше стояла кнопка "Панель" (роль сменилась
+    // с персонала на клиента, например, при тестировании) — возвращаем клиентский текст
+    await setPersonalMenuButton(ctx.chat.id, "Записаться", webAppUrl);
   }
 });
 
