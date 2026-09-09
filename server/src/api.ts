@@ -5,6 +5,7 @@ import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
+import { bookingActionButtons } from "./bookingScene.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -58,11 +59,15 @@ function formatRuDateTime(value: string): string {
 }
 
 // Уведомления в чат клиенту — если не получилось отправить (бот заблокирован,
-// тестовый client_telegram_id и т.п.), это не должно ломать сам запрос
-function notifyClient(clientTelegramId: number, text: string) {
-  bot.telegram.sendMessage(clientTelegramId, text).catch((err) => {
-    console.warn("Не удалось отправить уведомление клиенту:", err instanceof Error ? err.message : err);
-  });
+// тестовый client_telegram_id и т.п.), это не должно ломать сам запрос.
+// bookingId — если указан, под сообщением появляются кнопки "Перенести"/"Отменить"
+// (их нажатия обрабатывает bot.ts — телефон клиента не открывает Mini App)
+function notifyClient(clientTelegramId: number, text: string, bookingId?: number) {
+  bot.telegram
+    .sendMessage(clientTelegramId, text, bookingId ? { reply_markup: { inline_keyboard: bookingActionButtons(bookingId) } } : undefined)
+    .catch((err) => {
+      console.warn("Не удалось отправить уведомление клиенту:", err instanceof Error ? err.message : err);
+    });
 }
 
 // Уведомление мастеру — только если у него есть доступ в staff (иначе некому слать)
@@ -328,7 +333,8 @@ api.post("/bookings", async (req, res) => {
 
   notifyClient(
     client_telegram_id,
-    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`
+    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`,
+    inserted[0].id
   );
   notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
 
@@ -450,7 +456,8 @@ api.post("/staff/bookings", async (req, res) => {
   if (client_telegram_id) {
     notifyClient(
       client_telegram_id,
-      `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\n\nЖдём вас в салоне!`
+      `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\n\nЖдём вас в салоне!`,
+      inserted[0].id
     );
   }
   // Если мастер завёл запись сам себе — он и так видит подтверждение в приложении,
@@ -545,7 +552,8 @@ api.patch("/bookings/:id", async (req, res) => {
 
   notifyClient(
     client_telegram_id,
-    `🔄 Запись перенесена\n\n${booking.service_name} — ${booking.master_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`
+    `🔄 Запись перенесена\n\n${booking.service_name} — ${booking.master_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`,
+    id
   );
   notifyMaster(
     booking.master_id,

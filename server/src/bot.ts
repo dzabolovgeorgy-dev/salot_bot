@@ -1,6 +1,13 @@
 import { Telegraf, Markup, Scenes, session } from "telegraf";
 import { db } from "./db.js";
-import { bookingScene, BOOK_BUTTON_TEXT, type BotContext } from "./bookingScene.js";
+import {
+  bookingScene,
+  BOOK_BUTTON_TEXT,
+  API_BASE,
+  bookingActionButtons,
+  type BotContext,
+  type RescheduleEntryState,
+} from "./bookingScene.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -60,6 +67,72 @@ bot.start(async (ctx) => {
 
 bot.command("book", (ctx) => ctx.scene.enter("booking"));
 bot.hears(BOOK_BUTTON_TEXT, (ctx) => ctx.scene.enter("booking"));
+
+// Кнопка "🔄 Перенести" под сообщением о записи — работает вне зависимости от
+// того, идёт ли сейчас какой-то диалог, поэтому обработчик общий, не внутри
+// сцены. Подтягивает услугу/мастера старой записи и сразу открывает выбор дня
+bot.action(/^resched:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const bookingId = Number(ctx.match[1]);
+  const res = await fetch(`${API_BASE}/bookings?client_telegram_id=${ctx.from.id}`);
+  const bookings = (await res.json()) as {
+    id: number;
+    master_id: number;
+    master_name: string;
+    service_id: number;
+    service_name: string;
+    duration_minutes: number;
+    price: number;
+  }[];
+  const booking = bookings.find((b) => b.id === bookingId);
+  if (!booking) {
+    await ctx.reply("Эту запись уже нельзя перенести — она прошла или отменена.");
+    return;
+  }
+  const entryState: RescheduleEntryState = {
+    reschedule: {
+      bookingId: booking.id,
+      masterId: booking.master_id,
+      masterName: booking.master_name,
+      serviceId: booking.service_id,
+      serviceName: booking.service_name,
+      serviceDuration: booking.duration_minutes,
+      servicePrice: booking.price,
+    },
+  };
+  await ctx.scene.enter("booking", entryState);
+});
+
+// "❌ Отменить" — сперва просим подтвердить (кнопку легко нажать случайно
+// среди других кнопок в сообщении), а отменяем только по "Да"
+bot.action(/^cancelbk:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  await ctx.editMessageReplyMarkup({
+    inline_keyboard: [
+      [{ text: "Да, отменить", callback_data: `cancelbk_yes:${id}` }],
+      [{ text: "Нет, оставить", callback_data: `cancelbk_no:${id}` }],
+    ],
+  });
+});
+
+bot.action(/^cancelbk_yes:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  const res = await fetch(`${API_BASE}/bookings/${id}?client_telegram_id=${ctx.from.id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    await ctx.reply(`Не получилось отменить: ${data.error ?? "неизвестная ошибка"}`);
+    return;
+  }
+  await ctx.editMessageText("❌ Запись отменена.");
+});
+
+bot.action(/^cancelbk_no:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = Number(ctx.match[1]);
+  await ctx.editMessageReplyMarkup({ inline_keyboard: bookingActionButtons(id) });
+});
 
 bot.command("masters", async (ctx) => {
   const { rows: masters } = await db.query<{ name: string }>("SELECT name FROM masters");

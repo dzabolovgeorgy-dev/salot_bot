@@ -6,12 +6,24 @@ interface InlineButton {
   callback_data: string;
 }
 
-const API_BASE = `http://localhost:${process.env.PORT ?? 3000}/api`;
+export const API_BASE = `http://localhost:${process.env.PORT ?? 3000}/api`;
 
 // Текст постоянной кнопки быстрой записи внизу чата (задаётся в bot.ts) —
 // экспортируем отсюда, чтобы bot.ts мог её импортировать, не создавая
 // круговую зависимость (bot.ts и так уже импортирует эту сцену)
 export const BOOK_BUTTON_TEXT = "📅 Записаться в чате";
+
+// Кнопки "Перенести"/"Отменить" под уведомлением о записи в чате — используются
+// и в api.ts (когда шлёт подтверждение записи), и в bot.ts (чтобы вернуть их
+// после того как человек передумал отменять — см. cancelbk_no)
+export function bookingActionButtons(bookingId: number): InlineButton[][] {
+  return [
+    [
+      { text: "🔄 Перенести", callback_data: `resched:${bookingId}` },
+      { text: "❌ Отменить", callback_data: `cancelbk:${bookingId}` },
+    ],
+  ];
+}
 
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
@@ -24,6 +36,25 @@ interface BookingSceneState {
   masterName?: string;
   date?: string;
   time?: string;
+  // Если задано — сцена вошла в режим переноса существующей записи (кнопка
+  // "🔄 Перенести" под уведомлением о записи), а не создания новой: услуга и
+  // мастер уже известны и не спрашиваются, при подтверждении вызывается
+  // PATCH /bookings/:id вместо создания новой записи
+  rescheduleBookingId?: number;
+}
+
+// Данные существующей записи, с которыми сцена входит в режим переноса —
+// передаются через ctx.scene.enter("booking", { reschedule: {...} })
+export interface RescheduleEntryState {
+  reschedule?: {
+    bookingId: number;
+    masterId: number;
+    masterName: string;
+    serviceId: number;
+    serviceName: string;
+    serviceDuration: number;
+    servicePrice: number;
+  };
 }
 
 interface BookingSceneSessionData extends Scenes.SceneSessionData {
@@ -93,9 +124,62 @@ async function requireField<K extends keyof BookingSceneState>(
   return value;
 }
 
+// Общий шаг "выберите день" — используется и в обычной записи (после выбора
+// мастера), и при переносе существующей записи (сразу после входа в сцену,
+// услуга и мастер уже известны из старой записи)
+async function sendDayPicker(ctx: BotContext, master: Master, send: (text: string, extra: object) => Promise<unknown>) {
+  const days: Date[] = [];
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  for (let i = 0; days.length < 10 && i < 30; i++) {
+    const d = new Date(cursor);
+    d.setDate(cursor.getDate() + i);
+    if (isWorkDay(dateKey(d), master)) days.push(d);
+  }
+  if (days.length === 0) {
+    await send(
+      `У мастера ${master.name} нет рабочих дней в ближайший месяц. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`,
+      {}
+    );
+    await ctx.scene.leave();
+    return;
+  }
+  const buttons: InlineButton[][] = chunk(
+    days.map((d) => ({ text: formatDayLabel(d), callback_data: `day:${dateKey(d)}` })),
+    2
+  );
+  buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
+  await send(`Мастер: ${master.name}\n\nВыберите день:`, { reply_markup: { inline_keyboard: buttons } });
+}
+
 export const bookingScene = new Scenes.BaseScene<BotContext>("booking");
 
 bookingScene.enter(async (ctx) => {
+  const entryState = ctx.scene.state as RescheduleEntryState;
+  const reschedule = entryState.reschedule;
+
+  if (reschedule) {
+    ctx.scene.session.booking = {
+      rescheduleBookingId: reschedule.bookingId,
+      masterId: reschedule.masterId,
+      masterName: reschedule.masterName,
+      serviceId: reschedule.serviceId,
+      serviceName: reschedule.serviceName,
+      serviceDuration: reschedule.serviceDuration,
+      servicePrice: reschedule.servicePrice,
+    };
+    const mastersRes = await fetch(`${API_BASE}/masters`);
+    const masters = (await mastersRes.json()) as Master[];
+    const master = masters.find((m) => m.id === reschedule.masterId);
+    if (!master) {
+      await ctx.reply("Этого мастера больше нет — перенести запись не получится, отмените и запишитесь заново.");
+      await ctx.scene.leave();
+      return;
+    }
+    await sendDayPicker(ctx, master, (text, extra) => ctx.reply(text, extra));
+    return;
+  }
+
   ctx.scene.session.booking = {};
   const res = await fetch(`${API_BASE}/services`);
   const services = (await res.json()) as Service[];
@@ -167,30 +251,7 @@ bookingScene.action(/^mst:(\d+)$/, async (ctx) => {
   state(ctx).masterId = master.id;
   state(ctx).masterName = master.name;
 
-  // Ищем ближайшие 14 дней, когда у мастера рабочий день
-  const days: Date[] = [];
-  const cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
-  for (let i = 0; days.length < 10 && i < 30; i++) {
-    const d = new Date(cursor);
-    d.setDate(cursor.getDate() + i);
-    if (isWorkDay(dateKey(d), master)) days.push(d);
-  }
-  if (days.length === 0) {
-    await ctx.editMessageText(
-      `У мастера ${master.name} нет рабочих дней в ближайший месяц. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`
-    );
-    await ctx.scene.leave();
-    return;
-  }
-  const buttons: InlineButton[][] = chunk(
-    days.map((d) => ({ text: formatDayLabel(d), callback_data: `day:${dateKey(d)}` })),
-    2
-  );
-  buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
-  await ctx.editMessageText(`Мастер: ${master.name}\n\nВыберите день:`, {
-    reply_markup: { inline_keyboard: buttons },
-  });
+  await sendDayPicker(ctx, master, (text, extra) => ctx.editMessageText(text, extra));
 });
 
 bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
@@ -255,8 +316,9 @@ bookingScene.action(/^time:(\d{2}:\d{2})$/, async (ctx) => {
   s.time = ctx.match[1];
 
   const dateObj = new Date(`${s.date}T00:00:00`);
+  const heading = s.rescheduleBookingId ? "Перенести запись на:" : "Проверьте запись:";
   await ctx.editMessageText(
-    `Проверьте запись:\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} ₽\n\nВсё верно?`,
+    `${heading}\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} ₽\n\nВсё верно?`,
     {
       reply_markup: {
         inline_keyboard: [
@@ -281,6 +343,27 @@ bookingScene.action("confirm", async (ctx) => {
 
   const from = ctx.from!;
   const clientName = [from.first_name, from.last_name].filter(Boolean).join(" ") || from.username || "Клиент";
+  const startsAt = `${s.date}T${s.time}:00`;
+
+  if (s.rescheduleBookingId) {
+    await ctx.editMessageText("Переношу…");
+    const res = await fetch(`${API_BASE}/bookings/${s.rescheduleBookingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_telegram_id: from.id, starts_at: startsAt }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      await ctx.editMessageText(
+        `Не получилось перенести: ${data.error ?? "неизвестная ошибка"}. Нажмите «${BOOK_BUTTON_TEXT}», чтобы попробовать снова.`
+      );
+      await ctx.scene.leave();
+      return;
+    }
+    await ctx.editMessageText("✅ Перенесено! Подробности пришлю следующим сообщением.");
+    await ctx.scene.leave();
+    return;
+  }
 
   await ctx.editMessageText("Записываю…");
   const res = await fetch(`${API_BASE}/bookings`, {
@@ -292,7 +375,7 @@ bookingScene.action("confirm", async (ctx) => {
       client_name: clientName,
       master_id: s.masterId,
       service_id: s.serviceId,
-      starts_at: `${s.date}T${s.time}:00`,
+      starts_at: startsAt,
     }),
   });
   const data = await res.json();
