@@ -7,6 +7,7 @@ import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons } from "./bookingScene.js";
+import { getRole, requireAdmin } from "./roles.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -92,30 +93,6 @@ async function notifyAdmins(text: string) {
       console.warn("Не удалось отправить уведомление админу:", err instanceof Error ? err.message : err);
     });
   });
-}
-
-// Роль пользователя по Telegram ID: клиент (нет в staff), мастер или админ
-async function getRole(
-  telegramId: number
-): Promise<{ role: "client" } | { role: "master"; master_id: number; master_name: string } | { role: "admin" }> {
-  const { rows } = await db.query<{ role: "master" | "admin"; master_id: number | null; master_name: string | null }>(
-    `SELECT s.role, s.master_id, m.name AS master_name
-     FROM staff s
-     LEFT JOIN masters m ON m.id = s.master_id
-     WHERE s.telegram_id = $1`,
-    [telegramId]
-  );
-  const row = rows[0];
-  if (!row) return { role: "client" };
-  if (row.role === "master") {
-    return { role: "master", master_id: row.master_id!, master_name: row.master_name! };
-  }
-  return { role: "admin" };
-}
-
-async function requireAdmin(telegramId: number): Promise<boolean> {
-  const role = await getRole(telegramId);
-  return role.role === "admin";
 }
 
 // Проверка подписи Telegram (см. server/src/telegramAuthMiddleware.ts): убеждаемся,

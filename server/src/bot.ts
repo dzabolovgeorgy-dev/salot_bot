@@ -9,6 +9,7 @@ import {
   type RescheduleEntryState,
 } from "./bookingScene.js";
 import { internalHeaders } from "./internalAuth.js";
+import { getRole } from "./roles.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -50,6 +51,24 @@ export async function setupMenuButton(): Promise<void> {
 
 bot.start(async (ctx) => {
   const webAppUrl = getWebAppUrl();
+  const role = await getRole(ctx.from.id);
+
+  // Сотрудник (мастер/админ) открывает свою панель только через приложение —
+  // кнопка быстрой записи в чате ему не нужна, это чисто клиентский сценарий.
+  // Markup.removeKeyboard() на всякий случай убирает эту кнопку, если она
+  // осталась видна с более раннего /start (до этого разделения)
+  if (role.role !== "client") {
+    const name = ctx.from.first_name ?? "коллега";
+    const roleLabel = role.role === "master" ? "мастера" : "администратора";
+    await ctx.reply(`Здравствуйте, ${name}! Панель ${roleLabel} — в приложении.`, Markup.removeKeyboard());
+    if (webAppUrl) {
+      await ctx.reply(
+        "Нажмите, чтобы открыть:",
+        Markup.inlineKeyboard([Markup.button.webApp("Открыть приложение", webAppUrl)])
+      );
+    }
+    return;
+  }
 
   // .persistent() — иначе Telegram на телефоне сворачивает эту кнопку в
   // маленькую иконку клавиатуры после первого нажатия, и кажется, что она пропала
