@@ -64,7 +64,7 @@ bot.start(async (ctx) => {
     if (webAppUrl) {
       await ctx.reply(
         "Нажмите, чтобы открыть:",
-        Markup.inlineKeyboard([Markup.button.webApp("Открыть приложение", webAppUrl)])
+        Markup.inlineKeyboard([Markup.button.webApp("Панель", webAppUrl)])
       );
     }
     return;
