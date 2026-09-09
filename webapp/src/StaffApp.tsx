@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service, Booking, BlockedSlot, MasterPhoto } from './types'
-import { isWorkDay, generateTimeSlots, BUFFER_MINUTES } from './schedule'
+import { isWorkDay, generateTimeSlots, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
@@ -90,6 +90,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
   const [monthOffDays, setMonthOffDays] = useState<number[]>([])
   const [workStartInput, setWorkStartInput] = useState('09:00')
   const [workEndInput, setWorkEndInput] = useState('20:00')
+  const [bufferInput, setBufferInput] = useState(DEFAULT_BUFFER_MINUTES)
   const [schedulePreviewMonth, setSchedulePreviewMonth] = useState(() => startOfMonth(new Date()))
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaved, setScheduleSaved] = useState(false)
@@ -153,7 +154,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     if (!newBookingMasterId || !newBookingService) return false
     const start = new Date(`${date}T${time}`).getTime()
     const end = start + newBookingService.duration_minutes * 60000
-    const bufferMs = BUFFER_MINUTES * 60000
+    const bufferMs = (newBookingMaster?.buffer_minutes ?? DEFAULT_BUFFER_MINUTES) * 60000
     const bookingHit = bookings.some((b) => {
       if (b.master_id !== newBookingMasterId) return false
       const bStart = new Date(b.starts_at).getTime() - bufferMs
@@ -221,8 +222,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
     setSelectedWeekdays(myMaster.work_weekdays ?? [])
     setWorkStartInput(myMaster.work_start_time ?? '09:00')
     setWorkEndInput(myMaster.work_end_time ?? '20:00')
+    setBufferInput(myMaster.buffer_minutes ?? DEFAULT_BUFFER_MINUTES)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myMaster?.schedule_type, myMaster?.work_weekdays, myMaster?.work_start_time, myMaster?.work_end_time])
+  }, [
+    myMaster?.schedule_type,
+    myMaster?.work_weekdays,
+    myMaster?.work_start_time,
+    myMaster?.work_end_time,
+    myMaster?.buffer_minutes,
+  ])
 
   // Режим «По месяцу» настраивается заново на каждый месяц — при заходе на экран
   // или перелистывании превью-календаря подтягиваем сохранённые выходные дни,
@@ -260,6 +268,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           schedule_month_off_days: scheduleMode === 'month' ? monthOffDays : null,
           work_start_time: workStartInput,
           work_end_time: workEndInput,
+          buffer_minutes: bufferInput,
         }),
       })
       const data = await res.json()
@@ -278,6 +287,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 schedule_month_off_days: data.schedule_month_off_days,
                 work_start_time: data.work_start_time,
                 work_end_time: data.work_end_time,
+                buffer_minutes: data.buffer_minutes,
               }
             : m
         )
@@ -1789,6 +1799,23 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 required
               />
             </label>
+
+            <span className="staff-checkbox-label">Перерыв между записями</span>
+            <div className="staff-mode-toggle">
+              {[0, 10, 15, 20, 30].map((minutes) => (
+                <button
+                  key={minutes}
+                  type="button"
+                  className={bufferInput === minutes ? 'active' : ''}
+                  onClick={() => {
+                    setBufferInput(minutes)
+                    setScheduleSaved(false)
+                  }}
+                >
+                  {minutes === 0 ? 'Без перерыва' : `${minutes} мин`}
+                </button>
+              ))}
+            </div>
 
             <span className="staff-checkbox-label">Какие дни работаю</span>
             <div className="staff-mode-toggle">

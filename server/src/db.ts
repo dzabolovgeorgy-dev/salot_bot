@@ -35,7 +35,11 @@ export async function initDb(): Promise<void> {
       schedule_type TEXT,
       work_weekdays INTEGER[],
       schedule_month TEXT,
-      schedule_month_off_days INTEGER[]
+      schedule_month_off_days INTEGER[],
+      -- Перерыв (в минутах) между соседними записями у этого мастера — время
+      -- убраться/подготовиться. Раньше было общее число на всех (15 минут),
+      -- теперь каждый мастер настраивает своё в "Мой график"
+      buffer_minutes INTEGER NOT NULL DEFAULT 15
     );
 
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_anchor DATE;
@@ -47,6 +51,7 @@ export async function initDb(): Promise<void> {
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS work_weekdays INTEGER[];
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_month TEXT;
     ALTER TABLE masters ADD COLUMN IF NOT EXISTS schedule_month_off_days INTEGER[];
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS buffer_minutes INTEGER NOT NULL DEFAULT 15;
     -- Мастера с уже заданным циклическим графиком (work_days/off_days) считаем
     -- schedule_type='cycle' задним числом, чтобы их график не "потерялся"
     UPDATE masters SET schedule_type = 'cycle'

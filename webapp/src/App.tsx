@@ -18,7 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import './App.css'
 import type { Master, Service, Booking, MasterPhoto } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
-import { isWorkDay, generateTimeSlots, BUFFER_MINUTES } from './schedule'
+import { isWorkDay, generateTimeSlots, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 type Tab = 'home' | 'services' | 'masters' | 'bookings'
@@ -107,13 +107,14 @@ function minutesOf(hhmm: string): number {
 function isSlotFree(
   slotTime: string,
   durationMinutes: number,
-  busy: { starts_at: string; duration_minutes: number }[]
+  busy: { starts_at: string; duration_minutes: number }[],
+  bufferMinutes: number
 ): boolean {
   const slotStart = minutesOf(slotTime)
   const slotEnd = slotStart + durationMinutes
   return !busy.some((b) => {
-    const busyStart = minutesOf(b.starts_at.slice(11, 16)) - BUFFER_MINUTES
-    const busyEnd = busyStart + b.duration_minutes + 2 * BUFFER_MINUTES
+    const busyStart = minutesOf(b.starts_at.slice(11, 16)) - bufferMinutes
+    const busyEnd = busyStart + b.duration_minutes + 2 * bufferMinutes
     return slotStart < busyEnd && busyStart < slotEnd
   })
 }
@@ -656,7 +657,9 @@ function App() {
     : []
   const availableTimeSlots = (
     dateKey === todayKey ? masterTimeSlots.filter((t) => t > nowHHMM) : masterTimeSlots
-  ).filter((t) => isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots))
+  ).filter((t) =>
+    isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots, timeSlotMaster?.buffer_minutes ?? DEFAULT_BUFFER_MINUTES)
+  )
   const isCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
   const pickDate = (key: string) => {

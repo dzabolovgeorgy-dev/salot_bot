@@ -14,6 +14,7 @@ export interface Master {
   schedule_month_off_days: number[] | null
   work_start_time: string
   work_end_time: string
+  buffer_minutes: number
 }
 
 export interface MasterPhoto {

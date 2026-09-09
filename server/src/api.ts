@@ -4,7 +4,7 @@ import { db } from "./db.js";
 import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
-import { isWorkDay, BUFFER_MINUTES } from "./schedule.js";
+import { isWorkDay } from "./schedule.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -113,13 +113,15 @@ async function requireAdmin(telegramId: number): Promise<boolean> {
 }
 
 // Проверка, что у мастера нет другой записи или заблокированного времени,
-// пересекающегося по времени — с учётом BUFFER_MINUTES: соседние записи должны
-// быть разнесены минимум на этот перерыв, впритык друг к другу нельзя.
+// пересекающегося по времени — с учётом перерыва между записями (у каждого
+// мастера свой, masters.buffer_minutes): соседние записи должны быть разнесены
+// минимум на этот перерыв, впритык друг к другу нельзя.
 // excludeBookingId — чтобы при переносе запись не конфликтовала сама с собой
 async function hasConflict(
   masterId: number,
   startsAt: string,
   durationMinutes: number,
+  bufferMinutes: number,
   excludeBookingId?: number
 ): Promise<boolean> {
   const { rows } = await db.query(
@@ -134,14 +136,14 @@ async function hasConflict(
      WHERE bs.master_id = $1
        AND (bs.starts_at - ($5 * interval '1 minute')) < ($2::timestamp + ($3 * interval '1 minute'))
        AND $2::timestamp < (bs.ends_at + ($5 * interval '1 minute'))`,
-    [masterId, startsAt, durationMinutes, excludeBookingId ?? null, BUFFER_MINUTES]
+    [masterId, startsAt, durationMinutes, excludeBookingId ?? null, bufferMinutes]
   );
   return rows.length > 0;
 }
 
 api.get("/masters", async (_req, res) => {
   const { rows: masters } = await db.query(
-    "SELECT id, name, bio, experience_years, photo_url, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, work_start_time, work_end_time FROM masters"
+    "SELECT id, name, bio, experience_years, photo_url, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, buffer_minutes, work_start_time, work_end_time FROM masters"
   );
   const { rows: relations } = await db.query("SELECT master_id, service_id FROM master_services");
 
@@ -268,7 +270,7 @@ api.post("/bookings", async (req, res) => {
   }
 
   const { rows: masterRows } = await db.query(
-    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days FROM masters WHERE id = $1",
+    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, buffer_minutes FROM masters WHERE id = $1",
     [master_id]
   );
   const master = masterRows[0] as
@@ -282,6 +284,7 @@ api.post("/bookings", async (req, res) => {
         work_weekdays: number[] | null;
         schedule_month: string | null;
         schedule_month_off_days: number[] | null;
+        buffer_minutes: number;
       }
     | undefined;
   if (!master) {
@@ -312,7 +315,7 @@ api.post("/bookings", async (req, res) => {
     return;
   }
 
-  if (await hasConflict(master_id, starts_at, service.duration_minutes)) {
+  if (await hasConflict(master_id, starts_at, service.duration_minutes, master.buffer_minutes)) {
     res.status(409).json({ error: "Это время уже занято, выберите другое" });
     return;
   }
@@ -394,7 +397,7 @@ api.post("/staff/bookings", async (req, res) => {
   }
 
   const { rows: masterRows } = await db.query(
-    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days FROM masters WHERE id = $1",
+    "SELECT id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, buffer_minutes FROM masters WHERE id = $1",
     [master_id]
   );
   const master = masterRows[0] as
@@ -408,6 +411,7 @@ api.post("/staff/bookings", async (req, res) => {
         work_weekdays: number[] | null;
         schedule_month: string | null;
         schedule_month_off_days: number[] | null;
+        buffer_minutes: number;
       }
     | undefined;
   if (!master) {
@@ -430,7 +434,7 @@ api.post("/staff/bookings", async (req, res) => {
     return;
   }
 
-  if (await hasConflict(master_id, starts_at, service.duration_minutes)) {
+  if (await hasConflict(master_id, starts_at, service.duration_minutes, master.buffer_minutes)) {
     res.status(409).json({ error: "Это время уже занято, выберите другое" });
     return;
   }
@@ -490,7 +494,7 @@ api.patch("/bookings/:id", async (req, res) => {
     `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
             s.name AS service_name, s.duration_minutes,
             m.schedule_type, m.schedule_anchor, m.work_days, m.off_days, m.work_weekdays,
-            m.schedule_month, m.schedule_month_off_days
+            m.schedule_month, m.schedule_month_off_days, m.buffer_minutes
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -512,6 +516,7 @@ api.patch("/bookings/:id", async (req, res) => {
         work_weekdays: number[] | null;
         schedule_month: string | null;
         schedule_month_off_days: number[] | null;
+        buffer_minutes: number;
       }
     | undefined;
 
@@ -531,7 +536,7 @@ api.patch("/bookings/:id", async (req, res) => {
     return;
   }
 
-  if (await hasConflict(booking.master_id, starts_at, booking.duration_minutes, booking.id)) {
+  if (await hasConflict(booking.master_id, starts_at, booking.duration_minutes, booking.buffer_minutes, booking.id)) {
     res.status(409).json({ error: "Это время уже занято, выберите другое" });
     return;
   }
@@ -808,10 +813,14 @@ interface MyScheduleBody {
   schedule_month_off_days: number[] | null;
   work_start_time: string;
   work_end_time: string;
+  buffer_minutes: number;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Готовые варианты перерыва между записями — чтобы мастер выбирал одним тапом,
+// а не вводил число вручную
+const ALLOWED_BUFFER_MINUTES = [0, 10, 15, 20, 30];
 
 // Мастер сам настраивает свой график и часы работы в течение дня. Раньше это
 // можно было поменять только напрямую в базе данных. Два вида графика на
@@ -820,8 +829,16 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 // настраивается заново каждый месяц). Старый режим 'cycle' (скользящий
 // N-через-N) в интерфейсе больше не выбирается — см. isWorkDay()
 api.patch("/staff/my-schedule", async (req, res) => {
-  const { telegram_id, schedule_type, work_weekdays, schedule_month, schedule_month_off_days, work_start_time, work_end_time } =
-    req.body as Partial<MyScheduleBody>;
+  const {
+    telegram_id,
+    schedule_type,
+    work_weekdays,
+    schedule_month,
+    schedule_month_off_days,
+    work_start_time,
+    work_end_time,
+    buffer_minutes,
+  } = req.body as Partial<MyScheduleBody>;
   if (!telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -860,6 +877,10 @@ api.patch("/staff/my-schedule", async (req, res) => {
     res.status(400).json({ error: "Время начала должно быть раньше времени окончания" });
     return;
   }
+  if (buffer_minutes === undefined || !ALLOWED_BUFFER_MINUTES.includes(buffer_minutes)) {
+    res.status(400).json({ error: "Некорректный перерыв между записями" });
+    return;
+  }
 
   const isWeekdays = schedule_type === "weekdays";
   const isMonth = schedule_type === "month";
@@ -868,10 +889,10 @@ api.patch("/staff/my-schedule", async (req, res) => {
     `UPDATE masters SET
        schedule_type = $1, schedule_anchor = NULL, work_days = NULL, off_days = NULL, work_weekdays = $2,
        schedule_month = $3, schedule_month_off_days = $4,
-       work_start_time = $5, work_end_time = $6
-     WHERE id = $7
+       work_start_time = $5, work_end_time = $6, buffer_minutes = $7
+     WHERE id = $8
      RETURNING id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays,
-               schedule_month, schedule_month_off_days, work_start_time, work_end_time`,
+               schedule_month, schedule_month_off_days, work_start_time, work_end_time, buffer_minutes`,
     [
       schedule_type === "none" ? null : schedule_type,
       isWeekdays ? work_weekdays : null,
@@ -879,6 +900,7 @@ api.patch("/staff/my-schedule", async (req, res) => {
       isMonth ? schedule_month_off_days : null,
       work_start_time,
       work_end_time,
+      buffer_minutes,
       role.master_id,
     ]
   );
