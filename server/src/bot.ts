@@ -1,5 +1,6 @@
-import { Telegraf, Markup } from "telegraf";
+import { Telegraf, Markup, Scenes, session } from "telegraf";
 import { db } from "./db.js";
+import { bookingScene, type BotContext } from "./bookingScene.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -16,7 +17,14 @@ function getWebAppUrl(): string | undefined {
   return `${webAppBaseUrl}${webAppBaseUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
 }
 
-export const bot = new Telegraf(token);
+export const bot = new Telegraf<BotContext>(token);
+
+// Диалог записи прямо в чате (команда /book, без Mini App). Состояние диалога
+// хранится в памяти сервера (не в базе) — если сервер перезапустится посреди
+// диалога, человеку придётся начать заново командой /book
+const stage = new Scenes.Stage<BotContext>([bookingScene]);
+bot.use(session());
+bot.use(stage.middleware());
 
 // Кнопка слева от поля ввода в чате — открывает Mini App в один клик,
 // без необходимости писать /start
@@ -36,13 +44,15 @@ bot.start((ctx) => {
   const webAppUrl = getWebAppUrl();
   if (webAppUrl) {
     ctx.reply(
-      "Привет! Я помогу записаться в салон красоты.",
+      "Привет! Я помогу записаться в салон красоты.\n\nМожно записаться через кнопку ниже, а можно прямо в этом чате командой /book.",
       Markup.inlineKeyboard([Markup.button.webApp("Записаться", webAppUrl)])
     );
   } else {
-    ctx.reply("Привет! Я помогу записаться в салон красоты.");
+    ctx.reply("Привет! Я помогу записаться в салон красоты.\n\nНаберите /book, чтобы записаться прямо в этом чате.");
   }
 });
+
+bot.command("book", (ctx) => ctx.scene.enter("booking"));
 
 bot.command("masters", async (ctx) => {
   const { rows: masters } = await db.query<{ name: string }>("SELECT name FROM masters");

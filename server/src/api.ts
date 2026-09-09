@@ -4,6 +4,7 @@ import { db } from "./db.js";
 import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
+import { isWorkDay } from "./schedule.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -104,46 +105,6 @@ async function getRole(
     return { role: "master", master_id: row.master_id!, master_name: row.master_name! };
   }
   return { role: "admin" };
-}
-
-// Три вида графика: 'weekdays' — фиксированные дни недели (0=Пн…6=Вс, как
-// WEEKDAY_LABELS во фронтенде); 'month' — выходные дни отмечены вручную на
-// конкретный месяц (schedule_month "YYYY-MM" + номера дней в schedule_month_off_days),
-// для другого месяца это поведение не действует (мастер работает всегда, пока
-// не настроит и его); 'cycle' — устаревший скользящий график, в интерфейсе
-// больше не выбирается, но старые данные читаем для обратной совместимости.
-// Без schedule_type мастер работает всегда
-function isWorkDay(
-  dateStr: string,
-  master: {
-    schedule_type: "cycle" | "weekdays" | "month" | null;
-    schedule_anchor: string | null;
-    work_days: number | null;
-    off_days: number | null;
-    work_weekdays: number[] | null;
-    schedule_month: string | null;
-    schedule_month_off_days: number[] | null;
-  }
-): boolean {
-  if (master.schedule_type === "weekdays") {
-    if (!master.work_weekdays || master.work_weekdays.length === 0) return true;
-    const jsDay = new Date(`${dateStr}T00:00:00`).getDay();
-    const weekday = (jsDay + 6) % 7;
-    return master.work_weekdays.includes(weekday);
-  }
-  if (master.schedule_type === "month") {
-    if (master.schedule_month !== dateStr.slice(0, 7)) return true;
-    const dayOfMonth = Number(dateStr.slice(8, 10));
-    return !(master.schedule_month_off_days ?? []).includes(dayOfMonth);
-  }
-  if (master.schedule_type !== "cycle") return true;
-  if (!master.schedule_anchor || !master.work_days || !master.off_days) return true;
-  const anchor = new Date(`${master.schedule_anchor}T00:00:00`);
-  const date = new Date(`${dateStr}T00:00:00`);
-  const diffDays = Math.round((date.getTime() - anchor.getTime()) / 86400000);
-  const cycle = master.work_days + master.off_days;
-  const position = ((diffDays % cycle) + cycle) % cycle;
-  return position < master.work_days;
 }
 
 async function requireAdmin(telegramId: number): Promise<boolean> {
