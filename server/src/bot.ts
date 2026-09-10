@@ -5,6 +5,7 @@ import {
   BOOK_BUTTON_TEXT,
   API_BASE,
   bookingActionButtons,
+  reminderActionButtons,
   type BotContext,
   type RescheduleEntryState,
 } from "./bookingScene.js";
@@ -174,6 +175,47 @@ bot.action(/^cancelbk_no:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const id = Number(ctx.match[1]);
   await ctx.editMessageReplyMarkup({ inline_keyboard: bookingActionButtons(id) });
+});
+
+// "⏳ Я опаздываю" (кнопка есть только под напоминанием) — на сколько минут,
+// выбирается готовыми вариантами, чтобы не печатать вручную
+bot.action(/^late:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  await ctx.editMessageReplyMarkup({
+    inline_keyboard: [
+      [
+        { text: "10 мин", callback_data: `late_ok:${id}:10` },
+        { text: "15 мин", callback_data: `late_ok:${id}:15` },
+        { text: "20 мин", callback_data: `late_ok:${id}:20` },
+        { text: "30 мин", callback_data: `late_ok:${id}:30` },
+      ],
+      [{ text: "Назад", callback_data: `late_cancel:${id}` }],
+    ],
+  });
+});
+
+bot.action(/^late_cancel:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = Number(ctx.match[1]);
+  await ctx.editMessageReplyMarkup({ inline_keyboard: reminderActionButtons(id) });
+});
+
+bot.action(/^late_ok:(\d+):(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  const minutes = ctx.match[2];
+  const res = await fetch(`${API_BASE}/bookings/${id}/late`, {
+    method: "POST",
+    headers: internalHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ client_telegram_id: ctx.from.id, minutes: Number(minutes) }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    await ctx.reply(`Не получилось предупредить мастера: ${data.error ?? "неизвестная ошибка"}`);
+    return;
+  }
+  await ctx.editMessageText(`⏳ Мастер предупреждён, что вы опаздываете на ${minutes} мин.`);
 });
 
 bot.command("masters", async (ctx) => {

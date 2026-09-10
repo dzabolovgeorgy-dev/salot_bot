@@ -1,7 +1,7 @@
 import { db } from "./db.js";
 import { bot } from "./bot.js";
 import { formatRuDateTime } from "./format.js";
-import { bookingActionButtons } from "./bookingScene.js";
+import { reminderActionButtons } from "./bookingScene.js";
 
 // Как часто проверять, кому пора отправить напоминание. Не обязательно бить
 // ровно в 24:00:00 или 2:00:00 до записи — раз в несколько минут достаточно,
@@ -39,7 +39,7 @@ async function sendReminder(booking: DueBooking, lead: string): Promise<void> {
     await bot.telegram.sendMessage(
       booking.client_telegram_id,
       `⏰ Напоминаем: ${lead}\n\n${booking.service_name} — ${booking.master_name}\n${formatRuDateTime(booking.starts_at)}`,
-      { reply_markup: { inline_keyboard: bookingActionButtons(booking.id) } }
+      { reply_markup: { inline_keyboard: reminderActionButtons(booking.id) } }
     );
   } catch (err) {
     // Бот заблокирован клиентом, тестовый ID и т.п. — не должно ломать

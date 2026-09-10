@@ -26,6 +26,20 @@ export function bookingActionButtons(bookingId: number): InlineButton[][] {
   ];
 }
 
+// Те же кнопки плюс "Опаздываю" — только под напоминанием (reminders.ts):
+// сообщить, что вот-вот начнётся запись, а предупредить об опоздании раньше
+// времени смысла нет — поэтому не добавляем эту кнопку в bookingActionButtons,
+// который используется и сразу при создании записи
+export function reminderActionButtons(bookingId: number): InlineButton[][] {
+  return [
+    [
+      { text: "🔄 Перенести", callback_data: `resched:${bookingId}` },
+      { text: "❌ Отменить", callback_data: `cancelbk:${bookingId}` },
+    ],
+    [{ text: "⏳ Я опаздываю", callback_data: `late:${bookingId}` }],
+  ];
+}
+
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
 interface BookingSceneState {

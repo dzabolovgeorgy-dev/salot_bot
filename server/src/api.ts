@@ -571,6 +571,43 @@ api.patch("/bookings/:id", async (req, res) => {
   res.json({ ...updated[0], starts_at: toIso(updated[0].starts_at) });
 });
 
+interface LateBody {
+  client_telegram_id: number;
+  minutes: number;
+}
+
+// Клиент предупреждает, что опаздывает — просто уведомляет мастера, саму
+// запись не трогает (мастер сам решает, ждать или нет)
+api.post("/bookings/:id/late", async (req, res) => {
+  const id = Number(req.params.id);
+  const { client_telegram_id, minutes } = req.body as Partial<LateBody>;
+  if (!id || !client_telegram_id || !minutes) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, client_telegram_id)) return;
+
+  const { rows } = await db.query(
+    `SELECT b.master_id, b.starts_at, s.name AS service_name
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     WHERE b.id = $1 AND b.client_telegram_id = $2 AND b.status = 'upcoming'`,
+    [id, client_telegram_id]
+  );
+  const booking = rows[0] as { master_id: number; starts_at: string; service_name: string } | undefined;
+  if (!booking) {
+    res.status(404).json({ error: "Запись не найдена" });
+    return;
+  }
+
+  notifyMaster(
+    booking.master_id,
+    `⏳ Клиент опаздывает на ${minutes} мин.\n\n${booking.service_name}\n${formatRuDateTime(booking.starts_at)}`
+  );
+
+  res.json({ ok: true });
+});
+
 // ===== Эндпоинты для персонала (мастера и администраторы) =====
 
 api.get("/me", async (req, res) => {
