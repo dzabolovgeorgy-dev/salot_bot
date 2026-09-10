@@ -618,6 +618,15 @@
   cursor: default;
 }
 
+.loyalty-check-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
 /* Home details grid + quick links */
 
 .details-grid {

@@ -139,6 +139,26 @@ export async function initDb(): Promise<void> {
     ALTER TABLE client_notes ALTER COLUMN note DROP NOT NULL;
     ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS admin_comment TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS client_notes_phone_key ON client_notes (client_phone);
+
+    CREATE TABLE IF NOT EXISTS loyalty_points (
+      id SERIAL PRIMARY KEY,
+      client_telegram_id BIGINT NOT NULL UNIQUE,
+      points_balance INTEGER NOT NULL DEFAULT 0,
+      total_spent INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS loyalty_transactions (
+      id SERIAL PRIMARY KEY,
+      client_telegram_id BIGINT NOT NULL,
+      amount INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT now(),
+      -- NULL для списаний и сгораний — сгорает только то, что было начислено
+      expires_at TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS loyalty_transactions_client_idx ON loyalty_transactions (client_telegram_id);
+    CREATE INDEX IF NOT EXISTS loyalty_transactions_expires_idx ON loyalty_transactions (expires_at) WHERE expires_at IS NOT NULL;
   `);
 
   // Если база пустая — наполняем тестовыми мастерами и услугами

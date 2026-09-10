@@ -9,6 +9,7 @@ import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
 import { toIso, formatRuDateTime } from "./format.js";
+import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem } from "./loyalty.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -225,6 +226,27 @@ api.get("/bookings", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
 });
 
+api.get("/loyalty/:client_telegram_id", async (req, res) => {
+  const clientTelegramId = Number(req.params.client_telegram_id);
+  if (!clientTelegramId) {
+    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
+
+  const status = await getLoyaltyStatus(clientTelegramId);
+  const servicePrice = Number(req.query.service_price);
+  res.json({
+    points_balance: status.pointsBalance,
+    total_spent: status.totalSpent,
+    tier_name: status.tierName,
+    cashback_rate: status.cashbackRate,
+    next_tier_name: status.nextTierName,
+    amount_to_next_tier: status.amountToNextTier,
+    max_redeemable: servicePrice ? maxRedeemable(status.pointsBalance, servicePrice) : null,
+  });
+});
+
 api.delete("/bookings/:id", async (req, res) => {
   const id = Number(req.params.id);
   const clientTelegramId = Number(req.query.client_telegram_id);
@@ -271,10 +293,11 @@ interface CreateBookingBody {
   starts_at: string;
   client_name?: string;
   client_username?: string;
+  redeem_points?: number;
 }
 
 api.post("/bookings", async (req, res) => {
-  const { client_telegram_id, master_id, service_id, starts_at, client_name, client_username } =
+  const { client_telegram_id, master_id, service_id, starts_at, client_name, client_username, redeem_points } =
     req.body as Partial<CreateBookingBody>;
 
   if (!client_telegram_id || !master_id || !service_id || !starts_at) {
@@ -318,6 +341,20 @@ api.post("/bookings", async (req, res) => {
     return;
   }
 
+  const pointsToRedeem = redeem_points ?? 0;
+  if (pointsToRedeem) {
+    if (!Number.isInteger(pointsToRedeem) || pointsToRedeem < 0) {
+      res.status(400).json({ error: "Некорректное количество баллов" });
+      return;
+    }
+    const status = await getLoyaltyStatus(client_telegram_id);
+    const allowed = maxRedeemable(status.pointsBalance, service.price);
+    if (pointsToRedeem > allowed) {
+      res.status(400).json({ error: `Баллами можно оплатить не больше ${allowed} (30% от суммы и доступный баланс)` });
+      return;
+    }
+  }
+
   const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
   if (pastRows[0].value) {
     res.status(400).json({ error: "Нельзя записаться на прошедшее время" });
@@ -340,9 +377,14 @@ api.post("/bookings", async (req, res) => {
     [client_telegram_id, master_id, service_id, starts_at, client_name ?? null, client_username ?? null]
   );
 
+  // Проверка лимита уже прошла выше — тут только сам факт списания.
+  // Если баланс параллельно изменился и списать не вышло, запись всё равно
+  // остаётся в силе — просто без скидки баллами
+  const redeemedOk = pointsToRedeem ? await commitRedeem(client_telegram_id, pointsToRedeem) : false;
+
   notifyClient(
     client_telegram_id,
-    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`,
+    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽${redeemedOk ? `\nСписано баллов: ${pointsToRedeem}` : ""}\n\nЖдём вас в салоне!`,
     inserted[0].id
   );
 
@@ -799,11 +841,13 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   }
 
   await db.query("UPDATE bookings SET status = $1 WHERE id = $2", [status, id]);
-  // При status = 'completed' — сюда позже подключим начисление бонусов на карту лояльности
 
   if (status === "completed") {
     const clientKey = booking.client_telegram_id ?? booking.client_phone;
     if (clientKey) addClientSpend(clientKey, booking.price);
+    // Кэшбэк начисляем только клиентам с Telegram ID — у записей без него
+    // (клиент без Telegram, добавлен вручную по телефону) нет аккаунта, куда копить баллы
+    if (booking.client_telegram_id) await accrueForCompletedVisit(Number(booking.client_telegram_id), booking.price);
   }
 
   res.json({ ok: true });

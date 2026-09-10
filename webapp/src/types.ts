@@ -80,6 +80,16 @@ export interface ClientVisit {
   master_name: string
 }
 
+export interface LoyaltyStatus {
+  points_balance: number
+  total_spent: number
+  tier_name: string
+  cashback_rate: number
+  next_tier_name: string | null
+  amount_to_next_tier: number | null
+  max_redeemable: number | null
+}
+
 export type StaffRole =
   | { role: 'client' }
   | { role: 'master'; master_id: number; master_name: string }

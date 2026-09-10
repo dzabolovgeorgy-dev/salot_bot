@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
-import type { Master, Service, Booking, MasterPhoto } from './types'
+import type { Master, Service, Booking, MasterPhoto, LoyaltyStatus } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
 import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
@@ -294,6 +294,9 @@ function App() {
   const [allergyDraft, setAllergyDraft] = useState('')
   const [allergySaving, setAllergySaving] = useState(false)
 
+  const [loyaltyStatus, setLoyaltyStatus] = useState<LoyaltyStatus | null>(null)
+  const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false)
+
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
 
@@ -375,6 +378,21 @@ function App() {
       })
       .catch(() => setAllergyStage('edit'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowOrigin, flowIndex, selectedService, reschedule])
+
+  // На экране подтверждения — подтягиваем баланс баллов клиента и сколько
+  // максимум можно ими закрыть за эту услугу (не больше 30% от цены)
+  useEffect(() => {
+    const isConfirmStep = !reschedule && flowOrigin != null && FLOW_STEPS[flowOrigin][flowIndex] === 'confirm'
+    setUseLoyaltyPoints(false)
+    if (!isConfirmStep || !selectedService) {
+      setLoyaltyStatus(null)
+      return
+    }
+    apiFetch(`${API_URL}/api/loyalty/${clientTelegramId}?service_price=${selectedService.price}`)
+      .then((r) => r.json())
+      .then(setLoyaltyStatus)
+      .catch(() => setLoyaltyStatus(null))
   }, [flowOrigin, flowIndex, selectedService, reschedule])
 
   async function saveAllergyNote() {
@@ -531,6 +549,7 @@ function App() {
           starts_at: startsAt,
           client_name: getTelegramUserName(),
           client_username: getTelegramUsername() ?? undefined,
+          redeem_points: useLoyaltyPoints ? loyaltyStatus?.max_redeemable ?? 0 : 0,
         }),
       })
       const data = await res.json()
@@ -1005,9 +1024,36 @@ function App() {
                   <span className="summary-label">Стоимость</span>
                   <span className="summary-value">{selectedService.price} ₽</span>
                 </div>
+                {useLoyaltyPoints && loyaltyStatus?.max_redeemable ? (
+                  <div className="summary-row">
+                    <span className="summary-label">Баллами</span>
+                    <span className="summary-value">−{loyaltyStatus.max_redeemable} ₽</span>
+                  </div>
+                ) : null}
               </div>
             </div>
           </article>
+        )}
+
+        {inFlow && flowStep === 'confirm' && loyaltyStatus && loyaltyStatus.points_balance > 0 && (
+          <div className="allergy-check">
+            <p className="allergy-check-text">
+              Баллов на счету: {loyaltyStatus.points_balance}.{' '}
+              {loyaltyStatus.max_redeemable
+                ? `Можно списать до ${loyaltyStatus.max_redeemable} ₽ на эту запись (не больше 30% от стоимости услуги).`
+                : 'На эту услугу баллами оплатить нельзя.'}
+            </p>
+            {loyaltyStatus.max_redeemable ? (
+              <label className="loyalty-check-toggle">
+                <input
+                  type="checkbox"
+                  checked={useLoyaltyPoints}
+                  onChange={(e) => setUseLoyaltyPoints(e.target.checked)}
+                />
+                Списать {loyaltyStatus.max_redeemable} баллов
+              </label>
+            ) : null}
+          </div>
         )}
 
         {inFlow && flowStep === 'confirm' && allergyStage !== 'idle' && allergyStage !== 'loading' && (
