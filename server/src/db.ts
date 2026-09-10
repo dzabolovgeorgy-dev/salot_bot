@@ -11,6 +11,15 @@ export const db = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// База (Supabase) по умолчанию живёт в UTC, а now() в SQL-запросах сравнивается
+// с starts_at, который хранится как местное время салона без часового пояса —
+// без этого now() в SQL "отстаёт" от реального местного времени на разницу
+// с UTC, и всё, что сравнивается с now() (проверка "не в прошлом", напоминания,
+// список предстоящих записей), считает неверно
+db.on("connect", (client) => {
+  client.query("SET TIME ZONE 'Europe/Moscow'").catch(() => {});
+});
+
 export async function initDb(): Promise<void> {
   await db.query(`
     CREATE TABLE IF NOT EXISTS masters (
