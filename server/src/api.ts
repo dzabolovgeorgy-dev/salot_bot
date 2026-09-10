@@ -219,6 +219,7 @@ api.get("/bookings", async (req, res) => {
      JOIN services s ON s.id = b.service_id
      WHERE b.client_telegram_id = $1
        AND b.starts_at >= now()
+       AND b.status = 'upcoming'
      ORDER BY b.starts_at ASC`,
     [clientTelegramId]
   );
