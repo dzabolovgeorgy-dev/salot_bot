@@ -345,23 +345,25 @@ api.post("/bookings", async (req, res) => {
     `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`,
     inserted[0].id
   );
+
+  // Заметка об аллергии (если есть) — сразу в уведомлении мастеру, чтобы не
+  // искать её отдельно в «Клиентах» перед визитом
+  const { note, adminComment } = await getClientExtraFields(client_telegram_id, null);
   notifyMaster(
     master_id,
-    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}`
+    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`
   );
 
-  getClientExtraFields(client_telegram_id, null).then(({ note, adminComment }) => {
-    appendBookingRow({
-      clientName: client_name ?? "Клиент",
-      contact: client_username ? `@${client_username}` : `Telegram ID: ${client_telegram_id}`,
-      clientKey: String(client_telegram_id),
-      serviceName: service.name,
-      masterName: master.name,
-      startsAtIso: starts_at,
-      price: service.price,
-      allergyNote: note,
-      adminComment,
-    });
+  appendBookingRow({
+    clientName: client_name ?? "Клиент",
+    contact: client_username ? `@${client_username}` : `Telegram ID: ${client_telegram_id}`,
+    clientKey: String(client_telegram_id),
+    serviceName: service.name,
+    masterName: master.name,
+    startsAtIso: starts_at,
+    price: service.price,
+    allergyNote: note,
+    adminComment,
   });
 
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
@@ -473,27 +475,27 @@ api.post("/staff/bookings", async (req, res) => {
       inserted[0].id
     );
   }
+  const { note, adminComment } = await getClientExtraFields(client_telegram_id ?? null, normalizedPhone);
+
   // Если мастер завёл запись сам себе — он и так видит подтверждение в приложении,
   // уведомление в Telegram нужно только когда запись создал кто-то другой (клиент или админ)
   if (role.role !== "master") {
     notifyMaster(
       master_id,
-      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}`
+      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`
     );
   }
 
-  getClientExtraFields(client_telegram_id ?? null, normalizedPhone).then(({ note, adminComment }) => {
-    appendBookingRow({
-      clientName: client_name.trim(),
-      contact: client_telegram_id ? `Telegram ID: ${client_telegram_id}` : (normalizedPhone ?? "-"),
-      clientKey: client_telegram_id ? String(client_telegram_id) : (normalizedPhone ?? ""),
-      serviceName: service.name,
-      masterName: master.name,
-      startsAtIso: starts_at,
-      price: service.price,
-      allergyNote: note,
-      adminComment,
-    });
+  appendBookingRow({
+    clientName: client_name.trim(),
+    contact: client_telegram_id ? `Telegram ID: ${client_telegram_id}` : (normalizedPhone ?? "-"),
+    clientKey: client_telegram_id ? String(client_telegram_id) : (normalizedPhone ?? ""),
+    serviceName: service.name,
+    masterName: master.name,
+    startsAtIso: starts_at,
+    price: service.price,
+    allergyNote: note,
+    adminComment,
   });
 
   res.status(201).json({ ...inserted[0], starts_at: toIso(inserted[0].starts_at) });
