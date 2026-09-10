@@ -45,6 +45,15 @@ async function getClientExtraFields(
   return { note: rows[0]?.note ?? null, adminComment: rows[0]?.admin_comment ?? null };
 }
 
+// Для уведомления мастеру о новой записи — способ связаться с клиентом.
+// @username кликабелен прямо в сообщении Telegram (открывает диалог), без
+// username — просто ID для ручного поиска; для записи без Telegram — телефон
+function clientContactLine(telegramId?: number | null, username?: string | null, phone?: string | null): string {
+  if (telegramId) return username ? `@${username}` : `Telegram ID: ${telegramId}`;
+  if (phone) return phone;
+  return "не указан";
+}
+
 // Уведомления в чат клиенту — если не получилось отправить (бот заблокирован,
 // тестовый client_telegram_id и т.п.), это не должно ломать сам запрос.
 // bookingId — если указан, под сообщением появляются кнопки "Перенести"/"Отменить"
@@ -336,7 +345,10 @@ api.post("/bookings", async (req, res) => {
     `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽\n\nЖдём вас в салоне!`,
     inserted[0].id
   );
-  notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
+  notifyMaster(
+    master_id,
+    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}`
+  );
 
   getClientExtraFields(client_telegram_id, null).then(({ note, adminComment }) => {
     appendBookingRow({
@@ -464,7 +476,10 @@ api.post("/staff/bookings", async (req, res) => {
   // Если мастер завёл запись сам себе — он и так видит подтверждение в приложении,
   // уведомление в Telegram нужно только когда запись создал кто-то другой (клиент или админ)
   if (role.role !== "master") {
-    notifyMaster(master_id, `📅 Новая запись\n\n${service.name}\n${formatRuDateTime(starts_at)}`);
+    notifyMaster(
+      master_id,
+      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}`
+    );
   }
 
   getClientExtraFields(client_telegram_id ?? null, normalizedPhone).then(({ note, adminComment }) => {
