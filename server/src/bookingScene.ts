@@ -51,6 +51,10 @@ interface BookingSceneState {
   masterName?: string;
   date?: string;
   time?: string;
+  serviceRequiresAllergyCheck?: boolean;
+  // true — ждём следующим сообщением текст про аллергию/особенности (после
+  // кнопки "Уточнить"/"Указать"), а не обрабатываем текст как случайный
+  awaitingAllergyNote?: boolean;
   // Если задано — сцена вошла в режим переноса существующей записи (кнопка
   // "🔄 Перенести" под уведомлением о записи), а не создания новой: услуга и
   // мастер уже известны и не спрашиваются, при подтверждении вызывается
@@ -234,6 +238,7 @@ bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
     serviceName: service.name,
     serviceDuration: service.duration_minutes,
     servicePrice: service.price,
+    serviceRequiresAllergyCheck: service.requires_allergy_check,
   });
 
   const masters = (await mastersRes.json()) as Master[];
@@ -321,6 +326,58 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
   });
 });
 
+// Экран "Проверьте запись" — общий финальный шаг перед подтверждением.
+// edit=true — правим предыдущее сообщение бота (обычный ход диалога кнопками),
+// edit=false — шлём новое (после того как человек написал текст про аллергию,
+// редактировать уже нечего — то сообщение было "Напишите...")
+async function sendConfirmScreen(ctx: BotContext, edit: boolean) {
+  const s = state(ctx);
+  const dateObj = new Date(`${s.date}T00:00:00`);
+  const heading = s.rescheduleBookingId ? "Перенести запись на:" : "Проверьте запись:";
+  const text = `${heading}\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} ₽\n\nВсё верно?`;
+  const extra = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "✅ Подтвердить", callback_data: "confirm" }],
+        [{ text: "Отмена", callback_data: "cancel" }],
+      ],
+    },
+  };
+  if (edit) await ctx.editMessageText(text, extra);
+  else await ctx.reply(text, extra);
+}
+
+// Услуга требует знать про аллергию/чувствительность (requires_allergy_check) —
+// перед подтверждением спрашиваем, но в один тап: если уже есть заметка —
+// просто "актуально?", если нет — "есть что учесть?". Печатать текст нужно,
+// только если человек сам захочет уточнить/добавить — лишний тап не нужен
+async function askAllergyIfNeeded(ctx: BotContext) {
+  const res = await fetch(`${API_BASE}/client-notes/${ctx.from!.id}`, { headers: internalHeaders() });
+  const data = (await res.json().catch(() => ({}))) as { note?: string | null };
+  if (data.note) {
+    await ctx.editMessageText(`⚠️ У нас записано: «${data.note}». Это всё ещё актуально?`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Да, актуально", callback_data: "allergy_keep" }],
+          [{ text: "Уточнить", callback_data: "allergy_edit" }],
+        ],
+      },
+    });
+  } else {
+    await ctx.editMessageText(
+      "⚠️ Для этой услуги важно знать про аллергию или чувствительность кожи. Есть что учесть?",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "Нет, всё в порядке", callback_data: "allergy_none" }],
+            [{ text: "Указать", callback_data: "allergy_add" }],
+          ],
+        },
+      }
+    );
+  }
+}
+
 bookingScene.action(/^time:(\d{2}:\d{2})$/, async (ctx) => {
   await ctx.answerCbQuery();
   const s = state(ctx);
@@ -332,19 +389,54 @@ bookingScene.action(/^time:(\d{2}:\d{2})$/, async (ctx) => {
     return;
   s.time = ctx.match[1];
 
-  const dateObj = new Date(`${s.date}T00:00:00`);
-  const heading = s.rescheduleBookingId ? "Перенести запись на:" : "Проверьте запись:";
-  await ctx.editMessageText(
-    `${heading}\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} ₽\n\nВсё верно?`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "✅ Подтвердить", callback_data: "confirm" }],
-          [{ text: "Отмена", callback_data: "cancel" }],
-        ],
-      },
-    }
-  );
+  // При переносе услугу не меняют — заметка о клиенте уже была спрошена при
+  // первой записи, второй раз не нужно (так же ведёт себя и приложение)
+  if (s.serviceRequiresAllergyCheck && !s.rescheduleBookingId) {
+    await askAllergyIfNeeded(ctx);
+    return;
+  }
+
+  await sendConfirmScreen(ctx, true);
+});
+
+bookingScene.action("allergy_keep", async (ctx) => {
+  await ctx.answerCbQuery();
+  await sendConfirmScreen(ctx, true);
+});
+
+bookingScene.action("allergy_none", async (ctx) => {
+  await ctx.answerCbQuery();
+  await sendConfirmScreen(ctx, true);
+});
+
+bookingScene.action(/^allergy_(edit|add)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  state(ctx).awaitingAllergyNote = true;
+  await ctx.editMessageText("Напишите одним сообщением, что нужно знать мастеру (например: «аллергия на аммиак»).");
+});
+
+// Свободный текст ловим только пока реально ждём заметку про аллергию — в
+// остальное время диалог идёт кнопками. Если текст не про это — пропускаем
+// дальше (next()), а не проглатываем: иначе, например, повторное нажатие
+// постоянной кнопки "Записаться в чате" посреди диалога перестало бы работать
+bookingScene.on("text", async (ctx, next) => {
+  const s = state(ctx);
+  if (!s.awaitingAllergyNote) {
+    await next();
+    return;
+  }
+  s.awaitingAllergyNote = false;
+
+  const note = ctx.message.text.trim();
+  if (note) {
+    await fetch(`${API_BASE}/client-notes/${ctx.from!.id}`, {
+      method: "PUT",
+      headers: internalHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ note }),
+    }).catch(() => {});
+  }
+  await ctx.reply("Записал, спасибо.");
+  await sendConfirmScreen(ctx, false);
 });
 
 bookingScene.action("confirm", async (ctx) => {
