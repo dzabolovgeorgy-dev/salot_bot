@@ -439,6 +439,77 @@
   margin-top: 2px;
 }
 
+.loyalty-card {
+  --tier-color: #9c8b7d;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.loyalty-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.loyalty-card-tier {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.loyalty-card-tier-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--tier-color);
+  flex-shrink: 0;
+}
+
+.loyalty-card-cashback {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  padding: 4px 9px;
+  border-radius: var(--radius-lg);
+}
+
+.loyalty-card-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.loyalty-card-balance-value {
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 1;
+  color: var(--text-h);
+}
+
+.loyalty-card-balance-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.loyalty-card-progress {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
 /* Confirm-style cards (home booking summary + confirm screen) */
 
 .confirm-card {

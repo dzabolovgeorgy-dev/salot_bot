@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -56,6 +57,15 @@ const STEP_TITLES: Record<FlowStep, string> = {
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
+
+// Цвет метки уровня на карточке лояльности — своя точка цвета на каждый
+// уровень, чтобы уровни отличались друг от друга с первого взгляда
+const TIER_COLORS: Record<string, string> = {
+  Новичок: '#9c8b7d',
+  Серебро: '#93a0ad',
+  Золото: '#c9a227',
+  Платина: '#8a76b8',
+}
 
 function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
   const n = name.toLowerCase()
@@ -296,6 +306,7 @@ function App() {
 
   const [loyaltyStatus, setLoyaltyStatus] = useState<LoyaltyStatus | null>(null)
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false)
+  const [profileLoyalty, setProfileLoyalty] = useState<LoyaltyStatus | null>(null)
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -320,6 +331,14 @@ function App() {
       .then((r) => r.json())
       .then(setBookings)
 
+  // Карточка лояльности в профиле — не критична для загрузки экрана, поэтому
+  // подгружаем отдельно и молча ничего не показываем, если не получилось
+  const fetchProfileLoyalty = () =>
+    apiFetch(`${API_URL}/api/loyalty/${clientTelegramId}`)
+      .then((r) => r.json())
+      .then(setProfileLoyalty)
+      .catch(() => setProfileLoyalty(null))
+
   useEffect(() => {
     Promise.all([
       apiFetch(`${API_URL}/api/services`).then((r) => r.json()),
@@ -332,6 +351,7 @@ function App() {
       })
       .catch(() => setError('Не удалось загрузить данные с сервера'))
       .finally(() => setLoading(false))
+    fetchProfileLoyalty()
   }, [])
 
   useEffect(() => {
@@ -558,6 +578,7 @@ function App() {
         return
       }
       await fetchBookings()
+      await fetchProfileLoyalty()
       setIsDone(true)
     } catch {
       setError('Не удалось связаться с сервером')
@@ -752,6 +773,30 @@ function App() {
         transition={{ duration: 0.22, ease: 'easeOut' }}
       >
         {error && <p className="error">{error}</p>}
+
+        {isHomeHero && profileLoyalty && (
+          <article
+            className="loyalty-card"
+            style={{ '--tier-color': TIER_COLORS[profileLoyalty.tier_name] ?? '#9c8b7d' } as CSSProperties}
+          >
+            <div className="loyalty-card-row">
+              <span className="loyalty-card-tier">
+                <span className="loyalty-card-tier-dot" />
+                {profileLoyalty.tier_name}
+              </span>
+              <span className="loyalty-card-cashback">Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%</span>
+            </div>
+            <div className="loyalty-card-balance">
+              <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
+              <span className="loyalty-card-balance-label">баллов на счету</span>
+            </div>
+            <p className="loyalty-card-progress">
+              {profileLoyalty.next_tier_name && profileLoyalty.amount_to_next_tier != null
+                ? `До уровня «${profileLoyalty.next_tier_name}» осталось потратить ${profileLoyalty.amount_to_next_tier} ₽`
+                : 'Вы на максимальном уровне'}
+            </p>
+          </article>
+        )}
 
         {isHomeHero &&
           (heroBooking && heroMaster ? (
