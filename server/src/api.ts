@@ -8,6 +8,7 @@ import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
+import { toIso, formatRuDateTime } from "./format.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -20,13 +21,6 @@ function extFromMimeType(mimeType: string): string {
 }
 
 export const api = Router();
-
-// Postgres отдаёт время как "2026-11-02 14:30:00" (пробел, с секундами).
-// Приводим к строгому ISO с "T", чтобы new Date(...) одинаково работал везде,
-// включая WebKit в Telegram Mini App на iPhone
-function toIso(value: string): string {
-  return value.replace(" ", "T");
-}
 
 // Для записей без Telegram (звонок/WhatsApp) телефон — единственный ID
 // клиента. Приводим к цифрам, чтобы "+7 999 123-45-67" и "79991234567"
@@ -49,15 +43,6 @@ async function getClientExtraFields(
     [clientTelegramId ?? clientPhone]
   );
   return { note: rows[0]?.note ?? null, adminComment: rows[0]?.admin_comment ?? null };
-}
-
-function formatRuDateTime(value: string): string {
-  return new Date(toIso(value)).toLocaleString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 // Уведомления в чат клиенту — если не получилось отправить (бот заблокирован,
@@ -565,7 +550,12 @@ api.patch("/bookings/:id", async (req, res) => {
     return;
   }
 
-  await db.query("UPDATE bookings SET starts_at = $1 WHERE id = $2", [starts_at, id]);
+  // Сбрасываем отметки об отправленных напоминаниях — время другое, значит и
+  // напоминания должны прийти заново, ближе к новому времени
+  await db.query(
+    "UPDATE bookings SET starts_at = $1, reminder_24h_sent = false, reminder_2h_sent = false WHERE id = $2",
+    [starts_at, id]
+  );
 
   notifyClient(
     client_telegram_id,

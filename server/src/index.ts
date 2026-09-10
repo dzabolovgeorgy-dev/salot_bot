@@ -5,6 +5,7 @@ import { initStorage } from "./storage.js";
 import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
 import { attachTelegramIdentity } from "./telegramAuthMiddleware.js";
+import { startReminderScheduler } from "./reminders.js";
 
 // Сервер на Render по умолчанию работает по UTC, а салон — по своему местному
 // времени. Даты/время клиента и мастера везде считаются в браузере (там уже
@@ -64,6 +65,7 @@ async function startBot(attemptsLeft = 8) {
 
 startBot();
 setupMenuButton();
+startReminderScheduler();
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

@@ -83,7 +83,11 @@ export async function initDb(): Promise<void> {
       client_name TEXT,
       status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'completed', 'no_show')),
       client_username TEXT,
-      client_phone TEXT
+      client_phone TEXT,
+      -- Отметки, что напоминание клиенту уже отправлено — чтобы при каждой
+      -- проверке (раз в несколько минут) не слать одно и то же повторно
+      reminder_24h_sent BOOLEAN NOT NULL DEFAULT false,
+      reminder_2h_sent BOOLEAN NOT NULL DEFAULT false
     );
 
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_name TEXT;
@@ -91,6 +95,8 @@ export async function initDb(): Promise<void> {
       CHECK (status IN ('upcoming', 'completed', 'no_show'));
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_username TEXT;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_phone TEXT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_2h_sent BOOLEAN NOT NULL DEFAULT false;
     -- Записи, которые администратор создаёт вручную (звонок/WhatsApp), могут
     -- быть без Telegram ID — тогда обязателен client_phone
     ALTER TABLE bookings ALTER COLUMN client_telegram_id DROP NOT NULL;
