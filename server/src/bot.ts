@@ -237,7 +237,7 @@ bot.command("services", async (ctx) => {
     return;
   }
   const list = services
-    .map((s, i) => `${i + 1}. ${s.name} — ${s.duration_minutes} мин, ${s.price} ₽`)
+    .map((s, i) => `${i + 1}. ${s.name} — ${s.duration_minutes} мин, ${s.price} €`)
     .join("\n");
   ctx.reply(`Наши услуги:\n${list}`);
 });

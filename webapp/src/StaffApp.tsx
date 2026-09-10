@@ -772,7 +772,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <div className="staff-hub-stats">
             <span className="staff-hub-stats-label">Доход за месяц</span>
             <span className="staff-hub-stats-income">
-              {myStats ? `${myStats.income.toLocaleString('ru-RU')} ₽` : '—'}
+              {myStats ? `${myStats.income.toLocaleString('ru-RU')} €` : '—'}
             </span>
             <div className="staff-hub-stats-row">
               <div>
@@ -861,7 +861,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                     .filter((s) => myMaster.service_ids.includes(s.id))
                     .map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} — {s.price} ₽
+                        {s.name} — {s.price} €
                       </option>
                     ))}
                 </select>
@@ -1000,7 +1000,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <div className="staff-hub-stats">
             <span className="staff-hub-stats-label">Доход салона за сегодня</span>
             <span className="staff-hub-stats-income">
-              {salonStats ? `${salonStats.income.toLocaleString('ru-RU')} ₽` : '—'}
+              {salonStats ? `${salonStats.income.toLocaleString('ru-RU')} €` : '—'}
             </span>
             <div className="staff-hub-stats-row">
               <div>
@@ -1377,7 +1377,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                   </option>
                   {services.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} — {s.price} ₽
+                      {s.name} — {s.price} €
                     </option>
                   ))}
                 </select>

@@ -143,7 +143,7 @@ function ServiceRow({ service, onClick }: { service: Service; onClick: () => voi
           {service.duration_minutes} мин
         </span>
       </span>
-      <span className="service-row-price">{service.price} ₽</span>
+      <span className="service-row-price">{service.price} €</span>
       <ChevronRight size={16} className="service-row-arrow" />
     </button>
   )
@@ -792,7 +792,7 @@ function App() {
             </div>
             <p className="loyalty-card-progress">
               {profileLoyalty.next_tier_name && profileLoyalty.amount_to_next_tier != null
-                ? `До уровня «${profileLoyalty.next_tier_name}» осталось потратить ${profileLoyalty.amount_to_next_tier} ₽`
+                ? `До уровня «${profileLoyalty.next_tier_name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
                 : 'Вы на максимальном уровне'}
             </p>
           </article>
@@ -1067,12 +1067,12 @@ function App() {
                 </div>
                 <div className="summary-row">
                   <span className="summary-label">Стоимость</span>
-                  <span className="summary-value">{selectedService.price} ₽</span>
+                  <span className="summary-value">{selectedService.price} €</span>
                 </div>
                 {useLoyaltyPoints && loyaltyStatus?.max_redeemable ? (
                   <div className="summary-row">
                     <span className="summary-label">Баллами</span>
-                    <span className="summary-value">−{loyaltyStatus.max_redeemable} ₽</span>
+                    <span className="summary-value">−{loyaltyStatus.max_redeemable} €</span>
                   </div>
                 ) : null}
               </div>
@@ -1085,7 +1085,7 @@ function App() {
             <p className="allergy-check-text">
               Баллов на счету: {loyaltyStatus.points_balance}.{' '}
               {loyaltyStatus.max_redeemable
-                ? `Можно списать до ${loyaltyStatus.max_redeemable} ₽ на эту запись (не больше 30% от стоимости услуги).`
+                ? `Можно списать до ${loyaltyStatus.max_redeemable} € на эту запись (не больше 30% от стоимости услуги).`
                 : 'На эту услугу баллами оплатить нельзя.'}
             </p>
             {loyaltyStatus.max_redeemable ? (

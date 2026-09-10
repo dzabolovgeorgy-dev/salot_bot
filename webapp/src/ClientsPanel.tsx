@@ -233,7 +233,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
               <span className="staff-client-stat-label">визитов</span>
             </div>
             <div>
-              <span className="staff-client-stat-value">{selectedClient.total_spent} ₽</span>
+              <span className="staff-client-stat-value">{selectedClient.total_spent} €</span>
               <span className="staff-client-stat-label">потрачено</span>
             </div>
           </div>
@@ -268,7 +268,7 @@ export default function ClientsPanel({ telegramId }: ClientsPanelProps) {
                   <span className="staff-list-body">
                     {formatDateTime(v.starts_at)}
                     <span className="staff-client-meta">
-                      {v.service_name} — {v.master_name}, {v.price} ₽
+                      {v.service_name} — {v.master_name}, {v.price} €
                       <span
                         className={`staff-status staff-status--${v.status === 'completed' ? 'done' : v.status === 'no_show' ? 'no-show' : ''}`}
                       >

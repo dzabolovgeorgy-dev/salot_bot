@@ -208,7 +208,7 @@ bookingScene.enter(async (ctx) => {
     return;
   }
   const buttons: InlineButton[][] = services.map((s) => [
-    { text: `${s.name} — ${s.price} ₽ (${s.duration_minutes} мин)`, callback_data: `svc:${s.id}` },
+    { text: `${s.name} — ${s.price} € (${s.duration_minutes} мин)`, callback_data: `svc:${s.id}` },
   ]);
   buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
   await ctx.reply("Какая услуга вас интересует?", { reply_markup: { inline_keyboard: buttons } });
@@ -334,7 +334,7 @@ async function sendConfirmScreen(ctx: BotContext, edit: boolean) {
   const s = state(ctx);
   const dateObj = new Date(`${s.date}T00:00:00`);
   const heading = s.rescheduleBookingId ? "Перенести запись на:" : "Проверьте запись:";
-  const text = `${heading}\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} ₽\n\nВсё верно?`;
+  const text = `${heading}\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} €\n\nВсё верно?`;
   const extra = {
     reply_markup: {
       inline_keyboard: [

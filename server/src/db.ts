@@ -181,19 +181,19 @@ export async function initDb(): Promise<void> {
 
   const cut = await db.query(
     `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING id`,
-    ["Стрижка", 30, 1500]
+    ["Стрижка", 30, 15]
   );
   const color = await db.query(
     `INSERT INTO services (name, duration_minutes, price, requires_allergy_check) VALUES ($1, $2, $3, true) RETURNING id`,
-    ["Окрашивание", 120, 4500]
+    ["Окрашивание", 120, 45]
   );
   const manicure = await db.query(
     `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING id`,
-    ["Маникюр", 60, 2000]
+    ["Маникюр", 60, 20]
   );
   const styling = await db.query(
     `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING id`,
-    ["Укладка", 45, 1800]
+    ["Укладка", 45, 18]
   );
 
   const annaId = anna.rows[0].id;

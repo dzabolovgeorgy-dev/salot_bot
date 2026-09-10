@@ -491,7 +491,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
             {services.map((s) => (
               <li key={s.id} className="staff-list-item staff-list-item--clickable" onClick={() => startEditService(s)}>
                 <span className="staff-list-body">
-                  {s.name} — {s.duration_minutes} мин, {s.price} ₽
+                  {s.name} — {s.duration_minutes} мин, {s.price} €
                   {s.requires_allergy_check && <span className="staff-client-meta">⚠ проверка на аллергию</span>}
                 </span>
                 <button
@@ -530,7 +530,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
               />
             </label>
             <label>
-              Цена (₽)
+              Цена (€)
               <input
                 type="number"
                 min="0"

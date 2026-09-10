@@ -384,7 +384,7 @@ api.post("/bookings", async (req, res) => {
 
   notifyClient(
     client_telegram_id,
-    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} ₽${redeemedOk ? `\nСписано баллов: ${pointsToRedeem}` : ""}\n\nЖдём вас в салоне!`,
+    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} €${redeemedOk ? `\nСписано баллов: ${pointsToRedeem}` : ""}\n\nЖдём вас в салоне!`,
     inserted[0].id
   );
 

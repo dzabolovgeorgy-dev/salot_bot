@@ -10,9 +10,9 @@ export interface LoyaltyTier {
 
 export const LOYALTY_TIERS: LoyaltyTier[] = [
   { name: "Новичок", minSpent: 0, cashbackRate: 0.03 },
-  { name: "Серебро", minSpent: 15_000, cashbackRate: 0.05 },
-  { name: "Золото", minSpent: 45_000, cashbackRate: 0.07 },
-  { name: "Платина", minSpent: 90_000, cashbackRate: 0.1 },
+  { name: "Серебро", minSpent: 150, cashbackRate: 0.05 },
+  { name: "Золото", minSpent: 450, cashbackRate: 0.07 },
+  { name: "Платина", minSpent: 900, cashbackRate: 0.1 },
 ];
 
 const POINTS_EXPIRY_MONTHS = 6;
