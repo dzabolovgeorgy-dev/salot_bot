@@ -213,6 +213,8 @@
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
   cursor: pointer;
   font: inherit;
@@ -288,6 +290,8 @@
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
   cursor: pointer;
   font: inherit;
@@ -468,6 +472,8 @@
   letter-spacing: 0.02em;
   color: var(--tier-color);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   padding: 5px 10px 5px 8px;
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 2px rgba(33, 30, 29, 0.05);
@@ -545,6 +551,8 @@
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
 }
 
@@ -653,6 +661,8 @@
 
 .allergy-check {
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -703,9 +713,9 @@
 }
 
 .allergy-btn-secondary {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-h);
+  border: 1.5px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
 }
 
 .allergy-btn-primary:disabled,
@@ -775,7 +785,7 @@
   border: none;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-h);
+  color: var(--primary);
   text-decoration: underline;
   text-decoration-color: var(--accent-dark);
   text-underline-offset: 4px;
@@ -832,6 +842,8 @@
   padding: 14px;
   border-radius: var(--radius-2xl);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
 }
 
@@ -870,6 +882,8 @@
 .calendar {
   border-radius: var(--radius-2xl);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
   padding: 14px;
 }
@@ -1046,6 +1060,8 @@
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow);
 }
 
@@ -1177,6 +1193,8 @@
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .review-card-top {
@@ -1302,6 +1320,8 @@
   display: flex;
   border-top: 1px solid var(--border);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
 }
 

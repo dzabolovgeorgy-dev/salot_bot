@@ -65,9 +65,9 @@ const API_URL = import.meta.env.VITE_API_URL ?? ''
 // здесь только чтобы нарисовать прогресс, держать значения в синхроне
 const TIER_META = [
   { name: 'Новичок', min: 0, color: '#9c8b7d', bg: '#efe9e1' },
-  { name: 'Серебро', min: 150, color: '#71879a', bg: '#e7edf1' },
+  { name: 'Серебро', min: 150, color: '#8f8478', bg: '#efe9e2' },
   { name: 'Золото', min: 450, color: '#ad7f1f', bg: '#f4e8d0' },
-  { name: 'Платина', min: 900, color: '#7c6aa8', bg: '#ece7f4' },
+  { name: 'Платина', min: 900, color: '#8c6a63', bg: '#f1e6e2' },
 ] as const
 
 function tierProgress(status: LoyaltyStatus) {

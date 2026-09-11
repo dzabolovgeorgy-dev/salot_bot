@@ -1,38 +1,45 @@
 :root {
-  --bg: #fffaf6;
-  --surface: #ffffff;
-  --surface-muted: #f5e8de;
-  --text-h: #62493a;
-  --text: #91786a;
-  --border: #ead9cd;
+  /* Бьюти-эстетика 2026: тёплая, природная, спокойная палитра — вместо
+     прежней тёмно-коричневой. Ничего холодного/технического, минимум
+     резких границ (карточки держатся на мягкой тени, не на контуре) */
+  --bg: #fbf7f2;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-muted: #f3e6da;
+  --text-h: #2e2a26;
+  --text: #756a61;
+  --border: rgba(46, 42, 38, 0.08);
 
-  --primary: #76513b;
-  --primary-foreground: #fffaf6;
+  --primary: #c97b5a;
+  --primary-foreground: #fff8f3;
 
-  --secondary: #edc6aa;
-  --secondary-foreground: #62493a;
+  --secondary: #f3ded2;
+  --secondary-foreground: #8c4a30;
 
-  --accent: #f2d5c2;
-  --accent-foreground: #76513b;
-  --accent-dark: #76513b;
-  --accent-soft: #f2d5c2;
+  --accent: #f3ded2;
+  --accent-foreground: #8c4a30;
+  --accent-dark: #8c4a30;
+  --accent-soft: #f3ded2;
 
-  --success: #657452;
-  --success-foreground: #ffffff;
+  --success: #7a8b6f;
+  --success-foreground: #fbf7f2;
 
-  --soft-white: #fffaf6;
+  --soft-white: #fbf7f2;
   --danger: #b3413a;
-  --shadow: 0 8px 24px rgba(33, 30, 29, 0.06);
+  --shadow: 0 10px 30px rgba(46, 42, 38, 0.08), 0 2px 8px rgba(46, 42, 38, 0.04);
 
-  --radius-sm: 0.6rem;
-  --radius-md: 0.8rem;
+  /* Ни одна карточка/кнопка не должна быть острее 12px */
+  --radius-sm: 0.75rem;
+  --radius-md: 0.875rem;
   --radius-lg: 1rem;
   --radius-xl: 1.4rem;
   --radius-2xl: 1.8rem;
   --radius-3xl: 2.2rem;
 
-  --sans: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
-  --serif: 'Cormorant', Georgia, serif;
+  /* Глубина размытия для glassmorphism-поверхностей (var(--surface)) */
+  --glass-blur: 16px;
+
+  --sans: 'Golos Text', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --serif: 'Cormorant Garamond', Georgia, serif;
 
   font: 16px/1.45 var(--sans);
   color-scheme: light;
