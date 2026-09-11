@@ -108,6 +108,12 @@ interface Master extends MasterSchedule {
   work_end_time: string;
   buffer_minutes: number;
   service_ids: number[];
+  avg_rating: number | null;
+  ratings_count: number;
+}
+
+function masterLabel(m: Master): string {
+  return m.ratings_count > 0 ? `${m.name} — ${m.avg_rating} ⭐` : m.name;
 }
 
 const MONTH_NAMES = [
@@ -257,7 +263,7 @@ bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
     return;
   }
   const buttons: InlineButton[][] = available.map((m) => [
-    { text: m.name, callback_data: `mst:${m.id}` },
+    { text: masterLabel(m), callback_data: `mst:${m.id}` },
   ]);
   buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
   await ctx.editMessageText(`Услуга: ${service.name}\n\nВыберите мастера:`, {
