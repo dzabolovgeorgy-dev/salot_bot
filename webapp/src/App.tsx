@@ -276,6 +276,7 @@ function App() {
   const [masterProfile, setMasterProfile] = useState<Master | null>(null)
   const [masterProfilePhotos, setMasterProfilePhotos] = useState<MasterPhoto[]>([])
   const [masterReviews, setMasterReviews] = useState<MasterReview[]>([])
+  const [reviewsOpen, setReviewsOpen] = useState(false)
   const [openPhoto, setOpenPhoto] = useState<MasterPhoto | null>(null)
 
   const [services, setServices] = useState<Service[]>([])
@@ -477,6 +478,7 @@ function App() {
 
   // Отзывы мастера (оценки с текстом) — туда же, при открытии профиля
   useEffect(() => {
+    setReviewsOpen(false)
     if (!masterProfile) {
       setMasterReviews([])
       return
@@ -489,6 +491,10 @@ function App() {
 
   const goBack = () => {
     setError(null)
+    if (reviewsOpen) {
+      setReviewsOpen(false)
+      return
+    }
     if (masterProfile) {
       setMasterProfile(null)
       setOpenPhoto(null)
@@ -604,6 +610,40 @@ function App() {
     return <div className="loading-screen">Загрузка…</div>
   }
 
+  if (masterProfile && reviewsOpen) {
+    return (
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
+        <div className="topbar">
+          <button className="icon-back" onClick={goBack} aria-label="Назад">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="topbar-title">Отзывы</div>
+        </div>
+        <div className="content">
+          <div className="review-list">
+            {masterReviews.map((r) => (
+              <article key={r.id} className="review-card">
+                <div className="review-card-top">
+                  <span className="review-stars">
+                    {'★'.repeat(r.rating)}
+                    {'☆'.repeat(5 - r.rating)}
+                  </span>
+                  <span className="review-date">{formatDateTime(r.created_at)}</span>
+                </div>
+                <p className="review-comment">{r.comment}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
   if (masterProfile) {
     const masterServices = services.filter((s) => masterProfile.service_ids.includes(s.id))
     return (
@@ -660,7 +700,7 @@ function App() {
             <>
               <div className="section-title">Отзывы</div>
               <div className="review-list">
-                {masterReviews.map((r) => (
+                {masterReviews.slice(0, 3).map((r) => (
                   <article key={r.id} className="review-card">
                     <div className="review-card-top">
                       <span className="review-stars">
@@ -673,6 +713,11 @@ function App() {
                   </article>
                 ))}
               </div>
+              {masterReviews.length > 3 && (
+                <button type="button" className="link-button" onClick={() => setReviewsOpen(true)}>
+                  Показать все отзывы ({masterReviews.length})
+                </button>
+              )}
             </>
           )}
           <div className="section-title">Услуги мастера</div>
