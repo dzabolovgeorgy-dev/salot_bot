@@ -938,7 +938,14 @@ function App() {
               </p>
               <div className="service-strip">
                 {services.slice(0, 5).map((s) => (
-                  <button key={s.id} className="service-chip" onClick={() => setActiveTab('services')}>
+                  <button
+                    key={s.id}
+                    className="service-chip"
+                    onClick={() => {
+                      setSelectedService(s)
+                      startFlow('services')
+                    }}
+                  >
                     <span className="service-chip-icon">
                       <ServiceIcon name={s.name} size={22} />
                     </span>
