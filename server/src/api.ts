@@ -1163,6 +1163,21 @@ api.get("/masters/:id/photos", async (req, res) => {
   res.json(rows);
 });
 
+// Только оценки с текстом — это и есть "отзывы", которые клиент читает
+// перед записью. Без имени/контакта клиента — не показываем чужим личность
+// того, кто оставил отзыв
+api.get("/masters/:id/ratings", async (req, res) => {
+  const masterId = Number(req.params.id);
+  const { rows } = await db.query(
+    `SELECT id, rating, comment, created_at FROM master_ratings
+     WHERE master_id = $1 AND comment IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [masterId]
+  );
+  res.json(rows.map((r) => ({ ...r, created_at: toIso(r.created_at) })));
+});
+
 api.post("/staff/portfolio-photos", upload.single("photo"), async (req, res) => {
   const telegram_id = Number(req.body.telegram_id);
   if (!telegram_id || !req.file) {

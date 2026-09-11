@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
-import type { Master, Service, Booking, MasterPhoto, LoyaltyStatus } from './types'
+import type { Master, Service, Booking, MasterPhoto, LoyaltyStatus, MasterReview } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
 import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
@@ -275,6 +275,7 @@ function App() {
   const [isDone, setIsDone] = useState(false)
   const [masterProfile, setMasterProfile] = useState<Master | null>(null)
   const [masterProfilePhotos, setMasterProfilePhotos] = useState<MasterPhoto[]>([])
+  const [masterReviews, setMasterReviews] = useState<MasterReview[]>([])
   const [openPhoto, setOpenPhoto] = useState<MasterPhoto | null>(null)
 
   const [services, setServices] = useState<Service[]>([])
@@ -474,6 +475,18 @@ function App() {
       .catch(() => setMasterProfilePhotos([]))
   }, [masterProfile])
 
+  // Отзывы мастера (оценки с текстом) — туда же, при открытии профиля
+  useEffect(() => {
+    if (!masterProfile) {
+      setMasterReviews([])
+      return
+    }
+    apiFetch(`${API_URL}/api/masters/${masterProfile.id}/ratings`)
+      .then((r) => r.json())
+      .then(setMasterReviews)
+      .catch(() => setMasterReviews([]))
+  }, [masterProfile])
+
   const goBack = () => {
     setError(null)
     if (masterProfile) {
@@ -639,6 +652,25 @@ function App() {
                   >
                     <img src={p.url} alt="Фото работы" />
                   </button>
+                ))}
+              </div>
+            </>
+          )}
+          {masterReviews.length > 0 && (
+            <>
+              <div className="section-title">Отзывы</div>
+              <div className="review-list">
+                {masterReviews.map((r) => (
+                  <article key={r.id} className="review-card">
+                    <div className="review-card-top">
+                      <span className="review-stars">
+                        {'★'.repeat(r.rating)}
+                        {'☆'.repeat(5 - r.rating)}
+                      </span>
+                      <span className="review-date">{formatDateTime(r.created_at)}</span>
+                    </div>
+                    <p className="review-comment">{r.comment}</p>
+                  </article>
                 ))}
               </div>
             </>

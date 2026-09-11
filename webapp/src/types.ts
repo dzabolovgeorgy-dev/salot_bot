@@ -82,6 +82,13 @@ export interface ClientVisit {
   master_name: string
 }
 
+export interface MasterReview {
+  id: number
+  rating: number
+  comment: string
+  created_at: string
+}
+
 export interface LoyaltyStatus {
   points_balance: number
   total_spent: number
