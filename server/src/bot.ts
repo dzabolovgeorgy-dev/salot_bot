@@ -234,7 +234,48 @@ bot.action(/^rate:(\d+):([1-5])$/, async (ctx) => {
     await ctx.reply(`Не получилось сохранить оценку: ${data.error ?? "неизвестная ошибка"}`);
     return;
   }
-  await ctx.editMessageText(`Спасибо за оценку! ${"⭐".repeat(rating)}`);
+  await ctx.editMessageText(`Спасибо за оценку! ${"⭐".repeat(rating)}`, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "💬 Добавить комментарий", callback_data: `ratecomment:${id}:${rating}` }]],
+    },
+  });
+});
+
+// Комментарий к оценке — необязательный шаг, ловим следующее текстовое
+// сообщение от этого клиента. Не через ctx.session/сцену (та работает только
+// внутри диалога /book) — обычная Map в памяти сервера, тот же принцип "состояние
+// живёт в памяти", что и у сцены записи (см. комментарий в начале файла)
+const awaitingRatingComment = new Map<number, { bookingId: number; rating: number }>();
+
+bot.action(/^ratecomment:(\d+):([1-5])$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const bookingId = Number(ctx.match[1]);
+  const rating = Number(ctx.match[2]);
+  awaitingRatingComment.set(ctx.from.id, { bookingId, rating });
+  await ctx.editMessageText(`Спасибо за оценку! ${"⭐".repeat(rating)}\n\nНапишите комментарий одним сообщением.`);
+});
+
+// Свободный текст ловим, только пока реально ждём комментарий — иначе
+// пропускаем дальше (next()), чтобы не мешать остальным обработчикам
+bot.on("text", async (ctx, next) => {
+  const pending = awaitingRatingComment.get(ctx.from.id);
+  if (!pending) {
+    await next();
+    return;
+  }
+  awaitingRatingComment.delete(ctx.from.id);
+
+  const comment = ctx.message.text.trim();
+  const res = await fetch(`${API_BASE}/bookings/${pending.bookingId}/rating`, {
+    method: "POST",
+    headers: internalHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ client_telegram_id: ctx.from.id, rating: pending.rating, comment }),
+  });
+  if (!res.ok) {
+    await ctx.reply("Не получилось сохранить комментарий, но оценка уже сохранена — спасибо!");
+    return;
+  }
+  await ctx.reply("Спасибо, комментарий сохранён!");
 });
 
 bot.command("masters", async (ctx) => {
