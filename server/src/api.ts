@@ -155,12 +155,21 @@ async function hasConflict(
 
 api.get("/masters", async (_req, res) => {
   const { rows: masters } = await db.query(
-    "SELECT id, name, bio, experience_years, photo_url, schedule_type, schedule_anchor, work_days, off_days, work_weekdays, schedule_month, schedule_month_off_days, buffer_minutes, work_start_time, work_end_time FROM masters"
+    `SELECT m.id, m.name, m.bio, m.experience_years, m.photo_url, m.schedule_type, m.schedule_anchor,
+            m.work_days, m.off_days, m.work_weekdays, m.schedule_month, m.schedule_month_off_days,
+            m.buffer_minutes, m.work_start_time, m.work_end_time,
+            r.avg_rating, COALESCE(r.ratings_count, 0)::int AS ratings_count
+     FROM masters m
+     LEFT JOIN (
+       SELECT master_id, ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS ratings_count
+       FROM master_ratings GROUP BY master_id
+     ) r ON r.master_id = m.id`
   );
   const { rows: relations } = await db.query("SELECT master_id, service_id FROM master_services");
 
   const result = masters.map((m) => ({
     ...m,
+    avg_rating: m.avg_rating != null ? Number(m.avg_rating) : null,
     service_ids: relations.filter((r) => r.master_id === m.id).map((r) => r.service_id),
   }));
 

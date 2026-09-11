@@ -15,6 +15,8 @@ export interface Master {
   work_start_time: string
   work_end_time: string
   buffer_minutes: number
+  avg_rating: number | null
+  ratings_count: number
 }
 
 export interface MasterPhoto {

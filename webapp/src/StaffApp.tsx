@@ -783,6 +783,14 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
                 <span className="staff-hub-stats-num">{myStats ? myStats.clients_count : '—'}</span>
                 <span className="staff-hub-stats-sub">Клиентов</span>
               </div>
+              <div>
+                <span className="staff-hub-stats-num">
+                  {myMaster.ratings_count > 0 ? `${myMaster.avg_rating} ⭐` : '—'}
+                </span>
+                <span className="staff-hub-stats-sub">
+                  {myMaster.ratings_count > 0 ? `${myMaster.ratings_count} оценок` : 'Рейтинг'}
+                </span>
+              </div>
             </div>
           </div>
 

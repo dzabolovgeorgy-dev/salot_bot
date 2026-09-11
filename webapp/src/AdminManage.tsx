@@ -363,6 +363,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
                     {m.name}
                     <span className={`staff-access-badge${hasAccess ? '' : ' staff-access-badge--off'}`}>
                       {hasAccess ? 'есть доступ' : 'нет доступа'}
+                      {m.ratings_count > 0 ? ` · ${m.avg_rating} ⭐ (${m.ratings_count})` : ''}
                     </span>
                   </span>
                 </li>

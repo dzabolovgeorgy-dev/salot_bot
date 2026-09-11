@@ -612,7 +612,14 @@ function App() {
           </button>
           {isTestUser && <div className="hero-badge">тест</div>}
           <div className="hero-text">
-            <p className="hero-eyebrow">{masterProfile.experience_years != null ? pluralizeYears(masterProfile.experience_years) + ' опыта' : ''}</p>
+            <p className="hero-eyebrow">
+              {[
+                masterProfile.experience_years != null ? `${pluralizeYears(masterProfile.experience_years)} опыта` : null,
+                masterProfile.ratings_count > 0 ? `${masterProfile.avg_rating} ⭐ (${masterProfile.ratings_count})` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
             <div className="hero-name">{masterProfile.name}</div>
           </div>
         </div>
@@ -902,8 +909,12 @@ function App() {
                 <div className="master-tile-scrim" />
                 <div className="master-tile-caption">
                   <div className="master-tile-name">{m.name}</div>
-                  {m.experience_years != null && (
-                    <div className="master-tile-sub">{pluralizeYears(m.experience_years)} опыта</div>
+                  {(m.experience_years != null || m.ratings_count > 0) && (
+                    <div className="master-tile-sub">
+                      {m.experience_years != null ? `${pluralizeYears(m.experience_years)} опыта` : ''}
+                      {m.experience_years != null && m.ratings_count > 0 ? ' · ' : ''}
+                      {m.ratings_count > 0 ? `${m.avg_rating} ⭐` : ''}
+                    </div>
                   )}
                 </div>
               </button>
