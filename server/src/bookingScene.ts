@@ -41,10 +41,11 @@ export function reminderActionButtons(bookingId: number): InlineButton[][] {
 }
 
 // Кнопки оценки под сообщением "услуга завершена" (api.ts, отметка "Выполнена").
-// Одна строка — каждая кнопка сразу показывает, сколько звёзд она поставит
+// Цифра + одна звезда, а не N звёзд подряд — в ряду из 5 кнопок повторяющиеся
+// эмодзи (⭐⭐⭐⭐⭐) Telegram обрезает до "⭐ ...", из-за чего непонятно, где какая оценка
 export function ratingButtons(bookingId: number): InlineButton[][] {
   return [
-    [1, 2, 3, 4, 5].map((n) => ({ text: "⭐".repeat(n), callback_data: `rate:${bookingId}:${n}` })),
+    [1, 2, 3, 4, 5].map((n) => ({ text: `${n} ⭐`, callback_data: `rate:${bookingId}:${n}` })),
   ];
 }
 
