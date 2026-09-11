@@ -449,11 +449,16 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
   padding: 18px;
   border-radius: var(--radius-2xl);
   border: 1px solid var(--border);
   background: linear-gradient(160deg, var(--tier-bg) 0%, var(--surface) 68%);
   box-shadow: var(--shadow);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
 }
 
 .loyalty-card-top {
@@ -539,6 +544,153 @@
   color: var(--text);
   border-top: 1px solid var(--border);
   padding-top: 10px;
+}
+
+/* Экран "Моя карта лояльности" — насыщенная карта уровня + инфо-карта + история */
+
+.tier-hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow);
+}
+
+.tier-hero-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.tier-hero-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tier-hero-balance-value {
+  font-family: var(--serif);
+  font-size: 48px;
+  line-height: 1;
+}
+
+.tier-hero-balance-label {
+  font-size: 14px;
+  color: var(--tier-sub);
+}
+
+.loyalty-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  margin-top: 12px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow);
+}
+
+.loyalty-info-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.tier-maxed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.loyalty-cashback-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13.5px;
+  color: var(--text-h);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.loyalty-cashback-row strong {
+  font-family: var(--serif);
+  font-size: 18px;
+  color: var(--primary);
+}
+
+.loyalty-history-empty {
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.loyalty-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loyalty-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.loyalty-history-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.loyalty-history-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loyalty-history-date {
+  font-size: 11.5px;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.loyalty-history-amount {
+  flex-shrink: 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  color: var(--success);
+}
+
+.loyalty-history-amount.is-negative {
+  color: var(--text-h);
+}
+
+.loyalty-history-row.is-burned {
+  opacity: 0.7;
+}
+
+.loyalty-history-row.is-burned .loyalty-history-amount {
+  color: var(--danger);
 }
 
 /* Confirm-style cards (home booking summary + confirm screen) */

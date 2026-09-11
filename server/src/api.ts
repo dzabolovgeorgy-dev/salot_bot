@@ -9,7 +9,7 @@ import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons, ratingButtons } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
 import { toIso, formatRuDateTime } from "./format.js";
-import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem } from "./loyalty.js";
+import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem, getLoyaltyHistory } from "./loyalty.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -255,6 +255,18 @@ api.get("/loyalty/:client_telegram_id", async (req, res) => {
     amount_to_next_tier: status.amountToNextTier,
     max_redeemable: servicePrice ? maxRedeemable(status.pointsBalance, servicePrice) : null,
   });
+});
+
+api.get("/loyalty/:client_telegram_id/history", async (req, res) => {
+  const clientTelegramId = Number(req.params.client_telegram_id);
+  if (!clientTelegramId) {
+    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
+
+  const rows = await getLoyaltyHistory(clientTelegramId, 10);
+  res.json(rows.map((r) => ({ ...r, created_at: toIso(r.created_at) })));
 });
 
 api.delete("/bookings/:id", async (req, res) => {
@@ -907,10 +919,16 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     // Кэшбэк начисляем только клиентам с Telegram ID — у записей без него
     // (клиент без Telegram, добавлен вручную по телефону) нет аккаунта, куда копить баллы
     if (booking.client_telegram_id) {
-      await accrueForCompletedVisit(Number(booking.client_telegram_id), booking.price);
+      const clientTelegramId = Number(booking.client_telegram_id);
+      const { cashback, newBalance } = await accrueForCompletedVisit(clientTelegramId, booking.price, booking.service_name);
+      bot.telegram
+        .sendMessage(clientTelegramId, `Начислено +${cashback} баллов 🎉\nВаш баланс: ${newBalance}`)
+        .catch((err) => {
+          console.warn("Не удалось отправить уведомление о начислении баллов:", err instanceof Error ? err.message : err);
+        });
       bot.telegram
         .sendMessage(
-          Number(booking.client_telegram_id),
+          clientTelegramId,
           `✅ Услуга завершена\n\n${booking.service_name}\nМастер: ${booking.master_name}\n\nКак вам? Оцените визит:`,
           { reply_markup: { inline_keyboard: ratingButtons(id) } }
         )

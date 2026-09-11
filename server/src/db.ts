@@ -163,8 +163,12 @@ export async function initDb(): Promise<void> {
       reason TEXT NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT now(),
       -- NULL для списаний и сгораний — сгорает только то, что было начислено
-      expires_at TIMESTAMP
+      expires_at TIMESTAMP,
+      -- Только для начислений — на какую услугу начислен кэшбэк, для истории в TWA
+      service_name TEXT
     );
+
+    ALTER TABLE loyalty_transactions ADD COLUMN IF NOT EXISTS service_name TEXT;
 
     CREATE INDEX IF NOT EXISTS loyalty_transactions_client_idx ON loyalty_transactions (client_telegram_id);
     CREATE INDEX IF NOT EXISTS loyalty_transactions_expires_idx ON loyalty_transactions (expires_at) WHERE expires_at IS NOT NULL;

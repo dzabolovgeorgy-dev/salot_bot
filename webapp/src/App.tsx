@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
-import type { Master, Service, Booking, MasterPhoto, LoyaltyStatus, MasterReview } from './types'
+import type { Master, Service, Booking, MasterPhoto, LoyaltyStatus, MasterReview, LoyaltyHistoryEntry } from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
 import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
@@ -77,6 +77,23 @@ function tierProgress(status: LoyaltyStatus) {
   const span = next ? next.min - current.min : 0
   const pct = next && span > 0 ? Math.min(100, Math.max(0, ((status.total_spent - current.min) / span) * 100)) : 100
   return { current, next, pct }
+}
+
+// Насыщенные, "физические" цвета карты на отдельном экране "Моя карта
+// лояльности" — в духе настоящей металлической карты. Отдельно от TIER_META
+// (та даёт приглушённый тон для компактной карточки на главном экране)
+const TIER_CARD_META: Record<string, { bg: string; text: string; sub: string; accent: string }> = {
+  Новичок: { bg: '#E8DFD3', text: '#2E2A26', sub: 'rgba(46, 42, 38, 0.62)', accent: '#B08F6A' },
+  Серебро: { bg: '#B8BCC2', text: '#2E2A26', sub: 'rgba(46, 42, 38, 0.62)', accent: '#6E7580' },
+  Золото: { bg: '#D4AF6A', text: '#2E2A26', sub: 'rgba(46, 42, 38, 0.62)', accent: '#8A6A2C' },
+  Платина: { bg: '#3D3D42', text: '#F5F1EA', sub: 'rgba(245, 241, 234, 0.62)', accent: '#D4AF6A' },
+}
+
+function loyaltyHistoryLabel(h: LoyaltyHistoryEntry): string {
+  if (h.reason === 'начисление за визит') return h.service_name ?? 'Начисление за визит'
+  if (h.reason === 'списание при оплате') return 'Списание при оплате'
+  if (h.reason === 'сгорание') return 'Сгорание баллов'
+  return h.reason
 }
 
 function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
@@ -321,6 +338,8 @@ function App() {
   const [loyaltyStatus, setLoyaltyStatus] = useState<LoyaltyStatus | null>(null)
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false)
   const [profileLoyalty, setProfileLoyalty] = useState<LoyaltyStatus | null>(null)
+  const [loyaltyCardOpen, setLoyaltyCardOpen] = useState(false)
+  const [loyaltyHistory, setLoyaltyHistory] = useState<LoyaltyHistoryEntry[]>([])
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -501,8 +520,25 @@ function App() {
       .catch(() => setMasterReviews([]))
   }, [masterProfile])
 
+  // История начислений/списаний баллов — подгружаем при открытии полного
+  // экрана карты лояльности (на главном экране показан только итог)
+  useEffect(() => {
+    if (!loyaltyCardOpen) {
+      setLoyaltyHistory([])
+      return
+    }
+    apiFetch(`${API_URL}/api/loyalty/${clientTelegramId}/history`)
+      .then((r) => r.json())
+      .then(setLoyaltyHistory)
+      .catch(() => setLoyaltyHistory([]))
+  }, [loyaltyCardOpen])
+
   const goBack = () => {
     setError(null)
+    if (loyaltyCardOpen) {
+      setLoyaltyCardOpen(false)
+      return
+    }
     if (reviewsOpen) {
       setReviewsOpen(false)
       return
@@ -651,6 +687,82 @@ function App() {
               </article>
             ))}
           </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (loyaltyCardOpen && profileLoyalty) {
+    const { current, next, pct } = tierProgress(profileLoyalty)
+    const card = TIER_CARD_META[current.name] ?? TIER_CARD_META['Новичок']
+    return (
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
+        <div className="topbar">
+          <button className="icon-back" onClick={goBack} aria-label="Назад">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="topbar-title">Моя карта лояльности</div>
+        </div>
+        <div className="content">
+          <article
+            className="tier-hero-card"
+            style={{ background: card.bg, color: card.text, '--tier-sub': card.sub } as CSSProperties}
+          >
+            <span className="tier-hero-name">
+              <Award size={16} />
+              {current.name}
+            </span>
+            <div className="tier-hero-balance">
+              <span className="tier-hero-balance-value">{profileLoyalty.points_balance}</span>
+              <span className="tier-hero-balance-label">баллов</span>
+            </div>
+          </article>
+
+          <article className="loyalty-info-card">
+            {next && profileLoyalty.amount_to_next_tier != null ? (
+              <>
+                <div className="loyalty-card-track">
+                  <div className="loyalty-card-track-fill" style={{ width: `${pct}%`, background: card.accent }} />
+                </div>
+                <p className="loyalty-info-hint">
+                  Осталось потратить {profileLoyalty.amount_to_next_tier} € до уровня «{next.name}»
+                </p>
+              </>
+            ) : (
+              <div className="tier-maxed">
+                <Check size={16} />
+                Вы достигли максимального уровня
+              </div>
+            )}
+            <div className="loyalty-cashback-row">
+              <span>Кэшбэк на этом уровне</span>
+              <strong>{Math.round(profileLoyalty.cashback_rate * 100)}%</strong>
+            </div>
+          </article>
+
+          <div className="section-title">История начислений</div>
+          {loyaltyHistory.length === 0 ? (
+            <p className="loyalty-history-empty">Пока ничего не начислялось и не списывалось.</p>
+          ) : (
+            <div className="loyalty-history-list">
+              {loyaltyHistory.map((h) => (
+                <div key={h.id} className={`loyalty-history-row${h.reason === 'сгорание' ? ' is-burned' : ''}`}>
+                  <div className="loyalty-history-meta">
+                    <span className="loyalty-history-label">{loyaltyHistoryLabel(h)}</span>
+                    <span className="loyalty-history-date">{formatDateTime(h.created_at)}</span>
+                  </div>
+                  <span className={`loyalty-history-amount${h.amount < 0 ? ' is-negative' : ''}`}>
+                    {h.amount > 0 ? `+${h.amount}` : h.amount}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </motion.div>
     )
@@ -875,8 +987,10 @@ function App() {
           (() => {
             const { current, next, pct } = tierProgress(profileLoyalty)
             return (
-              <article
+              <button
+                type="button"
                 className="loyalty-card"
+                onClick={() => setLoyaltyCardOpen(true)}
                 style={{ '--tier-color': current.color, '--tier-bg': current.bg } as CSSProperties}
               >
                 <div className="loyalty-card-top">
@@ -905,7 +1019,7 @@ function App() {
                     ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
                     : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
                 </p>
-              </article>
+              </button>
             )
           })()}
 

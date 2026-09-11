@@ -38,7 +38,11 @@ export function getNextTierProgress(totalSpent: number): { nextTier: LoyaltyTier
 // Начисляет кэшбэк за визит: кэшбэк — по уровню клиента ДО этого визита,
 // затем сумма визита добавляется в total_spent (уровень для следующего визита
 // пересчитается сам — он не хранится отдельно, а всегда считается по total_spent)
-export async function accrueForCompletedVisit(clientTelegramId: number, price: number): Promise<void> {
+export async function accrueForCompletedVisit(
+  clientTelegramId: number,
+  price: number,
+  serviceName: string
+): Promise<{ cashback: number; newBalance: number }> {
   const { rows } = await db.query(
     `INSERT INTO loyalty_points (client_telegram_id, points_balance, total_spent)
      VALUES ($1, 0, 0)
@@ -51,8 +55,9 @@ export async function accrueForCompletedVisit(clientTelegramId: number, price: n
   const tier = getTier(totalSpentBefore);
   const cashback = Math.round(price * tier.cashbackRate);
 
-  await db.query(
-    "UPDATE loyalty_points SET points_balance = points_balance + $1, total_spent = total_spent + $2 WHERE client_telegram_id = $3",
+  const { rows: updated } = await db.query(
+    `UPDATE loyalty_points SET points_balance = points_balance + $1, total_spent = total_spent + $2
+     WHERE client_telegram_id = $3 RETURNING points_balance`,
     [cashback, price, clientTelegramId]
   );
 
@@ -60,10 +65,12 @@ export async function accrueForCompletedVisit(clientTelegramId: number, price: n
   expiresAt.setMonth(expiresAt.getMonth() + POINTS_EXPIRY_MONTHS);
 
   await db.query(
-    `INSERT INTO loyalty_transactions (client_telegram_id, amount, reason, expires_at)
-     VALUES ($1, $2, 'начисление за визит', $3)`,
-    [clientTelegramId, cashback, expiresAt]
+    `INSERT INTO loyalty_transactions (client_telegram_id, amount, reason, expires_at, service_name)
+     VALUES ($1, $2, 'начисление за визит', $3, $4)`,
+    [clientTelegramId, cashback, expiresAt, serviceName]
   );
+
+  return { cashback, newBalance: updated[0].points_balance as number };
 }
 
 export interface LoyaltyStatus {
@@ -92,6 +99,25 @@ export async function getLoyaltyStatus(clientTelegramId: number): Promise<Loyalt
     nextTierName: next?.nextTier.name ?? null,
     amountToNextTier: next?.remaining ?? null,
   };
+}
+
+export interface LoyaltyHistoryEntry {
+  id: number;
+  amount: number;
+  reason: string;
+  service_name: string | null;
+  created_at: string;
+}
+
+export async function getLoyaltyHistory(clientTelegramId: number, limit = 10): Promise<LoyaltyHistoryEntry[]> {
+  const { rows } = await db.query(
+    `SELECT id, amount, reason, service_name, created_at FROM loyalty_transactions
+     WHERE client_telegram_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [clientTelegramId, limit]
+  );
+  return rows as LoyaltyHistoryEntry[];
 }
 
 // Максимум баллов, которыми можно закрыть услугу с такой ценой — меньшее из

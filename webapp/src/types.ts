@@ -99,6 +99,14 @@ export interface LoyaltyStatus {
   max_redeemable: number | null
 }
 
+export interface LoyaltyHistoryEntry {
+  id: number
+  amount: number
+  reason: string
+  service_name: string | null
+  created_at: string
+}
+
 export type StaffRole =
   | { role: 'client' }
   | { role: 'master'; master_id: number; master_name: string }
