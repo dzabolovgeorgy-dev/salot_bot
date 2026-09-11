@@ -168,6 +168,20 @@ export async function initDb(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS loyalty_transactions_client_idx ON loyalty_transactions (client_telegram_id);
     CREATE INDEX IF NOT EXISTS loyalty_transactions_expires_idx ON loyalty_transactions (expires_at) WHERE expires_at IS NOT NULL;
+
+    -- booking_id UNIQUE — одна оценка на визит; повторное нажатие звезды или
+    -- добавление комментария потом обновляет ту же строку, а не плодит новые
+    CREATE TABLE IF NOT EXISTS master_ratings (
+      id SERIAL PRIMARY KEY,
+      booking_id INTEGER NOT NULL UNIQUE REFERENCES bookings(id),
+      master_id INTEGER NOT NULL REFERENCES masters(id),
+      client_telegram_id BIGINT,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS master_ratings_master_idx ON master_ratings (master_id);
   `);
 
   // Если база пустая — наполняем тестовыми мастерами и услугами

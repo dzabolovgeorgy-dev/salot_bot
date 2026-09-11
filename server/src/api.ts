@@ -6,7 +6,7 @@ import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
-import { bookingActionButtons } from "./bookingScene.js";
+import { bookingActionButtons, ratingButtons } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
 import { toIso, formatRuDateTime } from "./format.js";
 import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem } from "./loyalty.js";
@@ -262,7 +262,7 @@ api.delete("/bookings/:id", async (req, res) => {
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
-     WHERE b.id = $1 AND b.client_telegram_id = $2`,
+     WHERE b.id = $1 AND b.client_telegram_id = $2 AND b.status = 'upcoming'`,
     [id, clientTelegramId]
   );
   const booking = rows[0] as
@@ -668,6 +668,48 @@ api.post("/bookings/:id/late", async (req, res) => {
   res.json({ ok: true });
 });
 
+interface RatingBody {
+  client_telegram_id: number;
+  rating: number;
+  comment?: string;
+}
+
+// booking_id UNIQUE в master_ratings — ON CONFLICT просто обновляет ту же
+// строку, поэтому этот же эндпоинт годится и для первой оценки звёздами,
+// и для добавления комментария к ней позже
+api.post("/bookings/:id/rating", async (req, res) => {
+  const id = Number(req.params.id);
+  const { client_telegram_id, rating, comment } = req.body as Partial<RatingBody>;
+  if (!id || !client_telegram_id || !rating) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    res.status(400).json({ error: "Оценка должна быть от 1 до 5" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, client_telegram_id)) return;
+
+  const { rows } = await db.query(
+    `SELECT master_id FROM bookings WHERE id = $1 AND client_telegram_id = $2 AND status = 'completed'`,
+    [id, client_telegram_id]
+  );
+  const booking = rows[0] as { master_id: number } | undefined;
+  if (!booking) {
+    res.status(404).json({ error: "Запись не найдена" });
+    return;
+  }
+
+  await db.query(
+    `INSERT INTO master_ratings (booking_id, master_id, client_telegram_id, rating, comment)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (booking_id) DO UPDATE SET rating = $4, comment = COALESCE($5, master_ratings.comment)`,
+    [id, booking.master_id, client_telegram_id, rating, comment?.trim() || null]
+  );
+
+  res.json({ ok: true });
+});
+
 // ===== Эндпоинты для персонала (мастера и администраторы) =====
 
 api.get("/me", async (req, res) => {
@@ -824,13 +866,20 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.master_id, b.client_telegram_id, b.client_phone, s.price
-     FROM bookings b JOIN services s ON s.id = b.service_id
+    `SELECT b.master_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, m.name AS master_name
+     FROM bookings b JOIN services s ON s.id = b.service_id JOIN masters m ON m.id = b.master_id
      WHERE b.id = $1`,
     [id]
   );
   const booking = rows[0] as
-    | { master_id: number; client_telegram_id: string | null; client_phone: string | null; price: number }
+    | {
+        master_id: number;
+        client_telegram_id: string | null;
+        client_phone: string | null;
+        price: number;
+        service_name: string;
+        master_name: string;
+      }
     | undefined;
   if (!booking) {
     res.status(404).json({ error: "Запись не найдена" });
@@ -848,7 +897,18 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     if (clientKey) addClientSpend(clientKey, booking.price);
     // Кэшбэк начисляем только клиентам с Telegram ID — у записей без него
     // (клиент без Telegram, добавлен вручную по телефону) нет аккаунта, куда копить баллы
-    if (booking.client_telegram_id) await accrueForCompletedVisit(Number(booking.client_telegram_id), booking.price);
+    if (booking.client_telegram_id) {
+      await accrueForCompletedVisit(Number(booking.client_telegram_id), booking.price);
+      bot.telegram
+        .sendMessage(
+          Number(booking.client_telegram_id),
+          `✅ Услуга завершена\n\n${booking.service_name}\nМастер: ${booking.master_name}\n\nКак вам? Оцените визит:`,
+          { reply_markup: { inline_keyboard: ratingButtons(id) } }
+        )
+        .catch((err) => {
+          console.warn("Не удалось отправить запрос оценки клиенту:", err instanceof Error ? err.message : err);
+        });
+    }
   }
 
   res.json({ ok: true });

@@ -218,6 +218,25 @@ bot.action(/^late_ok:(\d+):(\d+)$/, async (ctx) => {
   await ctx.editMessageText(`⏳ Мастер предупреждён, что вы опаздываете на ${minutes} мин.`);
 });
 
+// Оценка визита звёздами — под сообщением "услуга завершена" (см. api.ts,
+// отправляется при отметке записи "Выполнена")
+bot.action(/^rate:(\d+):([1-5])$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  const rating = Number(ctx.match[2]);
+  const res = await fetch(`${API_BASE}/bookings/${id}/rating`, {
+    method: "POST",
+    headers: internalHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ client_telegram_id: ctx.from.id, rating }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    await ctx.reply(`Не получилось сохранить оценку: ${data.error ?? "неизвестная ошибка"}`);
+    return;
+  }
+  await ctx.editMessageText(`Спасибо за оценку! ${"⭐".repeat(rating)}`);
+});
+
 bot.command("masters", async (ctx) => {
   const { rows: masters } = await db.query<{ name: string }>("SELECT name FROM masters");
   if (masters.length === 0) {

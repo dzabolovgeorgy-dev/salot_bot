@@ -40,6 +40,14 @@ export function reminderActionButtons(bookingId: number): InlineButton[][] {
   ];
 }
 
+// Кнопки оценки под сообщением "услуга завершена" (api.ts, отметка "Выполнена").
+// Одна строка — каждая кнопка сразу показывает, сколько звёзд она поставит
+export function ratingButtons(bookingId: number): InlineButton[][] {
+  return [
+    [1, 2, 3, 4, 5].map((n) => ({ text: "⭐".repeat(n), callback_data: `rate:${bookingId}:${n}` })),
+  ];
+}
+
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
 interface BookingSceneState {
