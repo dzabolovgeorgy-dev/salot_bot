@@ -301,3 +301,69 @@ bot.command("services", async (ctx) => {
     .join("\n");
   ctx.reply(`Наши услуги:\n${list}`);
 });
+
+// ВРЕМЕННЫЙ переключатель роли для тестов — работает только для одного
+// Telegram ID из DEV_ROLE_SWITCH_TELEGRAM_ID в .env. Если переменная не
+// задана — команда не отвечает вообще никому. ОБЯЗАТЕЛЬНО убрать переменную
+// (или весь этот блок) перед передачей боту реального салона — иначе
+// владелец этого Telegram ID сможет сам назначать себе роль админа
+const devRoleSwitchId = process.env.DEV_ROLE_SWITCH_TELEGRAM_ID
+  ? Number(process.env.DEV_ROLE_SWITCH_TELEGRAM_ID)
+  : null;
+
+if (devRoleSwitchId) {
+  bot.command("role", async (ctx) => {
+    if (ctx.from.id !== devRoleSwitchId) return;
+    const parts = ctx.message.text.trim().split(/\s+/);
+    const arg = parts[1]?.toLowerCase();
+
+    if (!arg) {
+      const role = await getRole(ctx.from.id);
+      const { rows: masters } = await db.query<{ id: number; name: string }>("SELECT id, name FROM masters ORDER BY id");
+      const list = masters.map((m) => `${m.id} — ${m.name}`).join("\n") || "(мастеров пока нет)";
+      await ctx.reply(
+        `Сейчас роль: ${role.role}${role.role === "master" ? ` (${role.master_name})` : ""}\n\n` +
+          `Команды:\n/role client\n/role admin\n/role master <id>\n\nМастера:\n${list}`
+      );
+      return;
+    }
+
+    if (arg === "client") {
+      await db.query("DELETE FROM staff WHERE telegram_id = $1", [ctx.from.id]);
+      await ctx.reply("Готово — теперь вы клиент.");
+      return;
+    }
+
+    if (arg === "admin") {
+      await db.query(
+        `INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, 'admin', NULL)
+         ON CONFLICT (telegram_id) DO UPDATE SET role = 'admin', master_id = NULL`,
+        [ctx.from.id]
+      );
+      await ctx.reply("Готово — теперь вы админ.");
+      return;
+    }
+
+    if (arg === "master") {
+      const masterId = Number(parts[2]);
+      if (!masterId) {
+        await ctx.reply("Укажите ID мастера: /role master 1 (список — просто /role)");
+        return;
+      }
+      const { rows } = await db.query<{ name: string }>("SELECT name FROM masters WHERE id = $1", [masterId]);
+      if (!rows[0]) {
+        await ctx.reply("Мастер с таким ID не найден.");
+        return;
+      }
+      await db.query(
+        `INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, 'master', $2)
+         ON CONFLICT (telegram_id) DO UPDATE SET role = 'master', master_id = $2`,
+        [ctx.from.id, masterId]
+      );
+      await ctx.reply(`Готово — теперь вы мастер (${rows[0].name}).`);
+      return;
+    }
+
+    await ctx.reply("Не понял. Команды: /role client, /role admin, /role master <id>");
+  });
+}
