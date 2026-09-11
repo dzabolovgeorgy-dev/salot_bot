@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
+  Award,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -58,13 +59,24 @@ const STEP_TITLES: Record<FlowStep, string> = {
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-// Цвет метки уровня на карточке лояльности — своя точка цвета на каждый
-// уровень, чтобы уровни отличались друг от друга с первого взгляда
-const TIER_COLORS: Record<string, string> = {
-  Новичок: '#9c8b7d',
-  Серебро: '#93a0ad',
-  Золото: '#c9a227',
-  Платина: '#8a76b8',
+// Пороги (в € потраченного) и цвета уровней — для подписи и прогресс-бара на
+// карточке лояльности. Пороги должны совпадать с LOYALTY_TIERS на сервере
+// (server/src/loyalty.ts) — там источник истины для самого начисления,
+// здесь только чтобы нарисовать прогресс, держать значения в синхроне
+const TIER_META = [
+  { name: 'Новичок', min: 0, color: '#9c8b7d', bg: '#efe9e1' },
+  { name: 'Серебро', min: 150, color: '#71879a', bg: '#e7edf1' },
+  { name: 'Золото', min: 450, color: '#ad7f1f', bg: '#f4e8d0' },
+  { name: 'Платина', min: 900, color: '#7c6aa8', bg: '#ece7f4' },
+] as const
+
+function tierProgress(status: LoyaltyStatus) {
+  const idx = TIER_META.findIndex((t) => t.name === status.tier_name)
+  const current = TIER_META[idx] ?? TIER_META[0]
+  const next = TIER_META[idx + 1] ?? null
+  const span = next ? next.min - current.min : 0
+  const pct = next && span > 0 ? Math.min(100, Math.max(0, ((status.total_spent - current.min) / span) * 100)) : 100
+  return { current, next, pct }
 }
 
 function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
@@ -858,29 +870,44 @@ function App() {
       >
         {error && <p className="error">{error}</p>}
 
-        {isHomeHero && profileLoyalty && (
-          <article
-            className="loyalty-card"
-            style={{ '--tier-color': TIER_COLORS[profileLoyalty.tier_name] ?? '#9c8b7d' } as CSSProperties}
-          >
-            <div className="loyalty-card-row">
-              <span className="loyalty-card-tier">
-                <span className="loyalty-card-tier-dot" />
-                {profileLoyalty.tier_name}
-              </span>
-              <span className="loyalty-card-cashback">Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%</span>
-            </div>
-            <div className="loyalty-card-balance">
-              <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
-              <span className="loyalty-card-balance-label">баллов на счету</span>
-            </div>
-            <p className="loyalty-card-progress">
-              {profileLoyalty.next_tier_name && profileLoyalty.amount_to_next_tier != null
-                ? `До уровня «${profileLoyalty.next_tier_name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
-                : 'Вы на максимальном уровне'}
-            </p>
-          </article>
-        )}
+        {isHomeHero &&
+          profileLoyalty &&
+          (() => {
+            const { current, next, pct } = tierProgress(profileLoyalty)
+            return (
+              <article
+                className="loyalty-card"
+                style={{ '--tier-color': current.color, '--tier-bg': current.bg } as CSSProperties}
+              >
+                <div className="loyalty-card-top">
+                  <span className="loyalty-card-tier">
+                    <Award size={15} />
+                    {current.name}
+                  </span>
+                  <span className="loyalty-card-cashback">Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%</span>
+                </div>
+
+                <div className="loyalty-card-balance">
+                  <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
+                  <span className="loyalty-card-balance-label">баллов на счету</span>
+                </div>
+
+                <div className="loyalty-card-track">
+                  <div className="loyalty-card-track-fill" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="loyalty-card-track-labels">
+                  <span>{current.name}</span>
+                  <span>{next ? next.name : 'максимум'}</span>
+                </div>
+
+                <p className="loyalty-card-hint">
+                  {next && profileLoyalty.amount_to_next_tier != null
+                    ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
+                    : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
+                </p>
+              </article>
+            )
+          })()}
 
         {isHomeHero &&
           (heroBooking && heroMaster ? (
@@ -932,34 +959,12 @@ function App() {
               </button>
             </>
           ) : (
-            <>
-              <p className="hub-greeting">
-                У вас пока нет записи. Выберите услугу или мастера, чтобы записаться в пару кликов.
-              </p>
-              <div className="service-strip">
-                {services.slice(0, 5).map((s) => (
-                  <button
-                    key={s.id}
-                    className="service-chip"
-                    onClick={() => {
-                      setSelectedService(s)
-                      startFlow('services')
-                    }}
-                  >
-                    <span className="service-chip-icon">
-                      <ServiceIcon name={s.name} size={22} />
-                    </span>
-                    <span className="service-chip-name">{s.name}</span>
-                  </button>
-                ))}
+            <div className="empty-state empty-state-compact">
+              <div className="empty-icon">
+                <CalendarDays size={26} />
               </div>
-              <button className="primary" onClick={() => setActiveTab('services')}>
-                Записаться сейчас
-              </button>
-              <button className="link-button" onClick={() => setActiveTab('masters')}>
-                Смотреть мастеров <Sparkles size={14} />
-              </button>
-            </>
+              <p>У вас пока нет записи</p>
+            </div>
           ))}
 
         {!inFlow && !reschedule && activeTab === 'services' && (
