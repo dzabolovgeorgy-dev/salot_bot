@@ -1,4 +1,5 @@
 import pg, { Pool } from "pg";
+import { generateAccessCode } from "./accessCode.js";
 
 // Наши даты хранятся "как есть" (без часового пояса, локальное время салона) —
 // отключаем автоматическое превращение timestamp-колонок в JS Date, иначе
@@ -115,8 +116,24 @@ export async function initDb(): Promise<void> {
       telegram_id BIGINT NOT NULL UNIQUE,
       role TEXT NOT NULL CHECK (role IN ('master', 'admin')),
       master_id INTEGER REFERENCES masters(id),
+      -- Короткий код для входа в PWA-версию без Telegram (см. server/src/pwaAuth.ts)
+      access_code TEXT UNIQUE,
       CHECK ((role = 'master' AND master_id IS NOT NULL) OR (role = 'admin' AND master_id IS NULL))
     );
+
+    ALTER TABLE staff ADD COLUMN IF NOT EXISTS access_code TEXT UNIQUE;
+
+    -- Вход по PWA-сессии: после правильного кода браузеру выдаётся токен
+    -- (в httpOnly cookie), который живёт здесь и подтверждает личность при
+    -- каждом следующем запросе — без повторного ввода кода
+    CREATE TABLE IF NOT EXISTS pwa_sessions (
+      token TEXT PRIMARY KEY,
+      telegram_id BIGINT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT now(),
+      expires_at TIMESTAMP NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS pwa_sessions_expires_idx ON pwa_sessions (expires_at);
 
     CREATE TABLE IF NOT EXISTS blocked_slots (
       id SERIAL PRIMARY KEY,
@@ -187,6 +204,22 @@ export async function initDb(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS master_ratings_master_idx ON master_ratings (master_id);
   `);
+
+  // Сотрудникам, добавленным ещё до появления входа по коду, нужно выдать
+  // код задним числом — иначе они не смогут войти в PWA-версию
+  const { rows: staffWithoutCode } = await db.query<{ id: number }>(
+    "SELECT id FROM staff WHERE access_code IS NULL"
+  );
+  for (const { id } of staffWithoutCode) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await db.query("UPDATE staff SET access_code = $1 WHERE id = $2", [generateAccessCode(), id]);
+        break;
+      } catch {
+        // код уже занят другим сотрудником — пробуем сгенерировать ещё раз
+      }
+    }
+  }
 
   // Если база пустая — наполняем тестовыми мастерами и услугами
   const { rows: countRows } = await db.query("SELECT COUNT(*)::int AS count FROM masters");

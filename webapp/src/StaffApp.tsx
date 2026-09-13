@@ -45,6 +45,9 @@ interface StaffAppProps {
   role: 'master' | 'admin'
   masterId?: number
   masterName?: string
+  // Есть только когда приложение открыто как PWA (вход по коду, не через
+  // Telegram) — в самом Telegram выходить из аккаунта не из чего
+  onLogout?: () => void
 }
 
 function todayKey(): string {
@@ -70,10 +73,12 @@ function normalizePhoneForLink(phone: string): string {
   return phone.replace(/\D/g, '')
 }
 
-export default function StaffApp({ telegramId, role, masterId, masterName }: StaffAppProps) {
+export default function StaffApp({ telegramId, role, masterId, masterName, onLogout }: StaffAppProps) {
   const [activeTab, setActiveTabRaw] = useState<StaffTab>('main')
   const [myStats, setMyStats] = useState<MyStats | null>(null)
   const [salonStats, setSalonStats] = useState<MyStats | null>(null)
+  const [accessCode, setAccessCode] = useState<string | null>(null)
+  const [accessCodeCopied, setAccessCodeCopied] = useState(false)
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -211,6 +216,21 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
       .then(setServices)
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/staff/access-code?telegram_id=${telegramId}`)
+      .then((r) => r.json())
+      .then((data: { access_code: string | null }) => setAccessCode(data.access_code))
+      .catch(() => {})
+  }, [telegramId])
+
+  function copyAccessCode() {
+    if (!accessCode) return
+    navigator.clipboard.writeText(accessCode).then(() => {
+      setAccessCodeCopied(true)
+      setTimeout(() => setAccessCodeCopied(false), 1500)
+    })
+  }
 
   const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
 
@@ -1093,6 +1113,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
           </button>
+          <AccessCodeCard code={accessCode} copied={accessCodeCopied} onCopy={copyAccessCode} />
+          {onLogout && (
+            <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
+              🚪 Выйти
+            </button>
+          )}
         </section>
       )}
 
@@ -1104,6 +1130,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
           </button>
+          <AccessCodeCard code={accessCode} copied={accessCodeCopied} onCopy={copyAccessCode} />
+          {onLogout && (
+            <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
+              🚪 Выйти
+            </button>
+          )}
         </section>
       )}
 
@@ -1974,6 +2006,21 @@ export default function StaffApp({ telegramId, role, masterId, masterName }: Sta
           </button>
         </nav>
       )}
+    </div>
+  )
+}
+
+function AccessCodeCard({ code, copied, onCopy }: { code: string | null; copied: boolean; onCopy: () => void }) {
+  if (!code) return null
+  return (
+    <div className="staff-access-code-card">
+      <p className="staff-access-code-label">Код для входа в PWA-версию</p>
+      <div className="staff-access-code-row">
+        <span className="staff-access-code-value">{code}</span>
+        <button type="button" className="staff-access-code-copy" onClick={onCopy}>
+          {copied ? 'Скопировано' : 'Скопировать'}
+        </button>
+      </div>
     </div>
   )
 }

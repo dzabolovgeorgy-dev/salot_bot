@@ -111,3 +111,10 @@ export type StaffRole =
   | { role: 'client' }
   | { role: 'master'; master_id: number; master_name: string }
   | { role: 'admin' }
+
+// То, что возвращает вход по коду в PWA-версии — то же самое, что StaffRole,
+// но всегда сотрудник (клиентов по коду не бывает) и с его telegram_id,
+// который в Telegram-версии браузер и так знает сам
+export type PwaIdentity =
+  | { role: 'master'; master_id: number; master_name: string; telegram_id: number }
+  | { role: 'admin'; telegram_id: number }

@@ -10,6 +10,14 @@ import { bookingActionButtons, ratingButtons, masterBookingActionButtons } from 
 import { getRole, requireAdmin } from "./roles.js";
 import { toIso, formatRuDateTime } from "./format.js";
 import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem, getLoyaltyHistory } from "./loyalty.js";
+import {
+  assignAccessCode,
+  findStaffByAccessCode,
+  createPwaSession,
+  deletePwaSession,
+  PWA_SESSION_COOKIE,
+} from "./pwaAuth.js";
+import { readCookie } from "./telegramAuthMiddleware.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -753,6 +761,71 @@ api.get("/me", async (req, res) => {
   res.json(await getRole(telegramId));
 });
 
+// Код для входа в PWA-версию — показывается самому сотруднику в его же
+// разделе "Ещё"/"Профиль", поэтому claimedId здесь — это он сам
+api.get("/staff/access-code", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает telegram_id" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+
+  const { rows } = await db.query<{ access_code: string | null }>(
+    "SELECT access_code FROM staff WHERE telegram_id = $1",
+    [telegramId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Сотрудник не найден" });
+    return;
+  }
+  res.json({ access_code: rows[0].access_code });
+});
+
+// Вход в PWA-версию по короткому коду — без Telegram. Специально не проверяет
+// verifiedTelegramId (его тут и не может быть): именно этот код и заменяет
+// подтверждение личности
+api.post("/pwa/login", async (req, res) => {
+  const { code } = req.body as { code?: string };
+  if (!code || !code.trim()) {
+    res.status(400).json({ error: "Введите код" });
+    return;
+  }
+
+  const staff = await findStaffByAccessCode(code);
+  if (!staff) {
+    res.status(404).json({ error: "Код не найден, проверьте правильность" });
+    return;
+  }
+
+  const { token, expiresAt } = await createPwaSession(staff.telegram_id);
+  res.cookie(PWA_SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: req.secure,
+    sameSite: req.secure ? "none" : "lax",
+    expires: expiresAt,
+    path: "/",
+  });
+  res.json({ ...(await getRole(staff.telegram_id)), telegram_id: staff.telegram_id });
+});
+
+// Проверка сессии при открытии PWA — attachTelegramIdentity уже разобрал
+// cookie и, если она валидна, положил telegram_id в req.verifiedTelegramId
+api.get("/pwa/session", async (req, res) => {
+  if (req.verifiedTelegramId == null) {
+    res.status(401).json({ error: "Нет активной сессии" });
+    return;
+  }
+  res.json({ ...(await getRole(req.verifiedTelegramId)), telegram_id: req.verifiedTelegramId });
+});
+
+api.post("/pwa/logout", async (req, res) => {
+  const token = readCookie(req.header("Cookie"), PWA_SESSION_COOKIE);
+  if (token) await deletePwaSession(token);
+  res.clearCookie(PWA_SESSION_COOKIE, { path: "/" });
+  res.json({ ok: true });
+});
+
 // Расписание на дату: записи клиентов + заблокированное время. Админ видит
 // всех мастеров сразу; мастер — только себя (не должен видеть чужие записи)
 api.get("/staff/schedule", async (req, res) => {
@@ -1284,10 +1357,11 @@ async function setMasterAccess(masterId: number, accessTelegramId: number | null
   await db.query("DELETE FROM staff WHERE master_id = $1", [masterId]);
   if (!accessTelegramId) return null;
   try {
-    await db.query(`INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, 'master', $2)`, [
-      accessTelegramId,
-      masterId,
-    ]);
+    const { rows } = await db.query<{ id: number }>(
+      `INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, 'master', $2) RETURNING id`,
+      [accessTelegramId, masterId]
+    );
+    await assignAccessCode(rows[0].id);
     return null;
   } catch {
     return "Мастер сохранён, но этот Telegram ID уже занят другим сотрудником — доступ не выдан";
@@ -1773,7 +1847,8 @@ api.post("/staff", async (req, res) => {
       `INSERT INTO staff (telegram_id, role, master_id) VALUES ($1, $2, $3) RETURNING *`,
       [target_telegram_id, role, role === "master" ? master_id : null]
     );
-    res.status(201).json(rows[0]);
+    const accessCode = await assignAccessCode(rows[0].id);
+    res.status(201).json({ ...rows[0], access_code: accessCode });
   } catch {
     res.status(409).json({ error: "Этот Telegram ID уже добавлен в персонал" });
   }
