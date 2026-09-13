@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from './apiFetch'
+import InstallPrompt from './InstallPrompt'
 import type { PwaIdentity } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -68,6 +69,7 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
             {loading ? 'Проверяем…' : 'Войти'}
           </button>
         </form>
+        <InstallPrompt />
       </div>
     </div>
   )

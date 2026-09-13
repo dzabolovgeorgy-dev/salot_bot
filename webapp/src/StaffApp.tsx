@@ -6,6 +6,8 @@ import { apiFetch } from './apiFetch'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
+import InstallPrompt from './InstallPrompt'
+import { getInitData, openCurrentPageExternally } from './telegram'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -79,6 +81,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [salonStats, setSalonStats] = useState<MyStats | null>(null)
   const [accessCode, setAccessCode] = useState<string | null>(null)
   const [accessCodeCopied, setAccessCodeCopied] = useState(false)
+  const [showInstallHelp, setShowInstallHelp] = useState(false)
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -230,6 +233,15 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       setAccessCodeCopied(true)
       setTimeout(() => setAccessCodeCopied(false), 1500)
     })
+  }
+
+  // Внутри Telegram установка невозможна — сначала открываем ту же ссылку
+  // в системном браузере телефона, и только там показываем инструкцию/кнопку
+  function handleInstallClick() {
+    if (getInitData()) {
+      openCurrentPageExternally()
+    }
+    setShowInstallHelp(true)
   }
 
   const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
@@ -1114,6 +1126,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             🚫 Заблокировать время
           </button>
           <AccessCodeCard code={accessCode} copied={accessCodeCopied} onCopy={copyAccessCode} />
+          <button type="button" className="staff-more-menu-item" onClick={handleInstallClick}>
+            📲 Установить приложение на телефон
+          </button>
+          {showInstallHelp && <InstallPrompt />}
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти
@@ -1131,6 +1147,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             🚫 Заблокировать время
           </button>
           <AccessCodeCard code={accessCode} copied={accessCodeCopied} onCopy={copyAccessCode} />
+          <button type="button" className="staff-more-menu-item" onClick={handleInstallClick}>
+            📲 Установить приложение на телефон
+          </button>
+          {showInstallHelp && <InstallPrompt />}
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти

@@ -23,3 +23,17 @@ export function getTelegramUsername(): string | null {
 export function getInitData(): string {
   return (window as any).Telegram?.WebApp?.initData ?? ''
 }
+
+// Открыть текущую страницу в системном браузере телефона (Safari/Chrome),
+// а не во встроенном браузере Telegram — оттуда, в отличие от Telegram,
+// можно установить PWA на домашний экран. openLink — специальный метод
+// Telegram именно для этого; обычная ссылка открылась бы внутри Telegram
+export function openCurrentPageExternally(): void {
+  const url = `${window.location.origin}${window.location.pathname}`
+  const webApp = (window as any).Telegram?.WebApp
+  if (webApp?.openLink) {
+    webApp.openLink(url)
+  } else {
+    window.open(url, '_blank')
+  }
+}
