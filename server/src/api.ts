@@ -6,7 +6,7 @@ import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
-import { bookingActionButtons, ratingButtons } from "./bookingScene.js";
+import { bookingActionButtons, ratingButtons, masterBookingActionButtons } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
 import { toIso, formatRuDateTime } from "./format.js";
 import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem, getLoyaltyHistory } from "./loyalty.js";
@@ -67,17 +67,25 @@ function notifyClient(clientTelegramId: number, text: string, bookingId?: number
     });
 }
 
-// Уведомление мастеру — только если у него есть доступ в staff (иначе некому слать)
-async function notifyMaster(masterId: number, text: string) {
+// Уведомление мастеру — только если у него есть доступ в staff (иначе некому слать).
+// bookingId — если передан, под сообщением появляются кнопки "Выполнена"/"Не пришёл"
+// (см. masterBookingActionButtons) — так же, как у клиента появляются свои кнопки
+async function notifyMaster(masterId: number, text: string, bookingId?: number) {
   const { rows } = await db.query<{ telegram_id: string }>(
     "SELECT telegram_id FROM staff WHERE role = 'master' AND master_id = $1",
     [masterId]
   );
   const masterTelegramId = rows[0]?.telegram_id;
   if (!masterTelegramId) return;
-  bot.telegram.sendMessage(masterTelegramId, text).catch((err) => {
-    console.warn("Не удалось отправить уведомление мастеру:", err instanceof Error ? err.message : err);
-  });
+  bot.telegram
+    .sendMessage(
+      masterTelegramId,
+      text,
+      bookingId ? { reply_markup: { inline_keyboard: masterBookingActionButtons(bookingId) } } : undefined
+    )
+    .catch((err) => {
+      console.warn("Не удалось отправить уведомление мастеру:", err instanceof Error ? err.message : err);
+    });
 }
 
 // Уведомление всем админам сразу (админов может быть несколько)
@@ -415,7 +423,8 @@ api.post("/bookings", async (req, res) => {
   const { note, adminComment } = await getClientExtraFields(client_telegram_id, null);
   notifyMaster(
     master_id,
-    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`
+    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`,
+    inserted[0].id
   );
 
   appendBookingRow({
@@ -546,7 +555,8 @@ api.post("/staff/bookings", async (req, res) => {
   if (role.role !== "master") {
     notifyMaster(
       master_id,
-      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`
+      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`,
+      inserted[0].id
     );
   }
 

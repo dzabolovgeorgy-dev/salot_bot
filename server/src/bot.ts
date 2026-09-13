@@ -302,6 +302,28 @@ bot.command("services", async (ctx) => {
   ctx.reply(`Наши услуги:\n${list}`);
 });
 
+// Мастер отмечает визит выполненным или неявкой прямо под уведомлением о
+// записи (см. notifyMaster/masterBookingActionButtons в api.ts) — то же самое,
+// что кнопки статуса в Mini App, но без необходимости её открывать
+bot.action(/^mstatus:(\d+):(completed|no_show)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  const status = ctx.match[2];
+  const res = await fetch(`${API_BASE}/staff/bookings/${id}/status`, {
+    method: "PATCH",
+    headers: internalHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ telegram_id: ctx.from.id, status }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    await ctx.reply(`Не получилось изменить статус: ${data.error ?? "неизвестная ошибка"}`);
+    return;
+  }
+  await ctx.editMessageText(
+    status === "completed" ? "✅ Запись отмечена как выполненная." : "🚫 Запись отмечена: клиент не пришёл."
+  );
+});
+
 // ВРЕМЕННЫЙ переключатель роли для тестов — работает только для одного
 // Telegram ID из DEV_ROLE_SWITCH_TELEGRAM_ID в .env. Если переменная не
 // задана — команда не отвечает вообще никому. ОБЯЗАТЕЛЬНО убрать переменную

@@ -49,6 +49,17 @@ export function ratingButtons(bookingId: number): InlineButton[][] {
   ];
 }
 
+// Кнопки под уведомлением мастеру о записи (api.ts, notifyMaster) — чтобы
+// отметить визит выполненным или неявкой прямо в чате, не открывая Mini App
+export function masterBookingActionButtons(bookingId: number): InlineButton[][] {
+  return [
+    [
+      { text: "✅ Выполнена", callback_data: `mstatus:${bookingId}:completed` },
+      { text: "🚫 Не пришёл", callback_data: `mstatus:${bookingId}:no_show` },
+    ],
+  ];
+}
+
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
 interface BookingSceneState {
