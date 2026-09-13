@@ -7,6 +7,7 @@ import PwaLogin from './PwaLogin.tsx'
 import ErrorBoundary from './ErrorBoundary.tsx'
 import { getTelegramUserId, getInitData } from './telegram'
 import { apiFetch } from './apiFetch'
+import { getStaffSessionToken, clearStaffSessionToken } from './staffSession'
 import type { StaffRole, PwaIdentity } from './types'
 
 // Подстраховка на случай ошибки вне React (например, в обработчике события) —
@@ -43,22 +44,30 @@ function isInsideTelegram(): boolean {
 }
 
 // Экран для PWA-версии (открыта не через Telegram): сперва проверяем, нет ли
-// уже сохранённой сессии (cookie после прошлого входа по коду), и только если
-// её нет — показываем форму ввода кода
+// уже сохранённого токена входа (см. staffSession.ts), и только если его нет
+// или сервер его не признал — показываем форму ввода кода
 function PwaRoot() {
   const [identity, setIdentity] = useState<PwaIdentity | null>(null)
   const [checkedSession, setCheckedSession] = useState(false)
 
   useEffect(() => {
+    if (!getStaffSessionToken()) {
+      setCheckedSession(true)
+      return
+    }
     apiFetch(`${API_URL}/api/pwa/session`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: PwaIdentity | null) => setIdentity(data))
+      .then((data: PwaIdentity | null) => {
+        if (!data) clearStaffSessionToken()
+        setIdentity(data)
+      })
       .catch(() => setIdentity(null))
       .finally(() => setCheckedSession(true))
   }, [])
 
   function handleLogout() {
     apiFetch(`${API_URL}/api/pwa/logout`, { method: 'POST' }).catch(() => {})
+    clearStaffSessionToken()
     setIdentity(null)
   }
 

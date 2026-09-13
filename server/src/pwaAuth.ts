@@ -2,10 +2,17 @@ import crypto from "node:crypto";
 import { db } from "./db.js";
 import { generateAccessCode } from "./accessCode.js";
 
-// Имя cookie с сессией PWA-входа и то, сколько она живёт без повторного
+// Заголовок с сессией PWA-входа и то, сколько она живёт без повторного
 // ввода кода — сотрудник открывает PWA раз в несколько дней, а не каждый час,
-// поэтому срок сделан большим (90 дней)
-export const PWA_SESSION_COOKIE = "staff_session";
+// поэтому срок сделан большим (90 дней).
+//
+// Раньше сессия хранилась в httpOnly cookie, но на iPhone установленное на
+// экран приложение (не обычная вкладка Safari) не сохраняет такие cookie
+// между запусками — каждый раз просило код заново, независимо от того, что
+// сайт и сервер уже на одном адресе. Токен теперь хранится в localStorage
+// на телефоне (см. webapp/src/staffSession.ts) и отправляется этим
+// заголовком на каждый запрос — так работает надёжно и на iPhone, и на Android
+export const PWA_SESSION_HEADER = "X-Staff-Session";
 const SESSION_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
 
 // Пытаемся выдать staff-строке уникальный код входа — коллизии почти
@@ -38,7 +45,7 @@ export async function findStaffByAccessCode(code: string): Promise<StaffByCode |
 }
 
 // Создаёт новую сессию (случайный непредсказуемый токен) и возвращает его —
-// сохранить в httpOnly cookie должен вызывающий код
+// вернуть его клиенту (чтобы сохранил в localStorage) должен вызывающий код
 export async function createPwaSession(telegramId: number): Promise<{ token: string; expiresAt: Date }> {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);

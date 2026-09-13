@@ -15,9 +15,8 @@ import {
   findStaffByAccessCode,
   createPwaSession,
   deletePwaSession,
-  PWA_SESSION_COOKIE,
+  PWA_SESSION_HEADER,
 } from "./pwaAuth.js";
-import { readCookie } from "./telegramAuthMiddleware.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. 8 МБ с запасом хватает на фото с телефона
@@ -798,19 +797,17 @@ api.post("/pwa/login", async (req, res) => {
     return;
   }
 
-  const { token, expiresAt } = await createPwaSession(staff.telegram_id);
-  res.cookie(PWA_SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: req.secure,
-    sameSite: req.secure ? "none" : "lax",
-    expires: expiresAt,
-    path: "/",
-  });
-  res.json({ ...(await getRole(staff.telegram_id)), telegram_id: staff.telegram_id });
+  // Токен возвращаем в теле ответа — сохранить его должен сам клиент
+  // (в localStorage, см. webapp/src/staffSession.ts) и присылать дальше
+  // заголовком X-Staff-Session. httpOnly cookie раньше не запоминалась на
+  // iPhone в установленном на экран приложении между запусками
+  const { token } = await createPwaSession(staff.telegram_id);
+  res.json({ ...(await getRole(staff.telegram_id)), telegram_id: staff.telegram_id, session_token: token });
 });
 
 // Проверка сессии при открытии PWA — attachTelegramIdentity уже разобрал
-// cookie и, если она валидна, положил telegram_id в req.verifiedTelegramId
+// заголовок X-Staff-Session и, если сессия валидна, положил telegram_id
+// в req.verifiedTelegramId
 api.get("/pwa/session", async (req, res) => {
   if (req.verifiedTelegramId == null) {
     res.status(401).json({ error: "Нет активной сессии" });
@@ -820,9 +817,8 @@ api.get("/pwa/session", async (req, res) => {
 });
 
 api.post("/pwa/logout", async (req, res) => {
-  const token = readCookie(req.header("Cookie"), PWA_SESSION_COOKIE);
+  const token = req.header(PWA_SESSION_HEADER);
   if (token) await deletePwaSession(token);
-  res.clearCookie(PWA_SESSION_COOKIE, { path: "/" });
   res.json({ ok: true });
 });
 

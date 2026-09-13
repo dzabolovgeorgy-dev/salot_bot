@@ -30,21 +30,16 @@ await initDb();
 await initStorage();
 
 const app = express();
-// Render сам принимает HTTPS и общается с нашим сервером по обычному HTTP —
-// без этой строки Express не поймёт, что внешний запрос на самом деле
-// защищён, и cookie с пометкой "только для HTTPS" (secure) никогда не поставится
+// За Render мы сидим за его прокси-сервером — эта строка нужна, чтобы Express
+// правильно определял IP-адрес настоящего посетителя (полезно для логов и
+// возможных ограничений в будущем)
 app.set("trust proxy", 1);
 app.use(express.json());
 
-app.use((req, res, next) => {
-  // Cookie для входа в PWA-версию (см. pwaAuth.ts) браузер разрешает принимать
-  // с другого домена только если Access-Control-Allow-Origin — это конкретный
-  // сайт, а не "*", и явно разрешена отправка credentials
-  const origin = req.header("Origin");
-  if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, PATCH, PUT");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data, X-Staff-Session");
   next();
 });
 

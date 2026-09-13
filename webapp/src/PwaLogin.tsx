@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from './apiFetch'
 import InstallPrompt from './InstallPrompt'
+import { setStaffSessionToken } from './staffSession'
 import type { PwaIdentity } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -34,6 +35,7 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
         setError(data.error ?? 'Не удалось войти')
         return
       }
+      setStaffSessionToken(data.session_token as string)
       onSuccess(data as PwaIdentity)
     } catch {
       setError('Не удалось связаться с сервером, попробуйте ещё раз')
