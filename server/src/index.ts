@@ -1,5 +1,8 @@
 import "dotenv/config";
 import express from "express";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { initDb } from "./db.js";
 import { initStorage } from "./storage.js";
 import { bot, setupMenuButton } from "./bot.js";
@@ -50,6 +53,24 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api", attachTelegramIdentity, api);
+
+// PWA-версия для мастеров/админов (вход по коду, не через Telegram) — этот же
+// сервер отдаёт ещё и сам сайт, собранный отдельно (npm run build:pwa в
+// webapp/). Специально на том же адресе, что и API: cookie с сессией входа
+// иначе не запоминается на iPhone (Safari блокирует её между разными
+// адресами) — см. server/src/pwaAuth.ts
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PWA_DIST_DIR = path.join(__dirname, "..", "..", "webapp", "dist-pwa");
+
+app.use(express.static(PWA_DIST_DIR));
+app.get(/^(?!\/api).*/, (_req, res) => {
+  const indexPath = path.join(PWA_DIST_DIR, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    res.status(404).send("PWA не собрана — выполните build:pwa в webapp/");
+    return;
+  }
+  res.sendFile(indexPath);
+});
 
 const port = process.env.PORT ?? 3000;
 app.listen(port, () => {

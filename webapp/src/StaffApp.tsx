@@ -7,7 +7,7 @@ import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells }
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
 import InstallPrompt from './InstallPrompt'
-import { getInitData, openCurrentPageExternally } from './telegram'
+import { getInitData, openPwaExternally } from './telegram'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -239,7 +239,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   // в системном браузере телефона, и только там показываем инструкцию/кнопку
   function handleInstallClick() {
     if (getInitData()) {
-      openCurrentPageExternally()
+      openPwaExternally()
     }
     setShowInstallHelp(true)
   }
