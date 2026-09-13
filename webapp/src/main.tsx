@@ -104,3 +104,13 @@ createRoot(document.getElementById('root')!).render(
     <Root />
   </StrictMode>,
 )
+
+// Регистрация service worker — без него браузер не предложит установить PWA
+// на телефон. import.meta.env.BASE_URL — это путь, из которого реально отдаётся
+// сайт (например "/salot_bot/"), чтобы service-worker.js искался там же, где
+// лежит сам сайт, а не в корне домена
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`).catch(() => {})
+  })
+}
