@@ -102,6 +102,39 @@
   font-size: 0.85rem;
 }
 
+.pwa-install-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+}
+
+.pwa-install-code-value {
+  font-family: var(--sans);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-h);
+}
+
+.pwa-install-code-copy {
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .pwa-login-link {
   display: block;
   margin: 16px auto 0;

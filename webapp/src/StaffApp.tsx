@@ -6,8 +6,7 @@ import { apiFetch } from './apiFetch'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
 import ClientsPanel from './ClientsPanel'
-import InstallPrompt from './InstallPrompt'
-import { getInitData, openPwaExternally } from './telegram'
+import { openPwaExternally } from './telegram'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -80,8 +79,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [myStats, setMyStats] = useState<MyStats | null>(null)
   const [salonStats, setSalonStats] = useState<MyStats | null>(null)
   const [accessCode, setAccessCode] = useState<string | null>(null)
-  const [accessCodeCopied, setAccessCodeCopied] = useState(false)
-  const [showInstallHelp, setShowInstallHelp] = useState(false)
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -226,21 +223,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       .then((data: { access_code: string | null }) => setAccessCode(data.access_code))
       .catch(() => {})
   }, [telegramId])
-
-  function copyAccessCode() {
-    if (!accessCode) return
-    navigator.clipboard.writeText(accessCode).then(() => {
-      setAccessCodeCopied(true)
-      setTimeout(() => setAccessCodeCopied(false), 1500)
-    })
-  }
-
-  // Код (выше) и инструкция показываются прямо в Telegram, никуда не уходя —
-  // человек успевает прочитать/скопировать код, и только потом сам решает,
-  // когда переходить в браузер (кнопка "Открыть в браузере" ниже)
-  function handleInstallClick() {
-    setShowInstallHelp(true)
-  }
 
   const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
 
@@ -1129,20 +1111,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
           </button>
-          <AccessCodeCard code={accessCode} copied={accessCodeCopied} onCopy={copyAccessCode} />
-          <button type="button" className="staff-more-menu-item" onClick={handleInstallClick}>
+          <button type="button" className="staff-more-menu-item" onClick={() => openPwaExternally(accessCode)}>
             📲 Установить приложение на телефон
           </button>
-          {showInstallHelp && (
-            <>
-              <InstallPrompt />
-              {getInitData() && (
-                <button type="button" className="staff-more-menu-item" onClick={openPwaExternally}>
-                  🔗 Открыть в браузере для установки
-                </button>
-              )}
-            </>
-          )}
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти
@@ -1159,20 +1130,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
           </button>
-          <AccessCodeCard code={accessCode} copied={accessCodeCopied} onCopy={copyAccessCode} />
-          <button type="button" className="staff-more-menu-item" onClick={handleInstallClick}>
+          <button type="button" className="staff-more-menu-item" onClick={() => openPwaExternally(accessCode)}>
             📲 Установить приложение на телефон
           </button>
-          {showInstallHelp && (
-            <>
-              <InstallPrompt />
-              {getInitData() && (
-                <button type="button" className="staff-more-menu-item" onClick={openPwaExternally}>
-                  🔗 Открыть в браузере для установки
-                </button>
-              )}
-            </>
-          )}
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти
@@ -2048,21 +2008,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           </button>
         </nav>
       )}
-    </div>
-  )
-}
-
-function AccessCodeCard({ code, copied, onCopy }: { code: string | null; copied: boolean; onCopy: () => void }) {
-  if (!code) return null
-  return (
-    <div className="staff-access-code-card">
-      <p className="staff-access-code-label">Код для входа в PWA-версию</p>
-      <div className="staff-access-code-row">
-        <span className="staff-access-code-value">{code}</span>
-        <button type="button" className="staff-access-code-copy" onClick={onCopy}>
-          {copied ? 'Скопировано' : 'Скопировать'}
-        </button>
-      </div>
     </div>
   )
 }

@@ -18,12 +18,23 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Переход по кнопке "Установить приложение" из Telegram помечен ?install=1 —
-  // здесь код вводить незачем, показываем сразу инструкцию по установке.
-  // Код спросит уже сам значок на домашнем экране при первом открытии
-  const [showLoginForm, setShowLoginForm] = useState(
-    () => new URLSearchParams(window.location.search).get('install') !== '1'
-  )
+  // Переход по кнопке "Установить приложение" из Telegram помечен ?install=1,
+  // а сам код передан прямо в ссылке (?code=...) — здесь код вводить незачем,
+  // показываем его для копирования вместе с инструкцией по установке.
+  // Тот же код нужно будет ввести один раз — уже на самом значке на домашнем
+  // экране при первом открытии
+  const params = new URLSearchParams(window.location.search)
+  const [showLoginForm, setShowLoginForm] = useState(() => params.get('install') !== '1')
+  const installCode = params.get('code')
+  const [installCodeCopied, setInstallCodeCopied] = useState(false)
+
+  function copyInstallCode() {
+    if (!installCode) return
+    navigator.clipboard.writeText(installCode).then(() => {
+      setInstallCodeCopied(true)
+      setTimeout(() => setInstallCodeCopied(false), 1500)
+    })
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -81,7 +92,17 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
             </form>
           </>
         ) : (
-          <p className="pwa-login-subtitle">Установите приложение на телефон — код спросим при первом открытии</p>
+          <>
+            <p className="pwa-login-subtitle">Скопируйте код — он понадобится при первом открытии приложения</p>
+            {installCode && (
+              <div className="pwa-install-code">
+                <span className="pwa-install-code-value">{installCode}</span>
+                <button type="button" className="pwa-install-code-copy" onClick={copyInstallCode}>
+                  {installCodeCopied ? 'Скопировано' : 'Скопировать'}
+                </button>
+              </div>
+            )}
+          </>
         )}
         <InstallPrompt />
         {!showLoginForm && (
