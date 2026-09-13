@@ -4,9 +4,32 @@ import './index.css'
 import App from './App.tsx'
 import StaffApp from './StaffApp.tsx'
 import PwaLogin from './PwaLogin.tsx'
+import ErrorBoundary from './ErrorBoundary.tsx'
 import { getTelegramUserId, getInitData } from './telegram'
 import { apiFetch } from './apiFetch'
 import type { StaffRole, PwaIdentity } from './types'
+
+// Подстраховка на случай ошибки вне React (например, в обработчике события) —
+// ErrorBoundary такое не ловит. Показываем текст ошибки полоской сверху,
+// не закрывая весь экран, чтобы было что переслать вместо "не отображается"
+function showFatalErrorBanner(message: string) {
+  if (document.getElementById('fatal-error-banner')) return
+  const banner = document.createElement('div')
+  banner.id = 'fatal-error-banner'
+  banner.style.cssText =
+    'position:fixed;top:0;left:0;right:0;z-index:99999;background:#f4e3df;color:#7a352b;' +
+    'padding:10px 14px;font:12px sans-serif;white-space:pre-wrap;word-break:break-word;' +
+    'border-bottom:1px solid #a34a3d;max-height:40vh;overflow:auto'
+  banner.textContent = 'Ошибка: ' + message
+  document.body.prepend(banner)
+}
+
+window.addEventListener('error', (e) => {
+  showFatalErrorBanner(e.message)
+})
+window.addEventListener('unhandledrejection', (e) => {
+  showFatalErrorBanner(e.reason instanceof Error ? e.reason.message : String(e.reason))
+})
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
@@ -101,7 +124,9 @@ function Root() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Root />
+    <ErrorBoundary>
+      <Root />
+    </ErrorBoundary>
   </StrictMode>,
 )
 
