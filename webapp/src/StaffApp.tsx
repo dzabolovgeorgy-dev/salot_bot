@@ -235,12 +235,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     })
   }
 
-  // Внутри Telegram установка невозможна — сначала открываем ту же ссылку
-  // в системном браузере телефона, и только там показываем инструкцию/кнопку
+  // Код (выше) и инструкция показываются прямо в Telegram, никуда не уходя —
+  // человек успевает прочитать/скопировать код, и только потом сам решает,
+  // когда переходить в браузер (кнопка "Открыть в браузере" ниже)
   function handleInstallClick() {
-    if (getInitData()) {
-      openPwaExternally()
-    }
     setShowInstallHelp(true)
   }
 
@@ -1135,7 +1133,16 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button type="button" className="staff-more-menu-item" onClick={handleInstallClick}>
             📲 Установить приложение на телефон
           </button>
-          {showInstallHelp && <InstallPrompt />}
+          {showInstallHelp && (
+            <>
+              <InstallPrompt />
+              {getInitData() && (
+                <button type="button" className="staff-more-menu-item" onClick={openPwaExternally}>
+                  🔗 Открыть в браузере для установки
+                </button>
+              )}
+            </>
+          )}
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти
@@ -1156,7 +1163,16 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button type="button" className="staff-more-menu-item" onClick={handleInstallClick}>
             📲 Установить приложение на телефон
           </button>
-          {showInstallHelp && <InstallPrompt />}
+          {showInstallHelp && (
+            <>
+              <InstallPrompt />
+              {getInitData() && (
+                <button type="button" className="staff-more-menu-item" onClick={openPwaExternally}>
+                  🔗 Открыть в браузере для установки
+                </button>
+              )}
+            </>
+          )}
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти
