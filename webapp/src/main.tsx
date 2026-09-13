@@ -43,15 +43,23 @@ function isInsideTelegram(): boolean {
   return getInitData() !== ''
 }
 
+// Ссылка на установку (?install=1, из кнопки в Telegram) должна ВСЕГДА
+// показывать код и инструкцию — даже если на этом телефоне уже есть
+// сохранённый вход (например, с прошлой проверки). Иначе человек просто
+// попадает в уже открытое приложение вместо страницы установки
+function isInstallLink(): boolean {
+  return new URLSearchParams(window.location.search).get('install') === '1'
+}
+
 // Экран для PWA-версии (открыта не через Telegram): сперва проверяем, нет ли
 // уже сохранённого токена входа (см. staffSession.ts), и только если его нет
 // или сервер его не признал — показываем форму ввода кода
 function PwaRoot() {
   const [identity, setIdentity] = useState<PwaIdentity | null>(null)
-  const [checkedSession, setCheckedSession] = useState(false)
+  const [checkedSession, setCheckedSession] = useState(isInstallLink())
 
   useEffect(() => {
-    if (!getStaffSessionToken()) {
+    if (isInstallLink() || !getStaffSessionToken()) {
       setCheckedSession(true)
       return
     }
