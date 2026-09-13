@@ -7,24 +7,26 @@ interface Props {
 
 interface State {
   error: Error | null
+  componentStack: string | null
 }
 
 // Раньше любая ошибка при отрисовке экрана давала просто белый экран —
 // ни пользователь, ни разработчик не понимали, что случилось. Теперь вместо
 // этого показывается сообщение с текстом ошибки, которое можно переслать
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null }
+  state: State = { error: null, componentStack: null }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error }
   }
 
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
     console.error('Необработанная ошибка в приложении:', error, info.componentStack)
+    this.setState({ componentStack: info.componentStack ?? null })
   }
 
   render() {
-    const { error } = this.state
+    const { error, componentStack } = this.state
     if (!error) return this.props.children
 
     return (
@@ -38,12 +40,12 @@ export default class ErrorBoundary extends Component<Props, State> {
         }}
       >
         <h2 style={{ marginTop: 0 }}>Что-то сломалось</h2>
-        <p>Сделайте, пожалуйста, скриншот этого экрана и перешлите его — так проще всего найти причину.</p>
+        <p>Сделайте, пожалуйста, скриншот этого экрана (весь текст ниже целиком) и перешлите его.</p>
         <pre
           style={{
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            fontSize: 12,
+            fontSize: 11,
             background: '#fff',
             padding: 12,
             borderRadius: 8,
@@ -51,6 +53,9 @@ export default class ErrorBoundary extends Component<Props, State> {
           }}
         >
           {error.message}
+          {'\n\n'}
+          {error.stack}
+          {componentStack ? '\n\n--- где именно ---' + componentStack : ''}
         </pre>
       </div>
     )

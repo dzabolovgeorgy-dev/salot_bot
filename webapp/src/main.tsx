@@ -25,10 +25,13 @@ function showFatalErrorBanner(message: string) {
 }
 
 window.addEventListener('error', (e) => {
-  showFatalErrorBanner(e.message)
+  const stack = e.error instanceof Error ? e.error.stack : undefined
+  showFatalErrorBanner(`${e.message}\n${e.filename}:${e.lineno}:${e.colno}${stack ? '\n' + stack : ''}`)
 })
 window.addEventListener('unhandledrejection', (e) => {
-  showFatalErrorBanner(e.reason instanceof Error ? e.reason.message : String(e.reason))
+  const reason = e.reason
+  const text = reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason)
+  showFatalErrorBanner(text)
 })
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
