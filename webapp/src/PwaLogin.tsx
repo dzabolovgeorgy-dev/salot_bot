@@ -44,6 +44,11 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
   return (
     <div className="pwa-login-screen">
       <div className="pwa-login-card">
+        <img
+          src={`${import.meta.env.BASE_URL}icons/icon-192.png`}
+          alt=""
+          className="pwa-login-logo"
+        />
         <h1 className="pwa-login-title">Салон</h1>
         <p className="pwa-login-subtitle">Вход для мастеров и администраторов</p>
         <form onSubmit={handleSubmit}>
