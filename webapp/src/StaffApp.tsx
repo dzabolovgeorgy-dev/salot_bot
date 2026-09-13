@@ -481,9 +481,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     setTodayLoading(true)
     try {
       const res = await apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${todayKey()}`)
-      const data = await res.json()
-      // Сервер сам возвращает только записи этого мастера для роли master и все — для admin
-      setTodayBookings(data.bookings as Booking[])
+      // Сервер сам возвращает только записи этого мастера для роли master и все — для admin.
+      // Если сервер ответил ошибкой (например, сессия не подтвердилась) — считаем, что записей нет,
+      // а не падаем с ошибкой на пустом объекте
+      const data = res.ok ? await res.json() : { bookings: [] }
+      setTodayBookings((data.bookings ?? []) as Booking[])
     } catch {
       // тихо — на этой вкладке нет отдельного места для ошибки
     } finally {
@@ -504,12 +506,16 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       const days = weekDates(weekOffset)
       const results = await Promise.all(
         days.map((d) =>
-          apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) => r.json())
+          apiFetch(`${API_URL}/api/staff/schedule?telegram_id=${telegramId}&date=${dateKeyOf(d)}`).then((r) =>
+            // Если сервер ответил ошибкой — считаем, что записей на этот день нет,
+            // а не падаем с ошибкой на пустом объекте
+            r.ok ? r.json() : { bookings: [] }
+          )
         )
       )
       const map: Record<string, Booking[]> = {}
       days.forEach((d, i) => {
-        map[dateKeyOf(d)] = results[i].bookings as Booking[]
+        map[dateKeyOf(d)] = (results[i].bookings ?? []) as Booking[]
       })
       setWeekData(map)
     } catch {
@@ -529,7 +535,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     if (role !== 'master' || !masterId) return
     try {
       const res = await apiFetch(`${API_URL}/api/staff/my-stats?telegram_id=${telegramId}`)
-      setMyStats(await res.json())
+      if (res.ok) setMyStats(await res.json())
     } catch {
       // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
     }
@@ -545,7 +551,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     if (role !== 'admin') return
     try {
       const res = await apiFetch(`${API_URL}/api/staff/salon-stats?telegram_id=${telegramId}`)
-      setSalonStats(await res.json())
+      if (res.ok) setSalonStats(await res.json())
     } catch {
       // тихо — на главной нет отдельного места для ошибки, карточка просто не покажет числа
     }
