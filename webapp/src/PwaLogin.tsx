@@ -18,6 +18,12 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Переход по кнопке "Установить приложение" из Telegram помечен ?install=1 —
+  // здесь код вводить незачем, показываем сразу инструкцию по установке.
+  // Код спросит уже сам значок на домашнем экране при первом открытии
+  const [showLoginForm, setShowLoginForm] = useState(
+    () => new URLSearchParams(window.location.search).get('install') !== '1'
+  )
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -53,25 +59,36 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
           className="pwa-login-logo"
         />
         <h1 className="pwa-login-title">Салон</h1>
-        <p className="pwa-login-subtitle">Вход для мастеров и администраторов</p>
-        <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            inputMode="text"
-            autoCapitalize="characters"
-            autoComplete="off"
-            className="pwa-login-input"
-            placeholder="Код доступа"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            maxLength={6}
-          />
-          {error && <p className="pwa-login-error">{error}</p>}
-          <button type="submit" className="pwa-login-submit" disabled={loading || !code.trim()}>
-            {loading ? 'Проверяем…' : 'Войти'}
-          </button>
-        </form>
+        {showLoginForm ? (
+          <>
+            <p className="pwa-login-subtitle">Вход для мастеров и администраторов</p>
+            <form onSubmit={handleSubmit}>
+              <input
+                type="text"
+                inputMode="text"
+                autoCapitalize="characters"
+                autoComplete="off"
+                className="pwa-login-input"
+                placeholder="Код доступа"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                maxLength={6}
+              />
+              {error && <p className="pwa-login-error">{error}</p>}
+              <button type="submit" className="pwa-login-submit" disabled={loading || !code.trim()}>
+                {loading ? 'Проверяем…' : 'Войти'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <p className="pwa-login-subtitle">Установите приложение на телефон — код спросим при первом открытии</p>
+        )}
         <InstallPrompt />
+        {!showLoginForm && (
+          <button type="button" className="pwa-login-link" onClick={() => setShowLoginForm(true)}>
+            Уже установили? Войти по коду
+          </button>
+        )}
       </div>
     </div>
   )
