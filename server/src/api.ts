@@ -19,8 +19,10 @@ import {
 } from "./pwaAuth.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
-// Storage. 8 МБ с запасом хватает на фото с телефона
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+// Storage. Современные телефоны (особенно iPhone) снимают фото по 10-15 МБ
+// в высоком качестве — 8 МБ оказалось мало и обрывало загрузку без понятной
+// ошибки (см. обработчик ниже)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 function extFromMimeType(mimeType: string): string {
   if (mimeType === "image/png") return "png";

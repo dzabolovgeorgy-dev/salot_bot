@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import type { ErrorRequestHandler } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -48,6 +49,19 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api", attachTelegramIdentity, api);
+
+// Раньше ошибка загрузки слишком большого файла (multer) просто обрывала
+// соединение без ответа — на телефоне это выглядело как загадочное
+// "Load failed". Теперь в ответ приходит понятное сообщение
+const handleApiErrors: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err?.code === "LIMIT_FILE_SIZE") {
+    res.status(413).json({ error: "Файл слишком большой — максимум 20 МБ" });
+    return;
+  }
+  console.error("Необработанная ошибка запроса:", err);
+  res.status(500).json({ error: "Что-то пошло не так на сервере, попробуйте ещё раз" });
+};
+app.use("/api", handleApiErrors);
 
 // PWA-версия для мастеров/админов (вход по коду, не через Telegram) — этот же
 // сервер отдаёт ещё и сам сайт, собранный отдельно (npm run build:pwa в
