@@ -1762,6 +1762,17 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
 
           {photoPreview && (
             <div className="staff-photo-lightbox" onClick={() => setPhotoPreview(null)}>
+              <button
+                type="button"
+                className="staff-photo-lightbox-close"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setPhotoPreview(null)
+                }}
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
               <img src={photoPreview.url} alt="Фото работы" onClick={(e) => e.stopPropagation()} />
               <div className="staff-photo-lightbox-caption" onClick={(e) => e.stopPropagation()}>
                 <div className="staff-photo-lightbox-caption-row">

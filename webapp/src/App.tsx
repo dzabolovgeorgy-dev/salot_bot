@@ -853,6 +853,17 @@ function App() {
         </div>
         {openPhoto && (
           <div className="profile-photo-lightbox" onClick={() => setOpenPhoto(null)}>
+            <button
+              type="button"
+              className="profile-photo-lightbox-close"
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpenPhoto(null)
+              }}
+              aria-label="Закрыть"
+            >
+              ✕
+            </button>
             <img src={openPhoto.url} alt={openPhoto.caption ?? 'Фото работы'} />
             {openPhoto.caption && <p className="profile-photo-lightbox-caption">{openPhoto.caption}</p>}
           </div>
