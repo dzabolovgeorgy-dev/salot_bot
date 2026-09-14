@@ -22,6 +22,7 @@ export interface Master {
 export interface MasterPhoto {
   id: number
   url: string
+  caption: string | null
 }
 
 export interface Service {

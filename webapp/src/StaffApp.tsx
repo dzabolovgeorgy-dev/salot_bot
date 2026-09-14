@@ -108,6 +108,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [photosLoading, setPhotosLoading] = useState(true)
   const [portfolioUploading, setPortfolioUploading] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<MasterPhoto | null>(null)
+  const [captionInput, setCaptionInput] = useState('')
+  const [captionSaving, setCaptionSaving] = useState(false)
+  const [captionSaved, setCaptionSaved] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blocks, setBlocks] = useState<BlockedSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -405,6 +408,34 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       setPhotoPreview(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось удалить фото')
+    }
+  }
+
+  function openPhotoPreview(p: MasterPhoto) {
+    setPhotoPreview(p)
+    setCaptionInput(p.caption ?? '')
+    setCaptionSaved(false)
+  }
+
+  async function saveCaption() {
+    if (!photoPreview) return
+    setCaptionSaving(true)
+    setCaptionSaved(false)
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/portfolio-photos/${photoPreview.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, caption: captionInput }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить подпись')
+      setProfilePhotos((prev) => prev.map((p) => (p.id === data.id ? data : p)))
+      setPhotoPreview(data)
+      setCaptionSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить подпись')
+    } finally {
+      setCaptionSaving(false)
     }
   }
 
@@ -1721,8 +1752,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             ) : (
               <div className="staff-portfolio-grid">
                 {profilePhotos.map((p) => (
-                  <button key={p.id} type="button" className="staff-portfolio-thumb" onClick={() => setPhotoPreview(p)}>
-                    <img src={p.url} alt="Фото работы" />
+                  <button key={p.id} type="button" className="staff-portfolio-thumb" onClick={() => openPhotoPreview(p)}>
+                    <img src={p.url} alt={p.caption ?? 'Фото работы'} />
                   </button>
                 ))}
               </div>
@@ -1732,6 +1763,24 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           {photoPreview && (
             <div className="staff-photo-lightbox" onClick={() => setPhotoPreview(null)}>
               <img src={photoPreview.url} alt="Фото работы" onClick={(e) => e.stopPropagation()} />
+              <div className="staff-photo-lightbox-caption" onClick={(e) => e.stopPropagation()}>
+                <div className="staff-photo-lightbox-caption-row">
+                  <input
+                    type="text"
+                    placeholder="Подпись к фото (например, «Окрашивание балаяж»)"
+                    value={captionInput}
+                    maxLength={200}
+                    onChange={(e) => {
+                      setCaptionInput(e.target.value)
+                      setCaptionSaved(false)
+                    }}
+                  />
+                  <button type="button" onClick={saveCaption} disabled={captionSaving}>
+                    {captionSaving ? 'Сохранение…' : 'Сохранить'}
+                  </button>
+                </div>
+                {captionSaved && <p className="staff-form-hint">Сохранено ✓</p>}
+              </div>
               <button
                 type="button"
                 className="staff-photo-lightbox-delete"

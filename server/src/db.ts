@@ -148,8 +148,13 @@ export async function initDb(): Promise<void> {
       master_id INTEGER NOT NULL REFERENCES masters(id),
       url TEXT NOT NULL,
       storage_path TEXT NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT now()
+      created_at TIMESTAMP NOT NULL DEFAULT now(),
+      -- Короткая подпись под фото работы ("Окрашивание в технике балаяж" и т.п.) —
+      -- необязательная, мастер добавляет/меняет её отдельно от самой загрузки
+      caption TEXT
     );
+
+    ALTER TABLE master_photos ADD COLUMN IF NOT EXISTS caption TEXT;
 
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,

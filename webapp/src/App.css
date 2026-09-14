@@ -1577,8 +1577,10 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.85);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   padding: 24px;
   z-index: 50;
 }
@@ -1588,6 +1590,14 @@
   max-height: 80vh;
   border-radius: var(--radius-lg);
   object-fit: contain;
+}
+
+.profile-photo-lightbox-caption {
+  margin: 0;
+  max-width: 90%;
+  text-align: center;
+  color: #fff;
+  font-size: 0.95rem;
 }
 
 .error {

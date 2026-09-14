@@ -114,7 +114,11 @@ async function notifyAdmins(text: string) {
 // там личность уже подтвердил Telegram, доставив сообщение боту
 function isVerifiedTelegramId(req: Request, claimedId: number): boolean {
   if (req.internalTrusted) return true;
-  return req.verifiedTelegramId != null && req.verifiedTelegramId === claimedId;
+  // Number(...) — на случай, если claimedId пришёл строкой (например, из тела
+  // JSON-запроса, куда попало число из BIGINT-столбца Postgres — pg возвращает
+  // такие столбцы строкой, а не числом). Без этого сравнение 123 === "123"
+  // всегда ложно, и запрос отклоняется, даже если личность на самом деле верна
+  return req.verifiedTelegramId != null && req.verifiedTelegramId === Number(claimedId);
 }
 
 function rejectIfNotVerified(req: Request, res: Response, claimedId: number): boolean {
@@ -1256,7 +1260,7 @@ api.post("/staff/my-avatar", upload.single("photo"), async (req, res) => {
 api.get("/masters/:id/photos", async (req, res) => {
   const masterId = Number(req.params.id);
   const { rows } = await db.query(
-    "SELECT id, url FROM master_photos WHERE master_id = $1 ORDER BY created_at DESC",
+    "SELECT id, url, caption FROM master_photos WHERE master_id = $1 ORDER BY created_at DESC",
     [masterId]
   );
   res.json(rows);
@@ -1298,12 +1302,48 @@ api.post("/staff/portfolio-photos", upload.single("photo"), async (req, res) => 
     req.file.mimetype
   )}`;
   const url = await uploadPhoto(path, req.file.buffer, req.file.mimetype);
+  const caption = typeof req.body.caption === "string" && req.body.caption.trim() ? req.body.caption.trim() : null;
 
   const { rows } = await db.query(
-    `INSERT INTO master_photos (master_id, url, storage_path) VALUES ($1, $2, $3) RETURNING id, url`,
-    [role.master_id, url, path]
+    `INSERT INTO master_photos (master_id, url, storage_path, caption) VALUES ($1, $2, $3, $4) RETURNING id, url, caption`,
+    [role.master_id, url, path, caption]
   );
   res.status(201).json(rows[0]);
+});
+
+// Подпись можно добавить/поменять уже после загрузки — отдельная кнопка
+// "Сохранить" под фото в профиле мастера, как и для описания "О себе"
+api.patch("/staff/portfolio-photos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, caption } = req.body as { telegram_id?: number; caption?: string };
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows: existing } = await db.query("SELECT master_id FROM master_photos WHERE id = $1", [id]);
+  const photo = existing[0];
+  if (!photo) {
+    res.status(404).json({ error: "Фото не найдено" });
+    return;
+  }
+  if (role.role === "master" && photo.master_id !== role.master_id) {
+    res.status(403).json({ error: "Это фото другого мастера" });
+    return;
+  }
+
+  const normalizedCaption = typeof caption === "string" && caption.trim() ? caption.trim() : null;
+  const { rows } = await db.query(
+    "UPDATE master_photos SET caption = $1 WHERE id = $2 RETURNING id, url, caption",
+    [normalizedCaption, id]
+  );
+  res.json(rows[0]);
 });
 
 api.delete("/staff/portfolio-photos/:id", async (req, res) => {

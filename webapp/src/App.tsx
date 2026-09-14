@@ -814,7 +814,7 @@ function App() {
                     className="profile-portfolio-thumb"
                     onClick={() => setOpenPhoto(p)}
                   >
-                    <img src={p.url} alt="Фото работы" />
+                    <img src={p.url} alt={p.caption ?? 'Фото работы'} />
                   </button>
                 ))}
               </div>
@@ -853,7 +853,8 @@ function App() {
         </div>
         {openPhoto && (
           <div className="profile-photo-lightbox" onClick={() => setOpenPhoto(null)}>
-            <img src={openPhoto.url} alt="Фото работы" />
+            <img src={openPhoto.url} alt={openPhoto.caption ?? 'Фото работы'} />
+            {openPhoto.caption && <p className="profile-photo-lightbox-caption">{openPhoto.caption}</p>}
           </div>
         )}
       </motion.div>

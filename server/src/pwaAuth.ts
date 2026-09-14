@@ -38,10 +38,17 @@ export interface StaffByCode {
 export async function findStaffByAccessCode(code: string): Promise<StaffByCode | null> {
   const normalized = code.trim().toUpperCase();
   if (!normalized) return null;
-  const { rows } = await db.query<StaffByCode>("SELECT telegram_id FROM staff WHERE access_code = $1", [
-    normalized,
-  ]);
-  return rows[0] ?? null;
+  // telegram_id в базе — BIGINT, драйвер pg возвращает такие столбцы строкой
+  // (чтобы не терять точность у очень больших чисел), а не числом, как заявлено
+  // в типе StaffByCode. Без Number(...) эта строка потом улетает в JSON-тело
+  // запросов вида {"telegram_id":"123"} вместо {"telegram_id":123} — сервер
+  // сравнивает его с настоящим числом из сессии и не находит совпадения (403)
+  const { rows } = await db.query<{ telegram_id: string }>(
+    "SELECT telegram_id FROM staff WHERE access_code = $1",
+    [normalized]
+  );
+  if (!rows[0]) return null;
+  return { telegram_id: Number(rows[0].telegram_id) };
 }
 
 // Создаёт новую сессию (случайный непредсказуемый токен) и возвращает его —
