@@ -23,6 +23,12 @@ export interface MasterPhoto {
   id: number
   url: string
   caption: string | null
+  folder_ids: number[]
+}
+
+export interface PhotoFolder {
+  id: number
+  name: string
 }
 
 export interface Service {

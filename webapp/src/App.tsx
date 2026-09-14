@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -18,7 +19,16 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import './App.css'
-import type { Master, Service, Booking, MasterPhoto, LoyaltyStatus, MasterReview, LoyaltyHistoryEntry } from './types'
+import type {
+  Master,
+  Service,
+  Booking,
+  MasterPhoto,
+  PhotoFolder,
+  LoyaltyStatus,
+  MasterReview,
+  LoyaltyHistoryEntry,
+} from './types'
 import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
 import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
@@ -304,6 +314,8 @@ function App() {
   const [isDone, setIsDone] = useState(false)
   const [masterProfile, setMasterProfile] = useState<Master | null>(null)
   const [masterProfilePhotos, setMasterProfilePhotos] = useState<MasterPhoto[]>([])
+  const [masterPhotoFolders, setMasterPhotoFolders] = useState<PhotoFolder[]>([])
+  const [activeProfileFolder, setActiveProfileFolder] = useState<number | 'all'>('all')
   const [masterReviews, setMasterReviews] = useState<MasterReview[]>([])
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [openPhoto, setOpenPhoto] = useState<MasterPhoto | null>(null)
@@ -497,14 +509,20 @@ function App() {
 
   // Фото работ мастера — подгружаем при открытии его профиля
   useEffect(() => {
+    setActiveProfileFolder('all')
     if (!masterProfile) {
       setMasterProfilePhotos([])
+      setMasterPhotoFolders([])
       return
     }
     apiFetch(`${API_URL}/api/masters/${masterProfile.id}/photos`)
       .then((r) => r.json())
       .then(setMasterProfilePhotos)
       .catch(() => setMasterProfilePhotos([]))
+    apiFetch(`${API_URL}/api/masters/${masterProfile.id}/photo-folders`)
+      .then((r) => r.json())
+      .then(setMasterPhotoFolders)
+      .catch(() => setMasterPhotoFolders([]))
   }, [masterProfile])
 
   // Отзывы мастера (оценки с текстом) — туда же, при открытии профиля
@@ -770,6 +788,10 @@ function App() {
 
   if (masterProfile) {
     const masterServices = services.filter((s) => masterProfile.service_ids.includes(s.id))
+    const filteredProfilePhotos =
+      activeProfileFolder === 'all'
+        ? masterProfilePhotos
+        : masterProfilePhotos.filter((p) => p.folder_ids.includes(activeProfileFolder))
     return (
       <motion.div
         className="app app-hero"
@@ -806,8 +828,29 @@ function App() {
           {masterProfilePhotos.length > 0 && (
             <>
               <div className="section-title">Фото работ</div>
+              {masterPhotoFolders.length > 0 && (
+                <div className="profile-folder-chips">
+                  <button
+                    type="button"
+                    className={`profile-folder-chip${activeProfileFolder === 'all' ? ' active' : ''}`}
+                    onClick={() => setActiveProfileFolder('all')}
+                  >
+                    Все
+                  </button>
+                  {masterPhotoFolders.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className={`profile-folder-chip${activeProfileFolder === f.id ? ' active' : ''}`}
+                      onClick={() => setActiveProfileFolder(f.id)}
+                    >
+                      {f.name}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="profile-portfolio-grid">
-                {masterProfilePhotos.map((p) => (
+                {filteredProfilePhotos.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -851,23 +894,25 @@ function App() {
             ))}
           </div>
         </div>
-        {openPhoto && (
-          <div className="profile-photo-lightbox" onClick={() => setOpenPhoto(null)}>
-            <button
-              type="button"
-              className="profile-photo-lightbox-close"
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpenPhoto(null)
-              }}
-              aria-label="Закрыть"
-            >
-              ✕
-            </button>
-            <img src={openPhoto.url} alt={openPhoto.caption ?? 'Фото работы'} />
-            {openPhoto.caption && <p className="profile-photo-lightbox-caption">{openPhoto.caption}</p>}
-          </div>
-        )}
+        {openPhoto &&
+          createPortal(
+            <div className="profile-photo-lightbox" onClick={() => setOpenPhoto(null)}>
+              <button
+                type="button"
+                className="profile-photo-lightbox-close"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpenPhoto(null)
+                }}
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+              <img src={openPhoto.url} alt={openPhoto.caption ?? 'Фото работы'} />
+              {openPhoto.caption && <p className="profile-photo-lightbox-caption">{openPhoto.caption}</p>}
+            </div>,
+            document.body
+          )}
       </motion.div>
     )
   }

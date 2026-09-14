@@ -1260,10 +1260,146 @@ api.post("/staff/my-avatar", upload.single("photo"), async (req, res) => {
 api.get("/masters/:id/photos", async (req, res) => {
   const masterId = Number(req.params.id);
   const { rows } = await db.query(
-    "SELECT id, url, caption FROM master_photos WHERE master_id = $1 ORDER BY created_at DESC",
+    `SELECT p.id, p.url, p.caption,
+            COALESCE(array_agg(mpf.folder_id) FILTER (WHERE mpf.folder_id IS NOT NULL), '{}') AS folder_ids
+     FROM master_photos p
+     LEFT JOIN master_photo_folders mpf ON mpf.photo_id = p.id
+     WHERE p.master_id = $1
+     GROUP BY p.id
+     ORDER BY p.created_at DESC`,
     [masterId]
   );
   res.json(rows);
+});
+
+// Папки видны и клиенту (выбрать категорию работ перед записью), поэтому
+// без проверки личности — как и сам список фото выше
+api.get("/masters/:id/photo-folders", async (req, res) => {
+  const masterId = Number(req.params.id);
+  const { rows } = await db.query("SELECT id, name FROM photo_folders WHERE master_id = $1 ORDER BY created_at ASC", [
+    masterId,
+  ]);
+  res.json(rows);
+});
+
+api.post("/staff/photo-folders", async (req, res) => {
+  const { telegram_id, name } = req.body as { telegram_id?: number; name?: string };
+  if (!telegram_id || !name || !name.trim()) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master") {
+    res.status(403).json({ error: "Доступно только мастеру" });
+    return;
+  }
+
+  const { rows } = await db.query("INSERT INTO photo_folders (master_id, name) VALUES ($1, $2) RETURNING id, name", [
+    role.master_id,
+    name.trim(),
+  ]);
+  res.status(201).json(rows[0]);
+});
+
+api.patch("/staff/photo-folders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, name } = req.body as { telegram_id?: number; name?: string };
+  if (!id || !telegram_id || !name || !name.trim()) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows: existing } = await db.query("SELECT master_id FROM photo_folders WHERE id = $1", [id]);
+  const folder = existing[0];
+  if (!folder) {
+    res.status(404).json({ error: "Папка не найдена" });
+    return;
+  }
+  if (role.role === "master" && folder.master_id !== role.master_id) {
+    res.status(403).json({ error: "Это папка другого мастера" });
+    return;
+  }
+
+  const { rows } = await db.query("UPDATE photo_folders SET name = $1 WHERE id = $2 RETURNING id, name", [
+    name.trim(),
+    id,
+  ]);
+  res.json(rows[0]);
+});
+
+api.delete("/staff/photo-folders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegram_id = Number(req.query.telegram_id);
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows: existing } = await db.query("SELECT master_id FROM photo_folders WHERE id = $1", [id]);
+  const folder = existing[0];
+  if (!folder) {
+    res.status(404).json({ error: "Папка не найдена" });
+    return;
+  }
+  if (role.role === "master" && folder.master_id !== role.master_id) {
+    res.status(403).json({ error: "Это папка другого мастера" });
+    return;
+  }
+
+  await db.query("DELETE FROM photo_folders WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// Заменяет полный набор папок для фото — проще, чем отдельные add/remove,
+// клиент просто присылает итоговый список после того, как отметил галочки
+api.put("/staff/portfolio-photos/:id/folders", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, folder_ids } = req.body as { telegram_id?: number; folder_ids?: number[] };
+  if (!id || !telegram_id || !Array.isArray(folder_ids)) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows: existingPhoto } = await db.query("SELECT master_id FROM master_photos WHERE id = $1", [id]);
+  const photo = existingPhoto[0];
+  if (!photo) {
+    res.status(404).json({ error: "Фото не найдено" });
+    return;
+  }
+  if (role.role === "master" && photo.master_id !== role.master_id) {
+    res.status(403).json({ error: "Это фото другого мастера" });
+    return;
+  }
+
+  // Только папки этого же мастера — чтобы нельзя было пометить фото чужой папкой
+  const { rows: ownFolders } = await db.query("SELECT id FROM photo_folders WHERE master_id = $1", [photo.master_id]);
+  const ownFolderIds = new Set(ownFolders.map((f) => f.id));
+  const validFolderIds = folder_ids.filter((fid) => ownFolderIds.has(fid));
+
+  await db.query("DELETE FROM master_photo_folders WHERE photo_id = $1", [id]);
+  for (const folderId of validFolderIds) {
+    await db.query("INSERT INTO master_photo_folders (photo_id, folder_id) VALUES ($1, $2)", [id, folderId]);
+  }
+  res.json({ id, folder_ids: validFolderIds });
 });
 
 // Только оценки с текстом — это и есть "отзывы", которые клиент читает

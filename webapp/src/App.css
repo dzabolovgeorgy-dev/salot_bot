@@ -1508,6 +1508,29 @@
   line-height: 1.5;
 }
 
+.profile-folder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.profile-folder-chip {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-foreground);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.profile-folder-chip.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
 .profile-portfolio-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1583,6 +1606,7 @@
   gap: 12px;
   padding: 24px;
   z-index: 50;
+  overflow-y: auto;
 }
 
 .profile-photo-lightbox img {

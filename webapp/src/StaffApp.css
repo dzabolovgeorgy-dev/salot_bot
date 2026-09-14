@@ -1067,6 +1067,103 @@
   display: block;
 }
 
+.staff-folder-create {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.staff-folder-create input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
+.staff-folder-create button {
+  padding: 8px 14px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--primary);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.staff-folder-create button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.staff-folder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.staff-folder-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--accent-soft);
+  border-radius: var(--radius-md);
+}
+
+.staff-folder-chip {
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-foreground);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.staff-folder-chip.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.staff-folder-chip-wrap:has(.staff-folder-chip.active) {
+  background: var(--primary);
+}
+
+.staff-folder-chip-delete {
+  padding: 6px 8px 6px 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.staff-photo-lightbox-folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.staff-photo-lightbox-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+}
+
 .staff-photo-lightbox {
   position: fixed;
   inset: 0;
@@ -1074,15 +1171,17 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 16px;
   padding: 24px;
+  padding-top: calc(64px + env(safe-area-inset-top));
   z-index: 50;
+  overflow-y: auto;
 }
 
 .staff-photo-lightbox img {
   max-width: 100%;
-  max-height: 70vh;
+  max-height: 45vh;
   border-radius: var(--radius-md);
   object-fit: contain;
 }

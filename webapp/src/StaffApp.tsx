@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { FormEvent } from 'react'
-import type { Master, Service, Booking, BlockedSlot, MasterPhoto } from './types'
+import type { Master, Service, Booking, BlockedSlot, MasterPhoto, PhotoFolder } from './types'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { apiFetch } from './apiFetch'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
@@ -111,6 +112,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [captionInput, setCaptionInput] = useState('')
   const [captionSaving, setCaptionSaving] = useState(false)
   const [captionSaved, setCaptionSaved] = useState(false)
+  const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>([])
+  const [activePortfolioFolder, setActivePortfolioFolder] = useState<number | 'all'>('all')
+  const [newFolderName, setNewFolderName] = useState('')
+  const [folderCreating, setFolderCreating] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blocks, setBlocks] = useState<BlockedSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -228,6 +233,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   }, [telegramId])
 
   const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
+
+  const filteredPortfolioPhotos =
+    activePortfolioFolder === 'all'
+      ? profilePhotos
+      : profilePhotos.filter((p) => p.folder_ids.includes(activePortfolioFolder))
 
   // Подтягиваем текущий график мастера в форму, как только список мастеров загрузился.
   // 'cycle' — устаревший режим, в переключателе его больше нет, показываем как «Всегда»
@@ -380,6 +390,81 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, masterId])
 
+  async function loadPhotoFolders() {
+    if (role !== 'master' || !masterId) return
+    try {
+      const res = await apiFetch(`${API_URL}/api/masters/${masterId}/photo-folders`)
+      setPhotoFolders(await res.json())
+    } catch {
+      // тихо — папки просто не покажутся, фото всё равно доступны
+    }
+  }
+
+  useEffect(() => {
+    loadPhotoFolders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, masterId])
+
+  async function createFolder(e: FormEvent) {
+    e.preventDefault()
+    if (!newFolderName.trim() || folderCreating) return
+    setFolderCreating(true)
+    setError('')
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/photo-folders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, name: newFolderName.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось создать папку')
+      setPhotoFolders((prev) => [...prev, data])
+      setNewFolderName('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось создать папку')
+    } finally {
+      setFolderCreating(false)
+    }
+  }
+
+  async function deleteFolder(id: number) {
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/photo-folders/${id}?telegram_id=${telegramId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('Не удалось удалить папку')
+      setPhotoFolders((prev) => prev.filter((f) => f.id !== id))
+      setProfilePhotos((prev) => prev.map((p) => ({ ...p, folder_ids: p.folder_ids.filter((fid) => fid !== id) })))
+      if (activePortfolioFolder === id) setActivePortfolioFolder('all')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить папку')
+    }
+  }
+
+  async function toggleFolderForPhoto(folderId: number) {
+    if (!photoPreview) return
+    const current = photoPreview.folder_ids
+    const nextFolderIds = current.includes(folderId)
+      ? current.filter((id) => id !== folderId)
+      : [...current, folderId]
+    // Обновляем сразу на экране, не дожидаясь ответа сервера — переключение
+    // галочки должно ощущаться мгновенным
+    setPhotoPreview({ ...photoPreview, folder_ids: nextFolderIds })
+    setProfilePhotos((prev) =>
+      prev.map((p) => (p.id === photoPreview.id ? { ...p, folder_ids: nextFolderIds } : p))
+    )
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/portfolio-photos/${photoPreview.id}/folders`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, folder_ids: nextFolderIds }),
+      })
+      if (!res.ok) throw new Error('Не удалось сохранить папку')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить папку')
+    }
+  }
+
   async function uploadPortfolioPhoto(file: File) {
     setPortfolioUploading(true)
     setError('')
@@ -390,7 +475,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       const res = await apiFetch(`${API_URL}/api/staff/portfolio-photos`, { method: 'POST', body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
-      setProfilePhotos((prev) => [data, ...prev])
+      setProfilePhotos((prev) => [{ ...data, folder_ids: [] }, ...prev])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить фото')
     } finally {
@@ -1745,13 +1830,61 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                 />
               </label>
             </div>
+            <form className="staff-folder-create" onSubmit={createFolder}>
+              <input
+                type="text"
+                placeholder="Название папки (например, «Стрижки»)"
+                value={newFolderName}
+                maxLength={50}
+                onChange={(e) => setNewFolderName(e.target.value)}
+              />
+              <button type="submit" disabled={folderCreating || !newFolderName.trim()}>
+                {folderCreating ? 'Создание…' : '+ Папка'}
+              </button>
+            </form>
+
+            {photoFolders.length > 0 && (
+              <div className="staff-folder-chips">
+                <button
+                  type="button"
+                  className={`staff-folder-chip${activePortfolioFolder === 'all' ? ' active' : ''}`}
+                  onClick={() => setActivePortfolioFolder('all')}
+                >
+                  Все
+                </button>
+                {photoFolders.map((f) => (
+                  <span key={f.id} className="staff-folder-chip-wrap">
+                    <button
+                      type="button"
+                      className={`staff-folder-chip${activePortfolioFolder === f.id ? ' active' : ''}`}
+                      onClick={() => setActivePortfolioFolder(f.id)}
+                    >
+                      {f.name}
+                    </button>
+                    <button
+                      type="button"
+                      className="staff-folder-chip-delete"
+                      onClick={() => deleteFolder(f.id)}
+                      aria-label={`Удалить папку ${f.name}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
             {photosLoading ? (
               <p className="staff-empty">Загрузка…</p>
-            ) : profilePhotos.length === 0 ? (
-              <p className="staff-empty">Пока нет ни одного фото — добавьте примеры своих работ</p>
+            ) : filteredPortfolioPhotos.length === 0 ? (
+              <p className="staff-empty">
+                {profilePhotos.length === 0
+                  ? 'Пока нет ни одного фото — добавьте примеры своих работ'
+                  : 'В этой папке пока нет фото'}
+              </p>
             ) : (
               <div className="staff-portfolio-grid">
-                {profilePhotos.map((p) => (
+                {filteredPortfolioPhotos.map((p) => (
                   <button key={p.id} type="button" className="staff-portfolio-thumb" onClick={() => openPhotoPreview(p)}>
                     <img src={p.url} alt={p.caption ?? 'Фото работы'} />
                   </button>
@@ -1760,8 +1893,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             )}
           </div>
 
-          {photoPreview && (
-            <div className="staff-photo-lightbox" onClick={() => setPhotoPreview(null)}>
+          {photoPreview &&
+            createPortal(
+              <div className="staff-photo-lightbox" onClick={() => setPhotoPreview(null)}>
               <button
                 type="button"
                 className="staff-photo-lightbox-close"
@@ -1792,6 +1926,20 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                 </div>
                 {captionSaved && <p className="staff-form-hint">Сохранено ✓</p>}
               </div>
+              {photoFolders.length > 0 && (
+                <div className="staff-photo-lightbox-folders" onClick={(e) => e.stopPropagation()}>
+                  {photoFolders.map((f) => (
+                    <label key={f.id} className="staff-photo-lightbox-folder-item">
+                      <input
+                        type="checkbox"
+                        checked={photoPreview.folder_ids.includes(f.id)}
+                        onChange={() => toggleFolderForPhoto(f.id)}
+                      />
+                      {f.name}
+                    </label>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 className="staff-photo-lightbox-delete"
@@ -1802,7 +1950,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
               >
                 Удалить фото
               </button>
-            </div>
+            </div>,
+            document.body
           )}
         </section>
       )}

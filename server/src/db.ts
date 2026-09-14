@@ -156,6 +156,22 @@ export async function initDb(): Promise<void> {
 
     ALTER TABLE master_photos ADD COLUMN IF NOT EXISTS caption TEXT;
 
+    -- Папки для фото работ ("Стрижки", "Окрашивание" и т.п.) — мастер сам
+    -- создаёт и называет. Одно фото может лежать сразу в нескольких папках,
+    -- поэтому связь отдельной таблицей, а не столбцом в master_photos
+    CREATE TABLE IF NOT EXISTS photo_folders (
+      id SERIAL PRIMARY KEY,
+      master_id INTEGER NOT NULL REFERENCES masters(id),
+      name TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS master_photo_folders (
+      photo_id INTEGER NOT NULL REFERENCES master_photos(id) ON DELETE CASCADE,
+      folder_id INTEGER NOT NULL REFERENCES photo_folders(id) ON DELETE CASCADE,
+      PRIMARY KEY (photo_id, folder_id)
+    );
+
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,
       client_telegram_id BIGINT UNIQUE,
