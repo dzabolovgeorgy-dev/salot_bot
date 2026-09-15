@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock3,
   Home,
+  Images,
   Palette,
   Scissors,
   Sparkles,
@@ -25,6 +26,7 @@ import type {
   Booking,
   MasterPhoto,
   PhotoFolder,
+  InspirationPhoto,
   LoyaltyStatus,
   MasterReview,
   LoyaltyHistoryEntry,
@@ -34,7 +36,7 @@ import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
-type Tab = 'home' | 'services' | 'masters' | 'bookings'
+type Tab = 'home' | 'services' | 'masters' | 'inspiration' | 'bookings'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
@@ -42,6 +44,7 @@ const TABS: { key: Tab; label: string; Icon: LucideIcon }[] = [
   { key: 'home', label: 'Главная', Icon: Home },
   { key: 'services', label: 'Услуги', Icon: Sparkles },
   { key: 'masters', label: 'Мастера', Icon: UserRound },
+  { key: 'inspiration', label: 'Вдохновение', Icon: Images },
   { key: 'bookings', label: 'Записи', Icon: CalendarDays },
 ]
 
@@ -49,6 +52,7 @@ const TAB_TITLES: Record<Tab, string> = {
   home: 'Главная',
   services: 'Услуги',
   masters: 'Мастера',
+  inspiration: 'Вдохновение',
   bookings: 'Мои записи',
 }
 
@@ -322,6 +326,9 @@ function App() {
 
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
+  const [inspirationPhotos, setInspirationPhotos] = useState<InspirationPhoto[]>([])
+  const [activeInspirationCategory, setActiveInspirationCategory] = useState<string | 'all'>('all')
+  const [activeInspirationTag, setActiveInspirationTag] = useState<string | 'all'>('all')
   const [bookings, setBookings] = useState<Booking[]>([])
   const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -397,6 +404,12 @@ function App() {
       .catch(() => setError('Не удалось загрузить данные с сервера'))
       .finally(() => setLoading(false))
     fetchProfileLoyalty()
+    // Отдельно и молча — раздел "Вдохновение" необязателен для остального
+    // приложения, сбой загрузки не должен мешать записи
+    apiFetch(`${API_URL}/api/inspiration-photos`)
+      .then((r) => r.json())
+      .then(setInspirationPhotos)
+      .catch(() => setInspirationPhotos([]))
   }, [])
 
   useEffect(() => {
@@ -986,6 +999,16 @@ function App() {
   const heroBooking = bookings[0] ?? null
   const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
 
+  // "Вдохновение" — доступные категории и теги считаем прямо из того, что
+  // реально есть у фото, а не храним отдельным списком где-то ещё
+  const inspirationCategories = [...new Set(inspirationPhotos.map((p) => p.category))]
+  const inspirationTags = [...new Set(inspirationPhotos.flatMap((p) => p.tags))]
+  const filteredInspirationPhotos = inspirationPhotos.filter(
+    (p) =>
+      (activeInspirationCategory === 'all' || p.category === activeInspirationCategory) &&
+      (activeInspirationTag === 'all' || p.tags.includes(activeInspirationTag))
+  )
+
   return (
     <div className="app">
       {isHomeHero ? (
@@ -1181,6 +1204,87 @@ function App() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+
+        {!inFlow && !reschedule && activeTab === 'inspiration' && (
+          <div className="inspiration-section">
+            {inspirationCategories.length > 0 && (
+              <div className="inspiration-chips">
+                <button
+                  type="button"
+                  className={`inspiration-chip${activeInspirationCategory === 'all' ? ' active' : ''}`}
+                  onClick={() => setActiveInspirationCategory('all')}
+                >
+                  Все
+                </button>
+                {inspirationCategories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`inspiration-chip${activeInspirationCategory === c ? ' active' : ''}`}
+                    onClick={() => setActiveInspirationCategory(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+            {inspirationTags.length > 0 && (
+              <div className="inspiration-chips inspiration-chips--tags">
+                <button
+                  type="button"
+                  className={`inspiration-chip inspiration-chip--tag${activeInspirationTag === 'all' ? ' active' : ''}`}
+                  onClick={() => setActiveInspirationTag('all')}
+                >
+                  Любой стиль
+                </button>
+                {inspirationTags.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`inspiration-chip inspiration-chip--tag${activeInspirationTag === t ? ' active' : ''}`}
+                    onClick={() => setActiveInspirationTag(t)}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filteredInspirationPhotos.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <Images size={26} />
+                </div>
+                <h2>{inspirationPhotos.length === 0 ? 'Пока пусто' : 'Ничего не нашлось'}</h2>
+                <p>
+                  {inspirationPhotos.length === 0
+                    ? 'Здесь появятся примеры причёсок, ногтей и других работ для вдохновения.'
+                    : 'Попробуйте выбрать другую категорию или стиль.'}
+                </p>
+              </div>
+            ) : (
+              <div className="inspiration-grid">
+                {filteredInspirationPhotos.map((p) => (
+                  <div key={p.id} className="inspiration-card">
+                    <img src={p.image_url} alt={p.category} loading="lazy" />
+                    {p.master_id && p.master_name && (
+                      <div className="inspiration-card-master">
+                        {p.master_photo_url ? (
+                          <img className="inspiration-card-master-avatar" src={p.master_photo_url} alt={p.master_name} />
+                        ) : (
+                          <div className="inspiration-card-master-avatar inspiration-card-master-fallback">
+                            {initials(p.master_name)}
+                          </div>
+                        )}
+                        <span>{p.master_name}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

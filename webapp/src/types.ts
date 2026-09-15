@@ -31,6 +31,20 @@ export interface PhotoFolder {
   name: string
 }
 
+// Фото в разделе "Вдохновение" — общая подборка примеров для клиента,
+// не обязательно работа конкретного мастера (master_* — null, если нет привязки)
+export interface InspirationPhoto {
+  id: number
+  image_url: string
+  category: string
+  tags: string[]
+  master_id: number | null
+  master_name: string | null
+  master_photo_url: string | null
+  click_count: number
+  created_at: string
+}
+
 export interface Service {
   id: number
   name: string

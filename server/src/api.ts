@@ -204,6 +204,20 @@ api.get("/services", async (_req, res) => {
   res.json(rows);
 });
 
+// "Вдохновение" — общая галерея примеров для клиента, доступна без входа,
+// как и /masters, /services. master_name/master_photo_url подтягиваем сразу
+// джойном, чтобы на карточке показать автора без отдельного запроса на фото
+api.get("/inspiration-photos", async (_req, res) => {
+  const { rows } = await db.query(
+    `SELECT ip.id, ip.image_url, ip.category, ip.tags, ip.master_id, ip.click_count, ip.created_at,
+            m.name AS master_name, m.photo_url AS master_photo_url
+     FROM inspiration_photos ip
+     LEFT JOIN masters m ON m.id = ip.master_id
+     ORDER BY ip.created_at DESC`
+  );
+  res.json(rows.map((r) => ({ ...r, created_at: toIso(r.created_at) })));
+});
+
 // Занятые интервалы времени у мастера на конкретную дату — чтобы фронтенд
 // мог не показывать клиенту уже занятые слоты
 api.get("/masters/:id/bookings", async (req, res) => {
