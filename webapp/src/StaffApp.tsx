@@ -517,8 +517,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить подпись')
-      setProfilePhotos((prev) => prev.map((p) => (p.id === data.id ? data : p)))
-      setPhotoPreview(data)
+      // Этот ответ сервера не знает о папках фото (folder_ids) — меняем только
+      // подпись, а не всю запись целиком, иначе уже отмеченные папки сотрутся
+      setProfilePhotos((prev) => prev.map((p) => (p.id === data.id ? { ...p, caption: data.caption } : p)))
+      setPhotoPreview((prev) => (prev ? { ...prev, caption: data.caption } : prev))
       setCaptionSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить подпись')
