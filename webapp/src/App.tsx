@@ -1215,7 +1215,7 @@ function App() {
       <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={screenKey}
-        className={`content${isHomeHero ? ' sheet' : ''}`}
+        className={`content${isHomeHero ? ' sheet' : ''}${showChrome ? ' content-with-tabbar' : ''}`}
         initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -16 }}

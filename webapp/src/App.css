@@ -2052,15 +2052,30 @@
   color: var(--text);
 }
 
-/* Tab bar */
-
+/* Tab bar — закреплена внизу экрана (не прокручивается вместе с контентом),
+   иначе в длинных лентах (например "Вдохновение") до неё пришлось бы
+   долистать; left:50%+translateX центрирует её в той же колонке 480px,
+   что и .app, на широких экранах */
 .tabbar {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  z-index: 30;
   display: flex;
   border-top: 1px solid var(--border);
   background: var(--surface);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+}
+
+/* Запас снизу у контента, чтобы закреплённая панель не перекрывала
+   последние карточки/фото */
+.content-with-tabbar {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 
 .tab-item {
