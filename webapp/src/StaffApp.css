@@ -1094,6 +1094,26 @@
   margin-top: 24px;
 }
 
+.staff-inspiration-upload-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.staff-inspiration-upload-form select,
+.staff-inspiration-upload-form input[type='text'] {
+  flex: 1;
+  min-width: 140px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
 .staff-inspiration-stats-list {
   display: flex;
   flex-direction: column;

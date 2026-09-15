@@ -189,6 +189,11 @@ export async function initDb(): Promise<void> {
       created_at TIMESTAMP NOT NULL DEFAULT now()
     );
 
+    -- Путь в файловом хранилище — есть только у фото, загруженных через
+    -- приложение (мастером/админом); у фото, добавленных напрямую в базу
+    -- (внешние ссылки), его нет, и удалять из хранилища тогда нечего
+    ALTER TABLE inspiration_photos ADD COLUMN IF NOT EXISTS storage_path TEXT;
+
     CREATE INDEX IF NOT EXISTS inspiration_photos_category_idx ON inspiration_photos (category);
     CREATE INDEX IF NOT EXISTS inspiration_photos_tags_idx ON inspiration_photos USING GIN (tags);
     CREATE INDEX IF NOT EXISTS inspiration_photos_master_idx ON inspiration_photos (master_id);

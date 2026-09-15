@@ -1640,6 +1640,102 @@ api.delete("/staff/portfolio-photos/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Добавление фото в клиентский раздел "Вдохновение" — мастер добавляет
+// только свои (привязка к себе выставляется сама, поменять нельзя),
+// администратор может привязать к любому мастеру или оставить без привязки
+api.post("/staff/inspiration-photos", upload.single("photo"), async (req, res) => {
+  const telegram_id = Number(req.body.telegram_id);
+  const category = typeof req.body.category === "string" ? req.body.category.trim() : "";
+  if (!telegram_id || !req.file || !category) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!req.file.mimetype.startsWith("image/")) {
+    res.status(400).json({ error: "Файл должен быть изображением" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  let masterId: number | null;
+  if (role.role === "master") {
+    masterId = role.master_id;
+  } else {
+    const raw = Number(req.body.master_id);
+    masterId = raw ? raw : null;
+  }
+
+  const tags =
+    typeof req.body.tags === "string"
+      ? req.body.tags
+          .split(",")
+          .map((t: string) => t.trim())
+          .filter(Boolean)
+      : [];
+
+  const path = `inspiration/${Date.now()}-${Math.round(Math.random() * 1e6)}.${extFromMimeType(
+    req.file.mimetype
+  )}`;
+  const url = await uploadPhoto(path, req.file.buffer, req.file.mimetype);
+
+  const { rows: inserted } = await db.query(
+    `INSERT INTO inspiration_photos (image_url, category, tags, master_id, storage_path)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [url, category, tags, masterId, path]
+  );
+  // Сразу подтягиваем имя и фото мастера (join), как это делает публичный
+  // GET /inspiration-photos — иначе в списке после загрузки не будет видно,
+  // чья это работа, пока страницу не перезагрузят
+  const { rows } = await db.query(
+    `SELECT ip.id, ip.image_url, ip.category, ip.tags, ip.master_id, ip.click_count, ip.created_at,
+            m.name AS master_name, m.photo_url AS master_photo_url
+     FROM inspiration_photos ip
+     LEFT JOIN masters m ON m.id = ip.master_id
+     WHERE ip.id = $1`,
+    [inserted[0].id]
+  );
+  res.status(201).json(rows[0]);
+});
+
+api.delete("/staff/inspiration-photos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegram_id = Number(req.query.telegram_id);
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  const role = await getRole(telegram_id);
+  if (role.role !== "master" && role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только персоналу" });
+    return;
+  }
+
+  const { rows } = await db.query("SELECT master_id, storage_path FROM inspiration_photos WHERE id = $1", [id]);
+  const photo = rows[0];
+  if (!photo) {
+    res.status(404).json({ error: "Фото не найдено" });
+    return;
+  }
+  if (role.role === "master" && photo.master_id !== role.master_id) {
+    res.status(403).json({ error: "Это фото другого мастера" });
+    return;
+  }
+
+  try {
+    await db.query("DELETE FROM inspiration_photos WHERE id = $1", [id]);
+  } catch {
+    res.status(409).json({ error: "Нельзя удалить — это фото прикреплено как референс к чьей-то записи" });
+    return;
+  }
+  if (photo.storage_path) deletePhoto(photo.storage_path).catch(() => {});
+  res.json({ ok: true });
+});
+
 // ===== Управление мастерами, услугами и персоналом (только админ) =====
 
 interface MasterBody {

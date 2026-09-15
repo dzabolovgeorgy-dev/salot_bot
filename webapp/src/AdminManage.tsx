@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Master, Service } from './types'
+import type { Master, Service, InspirationPhoto } from './types'
 import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type Section = 'menu' | 'masters' | 'services' | 'staff'
+type Section = 'menu' | 'masters' | 'services' | 'staff' | 'inspiration'
 type MasterView = 'list' | 'quick' | 'edit'
 
 interface StaffMember {
@@ -30,18 +30,21 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   const [masters, setMasters] = useState<Master[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [inspirationPhotos, setInspirationPhotos] = useState<InspirationPhoto[]>([])
   const [error, setError] = useState('')
 
   async function loadAll() {
     try {
-      const [mRes, sRes, stRes] = await Promise.all([
+      const [mRes, sRes, stRes, iRes] = await Promise.all([
         apiFetch(`${API_URL}/api/masters`),
         apiFetch(`${API_URL}/api/services`),
         apiFetch(`${API_URL}/api/staff?telegram_id=${telegramId}`),
+        apiFetch(`${API_URL}/api/inspiration-photos`),
       ])
       setMasters(await mRes.json())
       setServices(await sRes.json())
       setStaff(await stRes.json())
+      setInspirationPhotos(await iRes.json())
     } catch {
       setError('Не удалось загрузить данные')
     }
@@ -265,6 +268,52 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     }
   }
 
+  // ===== Вдохновение (фото-примеры для клиента) =====
+  const [inspirationCategoryInput, setInspirationCategoryInput] = useState('')
+  const [inspirationTagsInput, setInspirationTagsInput] = useState('')
+  const [inspirationMasterId, setInspirationMasterId] = useState('')
+  const [inspirationUploading, setInspirationUploading] = useState(false)
+
+  async function uploadInspirationPhoto(file: File) {
+    if (!inspirationCategoryInput.trim()) {
+      setError('Выберите услугу для фото')
+      return
+    }
+    setInspirationUploading(true)
+    setError('')
+    try {
+      const form = new FormData()
+      form.append('telegram_id', String(telegramId))
+      form.append('category', inspirationCategoryInput.trim())
+      form.append('tags', inspirationTagsInput)
+      if (inspirationMasterId) form.append('master_id', inspirationMasterId)
+      form.append('photo', file)
+      const res = await apiFetch(`${API_URL}/api/staff/inspiration-photos`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
+      setInspirationPhotos((prev) => [data, ...prev])
+      setInspirationTagsInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить фото')
+    } finally {
+      setInspirationUploading(false)
+    }
+  }
+
+  async function deleteInspirationPhoto(id: number) {
+    setError('')
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/inspiration-photos/${id}?telegram_id=${telegramId}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить')
+      setInspirationPhotos((prev) => prev.filter((p) => p.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить')
+    }
+  }
+
   // ===== Персонал (только администраторы — доступ мастерам выдаётся на вкладке «Мастера») =====
   const [newAdminId, setNewAdminId] = useState('')
   const [staffSaving, setStaffSaving] = useState(false)
@@ -344,6 +393,12 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
             <button type="button" className="staff-menu-row" onClick={() => openSection('staff')}>
               <span>Персонал</span>
               <span className="staff-menu-count">{admins.length} →</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" className="staff-menu-row" onClick={() => openSection('inspiration')}>
+              <span>Вдохновение</span>
+              <span className="staff-menu-count">{inspirationPhotos.length} →</span>
             </button>
           </li>
         </ul>
@@ -604,6 +659,95 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
               {staffSaving ? 'Сохранение…' : 'Добавить'}
             </button>
           </form>
+        </section>
+      )}
+
+      {section === 'inspiration' && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={() => openSection('menu')}>
+            ← Управление
+          </button>
+          <p className="staff-form-hint">
+            Фото, которые видят клиенты в разделе «Вдохновение», с кнопкой «Записаться на такое».
+          </p>
+
+          <form
+            className="staff-admin-form"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <h3>Новое фото</h3>
+            <label>
+              Услуга (категория)
+              <select
+                value={inspirationCategoryInput}
+                onChange={(e) => setInspirationCategoryInput(e.target.value)}
+              >
+                <option value="">Выберите услугу…</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Теги через запятую
+              <input
+                type="text"
+                placeholder="Например: каре, блонд"
+                value={inspirationTagsInput}
+                onChange={(e) => setInspirationTagsInput(e.target.value)}
+              />
+            </label>
+            <label>
+              Чья это работа
+              <select value={inspirationMasterId} onChange={(e) => setInspirationMasterId(e.target.value)}>
+                <option value="">Без привязки к мастеру</option>
+                {masters.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="staff-portfolio-add">
+              {inspirationUploading ? 'Загрузка…' : '+ Загрузить фото'}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                disabled={inspirationUploading || !inspirationCategoryInput.trim()}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) uploadInspirationPhoto(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </form>
+
+          {inspirationPhotos.length > 0 && (
+            <div className="staff-inspiration-stats-list">
+              {inspirationPhotos.map((p) => (
+                <div key={p.id} className="staff-inspiration-stats-row">
+                  <img src={p.image_url} alt={p.category} />
+                  <div className="staff-inspiration-stats-body">
+                    <span className="staff-inspiration-stats-category">
+                      {p.category}
+                      {p.master_name ? ` · ${p.master_name}` : ''}
+                    </span>
+                    {p.tags.length > 0 && <span className="staff-inspiration-stats-tags">{p.tags.join(', ')}</span>}
+                  </div>
+                  <span className="staff-inspiration-stats-count" title="Нажали «Записаться на такое»">
+                    {p.click_count}
+                  </span>
+                  <button type="button" className="staff-remove-btn" onClick={() => deleteInspirationPhoto(p.id)}>
+                    Удалить
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

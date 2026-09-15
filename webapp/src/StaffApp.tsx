@@ -125,6 +125,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [captionSaved, setCaptionSaved] = useState(false)
   const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>([])
   const [activePortfolioFolder, setActivePortfolioFolder] = useState<number | 'all'>('all')
+  const [inspirationUploading, setInspirationUploading] = useState(false)
+  const [inspirationCategoryInput, setInspirationCategoryInput] = useState('')
+  const [inspirationTagsInput, setInspirationTagsInput] = useState('')
   const [newFolderName, setNewFolderName] = useState('')
   const [folderCreating, setFolderCreating] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -505,6 +508,48 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       if (!res.ok) throw new Error('Не удалось удалить фото')
       setProfilePhotos((prev) => prev.filter((p) => p.id !== id))
       setPhotoPreview(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить фото')
+    }
+  }
+
+  // Добавление своего фото в клиентский раздел "Вдохновение" (не путать с
+  // "Фото работ" выше — то видно только на странице мастера, а это фото
+  // попадает в общую витрину примеров для клиента, с кнопкой "Записаться")
+  async function uploadInspirationPhoto(file: File) {
+    if (!inspirationCategoryInput.trim()) {
+      setError('Выберите категорию для фото')
+      return
+    }
+    setInspirationUploading(true)
+    setError('')
+    try {
+      const form = new FormData()
+      form.append('telegram_id', String(telegramId))
+      form.append('category', inspirationCategoryInput.trim())
+      form.append('tags', inspirationTagsInput)
+      form.append('photo', file)
+      const res = await apiFetch(`${API_URL}/api/staff/inspiration-photos`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось загрузить фото')
+      setInspirationStats((prev) => [data, ...prev])
+      setInspirationTagsInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить фото')
+    } finally {
+      setInspirationUploading(false)
+    }
+  }
+
+  async function deleteInspirationPhoto(id: number) {
+    setError('')
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/inspiration-photos/${id}?telegram_id=${telegramId}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось удалить фото')
+      setInspirationStats((prev) => prev.filter((p) => p.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось удалить фото')
     }
@@ -1993,14 +2038,50 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             document.body
           )}
 
-          {inspirationStats.length > 0 && (
-            <div className="staff-inspiration-stats">
-              <div className="staff-portfolio-header">
-                <span className="staff-checkbox-label">Статистика «Вдохновения»</span>
-              </div>
-              <p className="staff-profile-hint">
-                Сколько раз клиенты нажали «Записаться на такое» под вашими фото
-              </p>
+          <div className="staff-inspiration-stats">
+            <div className="staff-portfolio-header">
+              <span className="staff-checkbox-label">Фото в «Вдохновении»</span>
+            </div>
+            <p className="staff-profile-hint">
+              Эти фото видят клиенты в разделе «Вдохновение» — у каждого своя кнопка «Записаться на такое»,
+              которая сразу приводит клиента к вам
+            </p>
+
+            <div className="staff-inspiration-upload-form">
+              <select
+                value={inspirationCategoryInput}
+                onChange={(e) => setInspirationCategoryInput(e.target.value)}
+              >
+                <option value="">Выберите услугу…</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Теги через запятую (например: каре, блонд)"
+                value={inspirationTagsInput}
+                onChange={(e) => setInspirationTagsInput(e.target.value)}
+              />
+              <label className="staff-portfolio-add">
+                {inspirationUploading ? 'Загрузка…' : '+ Добавить фото'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={inspirationUploading || !inspirationCategoryInput.trim()}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) uploadInspirationPhoto(file)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+            </div>
+
+            {inspirationStats.length > 0 && (
               <div className="staff-inspiration-stats-list">
                 {inspirationStats.map((p) => (
                   <div key={p.id} className="staff-inspiration-stats-row">
@@ -2011,12 +2092,21 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                         <span className="staff-inspiration-stats-tags">{p.tags.join(', ')}</span>
                       )}
                     </div>
-                    <span className="staff-inspiration-stats-count">{p.click_count}</span>
+                    <span className="staff-inspiration-stats-count" title="Нажали «Записаться на такое»">
+                      {p.click_count}
+                    </span>
+                    <button
+                      type="button"
+                      className="staff-remove-btn"
+                      onClick={() => deleteInspirationPhoto(p.id)}
+                    >
+                      Удалить
+                    </button>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       )}
 
