@@ -517,7 +517,9 @@ function App() {
     }
     apiFetch(`${API_URL}/api/masters/${masterProfile.id}/photos`)
       .then((r) => r.json())
-      .then(setMasterProfilePhotos)
+      // folder_ids может отсутствовать, если сервер ещё не обновлён до версии
+      // с папками (сайт и сервер деплоятся отдельно) — не даём этому сломать экран
+      .then((data: MasterPhoto[]) => setMasterProfilePhotos(data.map((p) => ({ ...p, folder_ids: p.folder_ids ?? [] }))))
       .catch(() => setMasterProfilePhotos([]))
     apiFetch(`${API_URL}/api/masters/${masterProfile.id}/photo-folders`)
       .then((r) => r.json())

@@ -377,7 +377,10 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     setPhotosLoading(true)
     try {
       const res = await apiFetch(`${API_URL}/api/masters/${masterId}/photos`)
-      setProfilePhotos(await res.json())
+      const data = (await res.json()) as MasterPhoto[]
+      // folder_ids может отсутствовать, если сервер ещё не обновлён до версии
+      // с папками (сайт и сервер деплоятся отдельно) — не даём этому сломать экран
+      setProfilePhotos(data.map((p) => ({ ...p, folder_ids: p.folder_ids ?? [] })))
     } catch {
       // тихо — сетка просто останется пустой
     } finally {
