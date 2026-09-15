@@ -218,6 +218,73 @@ api.get("/inspiration-photos", async (_req, res) => {
   res.json(rows.map((r) => ({ ...r, created_at: toIso(r.created_at) })));
 });
 
+// Клиент нажал "Записаться на такое" под фото — считаем клики, чтобы мастер
+// потом видел в своей статистике, какие примеры чаще всего приводят к записи
+api.post("/inspiration-photos/:id/click", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Не хватает id" });
+    return;
+  }
+  await db.query("UPDATE inspiration_photos SET click_count = click_count + 1 WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// Фото из "Вдохновения", сохранённые клиентом (раздел "Сохранённое" в профиле)
+api.get("/saved-photos/:client_telegram_id", async (req, res) => {
+  const clientTelegramId = Number(req.params.client_telegram_id);
+  if (!clientTelegramId) {
+    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
+
+  const { rows } = await db.query(
+    `SELECT sp.photo_id, sp.saved_at, ip.image_url, ip.category, ip.tags, ip.master_id,
+            m.name AS master_name, m.photo_url AS master_photo_url
+     FROM saved_photos sp
+     JOIN inspiration_photos ip ON ip.id = sp.photo_id
+     LEFT JOIN masters m ON m.id = ip.master_id
+     WHERE sp.client_telegram_id = $1
+     ORDER BY sp.saved_at DESC`,
+    [clientTelegramId]
+  );
+  res.json(rows.map((r) => ({ ...r, saved_at: toIso(r.saved_at) })));
+});
+
+api.post("/saved-photos", async (req, res) => {
+  const clientTelegramId = Number(req.body.client_telegram_id);
+  const photoId = Number(req.body.photo_id);
+  if (!clientTelegramId || !photoId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
+
+  await db.query(
+    `INSERT INTO saved_photos (client_telegram_id, photo_id) VALUES ($1, $2)
+     ON CONFLICT (client_telegram_id, photo_id) DO NOTHING`,
+    [clientTelegramId, photoId]
+  );
+  res.status(201).json({ ok: true });
+});
+
+api.delete("/saved-photos/:client_telegram_id/:photo_id", async (req, res) => {
+  const clientTelegramId = Number(req.params.client_telegram_id);
+  const photoId = Number(req.params.photo_id);
+  if (!clientTelegramId || !photoId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
+
+  await db.query("DELETE FROM saved_photos WHERE client_telegram_id = $1 AND photo_id = $2", [
+    clientTelegramId,
+    photoId,
+  ]);
+  res.json({ ok: true });
+});
+
 // Занятые интервалы времени у мастера на конкретную дату — чтобы фронтенд
 // мог не показывать клиенту уже занятые слоты
 api.get("/masters/:id/bookings", async (req, res) => {

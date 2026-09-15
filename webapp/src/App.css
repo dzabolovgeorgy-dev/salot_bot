@@ -799,6 +799,13 @@
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--surface-muted);
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
 }
 
 .inspiration-card img {
@@ -846,6 +853,136 @@
   background: var(--primary);
   color: var(--primary-foreground);
   font-size: 0.6rem;
+}
+
+.inspiration-card-saved {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(46, 42, 38, 0.55);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  color: #fff;
+}
+
+/* Полноэкранный просмотр фото из "Вдохновения" — фото + теги + мастер +
+   кнопки "Сохранить" и "Записаться" */
+.inspiration-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+  overflow-y: auto;
+}
+
+.inspiration-lightbox-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.inspiration-lightbox-body img {
+  max-width: 100%;
+  max-height: 55vh;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+.inspiration-lightbox-close {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top));
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inspiration-lightbox-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspiration-lightbox-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inspiration-lightbox-tags .inspiration-chip {
+  cursor: default;
+}
+
+.inspiration-lightbox-master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+}
+
+.inspiration-lightbox-master img,
+.inspiration-lightbox-master .inspiration-card-master-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.inspiration-lightbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inspiration-lightbox-actions .primary {
+  flex: 1;
+}
+
+.inspiration-lightbox-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.inspiration-lightbox-save.active {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: transparent;
 }
 
 /* Экран "Моя карта лояльности" — насыщенная карта уровня + инфо-карта + история */

@@ -45,6 +45,18 @@ export interface InspirationPhoto {
   created_at: string
 }
 
+// Фото из "Вдохновения", сохранённое клиентом (раздел "Сохранённое" в профиле)
+export interface SavedPhoto {
+  photo_id: number
+  saved_at: string
+  image_url: string
+  category: string
+  tags: string[]
+  master_id: number | null
+  master_name: string | null
+  master_photo_url: string | null
+}
+
 export interface Service {
   id: number
   name: string

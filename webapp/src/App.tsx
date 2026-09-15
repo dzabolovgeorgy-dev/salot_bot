@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Heart,
   Home,
   Images,
   Palette,
@@ -27,6 +28,7 @@ import type {
   MasterPhoto,
   PhotoFolder,
   InspirationPhoto,
+  SavedPhoto,
   LoyaltyStatus,
   MasterReview,
   LoyaltyHistoryEntry,
@@ -118,6 +120,19 @@ function ServiceIcon({ name, size = 20 }: { name: string; size?: number }) {
   if (n.includes('уклад') || n.includes('причёск') || n.includes('прическ')) return <Wind size={size} />
   if (n.includes('брит') || n.includes('бород')) return <UserRound size={size} />
   return <Sparkles size={size} />
+}
+
+// Категория фото в "Вдохновении" — это просто текст (например "Стрижка"),
+// а не привязка к конкретной услуге. Чтобы кнопка "Записаться" сама
+// подставила нужную услугу, ищем услугу с похожим названием
+function matchServiceByCategory(category: string, services: Service[]): Service | null {
+  const norm = (s: string) => s.trim().toLowerCase()
+  const target = norm(category)
+  return (
+    services.find((s) => norm(s.name) === target) ??
+    services.find((s) => norm(s.name).includes(target) || target.includes(norm(s.name))) ??
+    null
+  )
 }
 
 function initials(name: string): string {
@@ -329,6 +344,9 @@ function App() {
   const [inspirationPhotos, setInspirationPhotos] = useState<InspirationPhoto[]>([])
   const [activeInspirationCategory, setActiveInspirationCategory] = useState<string | 'all'>('all')
   const [activeInspirationTag, setActiveInspirationTag] = useState<string | 'all'>('all')
+  const [openInspirationPhoto, setOpenInspirationPhoto] = useState<InspirationPhoto | null>(null)
+  const [savedPhotoIds, setSavedPhotoIds] = useState<Set<number>>(new Set())
+  const [savingPhotoId, setSavingPhotoId] = useState<number | null>(null)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -410,6 +428,10 @@ function App() {
       .then((r) => r.json())
       .then(setInspirationPhotos)
       .catch(() => setInspirationPhotos([]))
+    apiFetch(`${API_URL}/api/saved-photos/${clientTelegramId}`)
+      .then((r) => r.json())
+      .then((data: SavedPhoto[]) => setSavedPhotoIds(new Set(data.map((p) => p.photo_id))))
+      .catch(() => setSavedPhotoIds(new Set()))
   }, [])
 
   useEffect(() => {
@@ -507,6 +529,52 @@ function App() {
     setFlowOrigin('masters')
     // и услуга, и мастер уже известны — сразу переходим к выбору времени
     setFlowIndex(FLOW_STEPS.masters.indexOf('time'))
+  }
+
+  // Кнопка "Записаться на такое"/"Записаться" в полноэкранном просмотре фото
+  // из "Вдохновения" — подставляет мастера (если фото его) и услугу по категории
+  const bookFromInspiration = (photo: InspirationPhoto) => {
+    const service = matchServiceByCategory(photo.category, services)
+    const master = photo.master_id ? masters.find((m) => m.id === photo.master_id) ?? null : null
+    setOpenInspirationPhoto(null)
+    if (master) {
+      apiFetch(`${API_URL}/api/inspiration-photos/${photo.id}/click`, { method: 'POST' }).catch(() => {})
+    }
+    if (master && service) {
+      bookFromProfile(master, service)
+      return
+    }
+    setError(null)
+    if (service) setSelectedService(service)
+    startFlow('services')
+  }
+
+  // Сердечко "Сохранить" в полноэкранном просмотре — добавляет фото в
+  // "Сохранённое" в профиле клиента (или убирает, если уже там)
+  const toggleSavedPhoto = async (photo: InspirationPhoto) => {
+    const alreadySaved = savedPhotoIds.has(photo.id)
+    setSavingPhotoId(photo.id)
+    try {
+      if (alreadySaved) {
+        await apiFetch(`${API_URL}/api/saved-photos/${clientTelegramId}/${photo.id}`, { method: 'DELETE' })
+        setSavedPhotoIds((prev) => {
+          const next = new Set(prev)
+          next.delete(photo.id)
+          return next
+        })
+      } else {
+        await apiFetch(`${API_URL}/api/saved-photos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_telegram_id: clientTelegramId, photo_id: photo.id }),
+        })
+        setSavedPhotoIds((prev) => new Set(prev).add(photo.id))
+      }
+    } catch {
+      // не критично — можно попробовать ещё раз
+    } finally {
+      setSavingPhotoId(null)
+    }
   }
 
   const exitFlow = () => {
@@ -1267,8 +1335,18 @@ function App() {
             ) : (
               <div className="inspiration-grid">
                 {filteredInspirationPhotos.map((p) => (
-                  <div key={p.id} className="inspiration-card">
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="inspiration-card"
+                    onClick={() => setOpenInspirationPhoto(p)}
+                  >
                     <img src={p.image_url} alt={p.category} loading="lazy" />
+                    {savedPhotoIds.has(p.id) && (
+                      <div className="inspiration-card-saved">
+                        <Heart size={13} fill="currentColor" />
+                      </div>
+                    )}
                     {p.master_id && p.master_name && (
                       <div className="inspiration-card-master">
                         {p.master_photo_url ? (
@@ -1281,12 +1359,69 @@ function App() {
                         <span>{p.master_name}</span>
                       </div>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </div>
         )}
+
+        {openInspirationPhoto &&
+          createPortal(
+            <div className="inspiration-lightbox" onClick={() => setOpenInspirationPhoto(null)}>
+              <button
+                type="button"
+                className="inspiration-lightbox-close"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpenInspirationPhoto(null)
+                }}
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+              <div className="inspiration-lightbox-body" onClick={(e) => e.stopPropagation()}>
+                <img src={openInspirationPhoto.image_url} alt={openInspirationPhoto.category} />
+                <div className="inspiration-lightbox-info">
+                  <div className="inspiration-lightbox-tags">
+                    <span className="inspiration-chip inspiration-chip--tag active">{openInspirationPhoto.category}</span>
+                    {openInspirationPhoto.tags.map((t) => (
+                      <span key={t} className="inspiration-chip inspiration-chip--tag">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                  {openInspirationPhoto.master_id && openInspirationPhoto.master_name && (
+                    <div className="inspiration-lightbox-master">
+                      {openInspirationPhoto.master_photo_url ? (
+                        <img src={openInspirationPhoto.master_photo_url} alt={openInspirationPhoto.master_name} />
+                      ) : (
+                        <div className="inspiration-card-master-avatar inspiration-card-master-fallback">
+                          {initials(openInspirationPhoto.master_name)}
+                        </div>
+                      )}
+                      <span>Работа мастера {openInspirationPhoto.master_name}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="inspiration-lightbox-actions">
+                  <button
+                    type="button"
+                    className={`inspiration-lightbox-save${savedPhotoIds.has(openInspirationPhoto.id) ? ' active' : ''}`}
+                    disabled={savingPhotoId === openInspirationPhoto.id}
+                    onClick={() => toggleSavedPhoto(openInspirationPhoto)}
+                  >
+                    <Heart size={18} fill={savedPhotoIds.has(openInspirationPhoto.id) ? 'currentColor' : 'none'} />
+                    {savedPhotoIds.has(openInspirationPhoto.id) ? 'Сохранено' : 'Сохранить'}
+                  </button>
+                  <button type="button" className="primary" onClick={() => bookFromInspiration(openInspirationPhoto)}>
+                    {openInspirationPhoto.master_id ? 'Записаться на такое' : 'Записаться'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
 
         {!inFlow &&
           !reschedule &&
