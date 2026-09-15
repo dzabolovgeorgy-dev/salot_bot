@@ -172,6 +172,42 @@ export async function initDb(): Promise<void> {
       PRIMARY KEY (photo_id, folder_id)
     );
 
+    -- "Вдохновение" — галерея примеров для клиента (не работы конкретного
+    -- мастера, а общая подборка причёсок/ногтей и т.п. для выбора стиля перед
+    -- записью). master_id — необязательная ссылка, если фото всё же чья-то
+    -- работа, тогда на карточке показываем автора и предлагаем запись к нему
+    CREATE TABLE IF NOT EXISTS inspiration_photos (
+      id SERIAL PRIMARY KEY,
+      image_url TEXT NOT NULL,
+      category TEXT NOT NULL,
+      tags TEXT[] NOT NULL DEFAULT '{}',
+      master_id INTEGER REFERENCES masters(id),
+      -- Сколько раз с этого фото нажали "Записаться на такое" — простая
+      -- метрика интереса для мастера, не то же самое, что реальные записи
+      -- (человек мог нажать и передумать, не дойдя до подтверждения)
+      click_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS inspiration_photos_category_idx ON inspiration_photos (category);
+    CREATE INDEX IF NOT EXISTS inspiration_photos_tags_idx ON inspiration_photos USING GIN (tags);
+    CREATE INDEX IF NOT EXISTS inspiration_photos_master_idx ON inspiration_photos (master_id);
+
+    -- Избранное клиента — какие фото из "Вдохновения" он сохранил себе
+    CREATE TABLE IF NOT EXISTS saved_photos (
+      id SERIAL PRIMARY KEY,
+      client_telegram_id BIGINT NOT NULL,
+      photo_id INTEGER NOT NULL REFERENCES inspiration_photos(id) ON DELETE CASCADE,
+      saved_at TIMESTAMP NOT NULL DEFAULT now(),
+      UNIQUE (client_telegram_id, photo_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS saved_photos_client_idx ON saved_photos (client_telegram_id);
+
+    -- Фото-референс, которое клиент прикрепил к своей записи (необязательно) —
+    -- мастер видит его прямо в карточке записи
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reference_photo_id INTEGER REFERENCES inspiration_photos(id);
+
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,
       client_telegram_id BIGINT UNIQUE,
