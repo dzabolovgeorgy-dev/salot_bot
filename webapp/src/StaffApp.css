@@ -1088,12 +1088,8 @@
   display: block;
 }
 
-/* Статистика "Вдохновения" в профиле мастера — сколько раз нажали
-   "Записаться на такое" под каждым его фото */
-.staff-inspiration-stats {
-  margin-top: 24px;
-}
-
+/* Форма загрузки и список фото "Вдохновения" — показываются вместо обычной
+   сетки "Фото работ", когда выбрана папка-переключатель "✨ Вдохновение" */
 .staff-inspiration-upload-form {
   display: flex;
   flex-wrap: wrap;
@@ -1246,6 +1242,21 @@
   font-size: 0.7rem;
   cursor: pointer;
   opacity: 0.6;
+}
+
+/* "Вдохновение" выглядит как ещё одна папка среди обычных, но переключает
+   весь блок "Фото работ" на отдельный список и форму загрузки — сюда
+   попадают фото, которые видят клиенты в клиентском разделе "Вдохновение" */
+.staff-folder-chip--inspiration {
+  border: 1px dashed var(--primary);
+  background: transparent;
+  color: var(--primary);
+}
+
+.staff-folder-chip--inspiration.active {
+  border-style: solid;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .staff-photo-lightbox-folders {

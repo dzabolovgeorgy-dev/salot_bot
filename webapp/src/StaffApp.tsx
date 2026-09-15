@@ -125,6 +125,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [captionSaved, setCaptionSaved] = useState(false)
   const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>([])
   const [activePortfolioFolder, setActivePortfolioFolder] = useState<number | 'all'>('all')
+  // "Вдохновение" показывается как ещё одна папка рядом с обычными — но на
+  // самом деле переключает весь блок на отдельный список и форму загрузки
+  const [portfolioView, setPortfolioView] = useState<'photos' | 'inspiration'>('photos')
   const [inspirationUploading, setInspirationUploading] = useState(false)
   const [inspirationCategoryInput, setInspirationCategoryInput] = useState('')
   const [inspirationTagsInput, setInspirationTagsInput] = useState('')
@@ -1898,82 +1901,167 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
 
           <div className="staff-portfolio">
             <div className="staff-portfolio-header">
-              <span className="staff-checkbox-label">Фото работ</span>
-              <label className="staff-portfolio-add">
-                {portfolioUploading ? 'Загрузка…' : '+ Добавить фото'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  disabled={portfolioUploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadPortfolioPhoto(file)
-                    e.target.value = ''
-                  }}
-                />
-              </label>
+              <span className="staff-checkbox-label">
+                {portfolioView === 'inspiration' ? 'Вдохновение' : 'Фото работ'}
+              </span>
+              {portfolioView === 'photos' && (
+                <label className="staff-portfolio-add">
+                  {portfolioUploading ? 'Загрузка…' : '+ Добавить фото'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    disabled={portfolioUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) uploadPortfolioPhoto(file)
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+              )}
             </div>
-            <form className="staff-folder-create" onSubmit={createFolder}>
-              <input
-                type="text"
-                placeholder="Название папки (например, «Стрижки»)"
-                value={newFolderName}
-                maxLength={50}
-                onChange={(e) => setNewFolderName(e.target.value)}
-              />
-              <button type="submit" disabled={folderCreating || !newFolderName.trim()}>
-                {folderCreating ? 'Создание…' : '+ Папка'}
-              </button>
-            </form>
 
-            {photoFolders.length > 0 && (
-              <div className="staff-folder-chips">
-                <button
-                  type="button"
-                  className={`staff-folder-chip${activePortfolioFolder === 'all' ? ' active' : ''}`}
-                  onClick={() => setActivePortfolioFolder('all')}
-                >
-                  Все
+            {portfolioView === 'photos' && (
+              <form className="staff-folder-create" onSubmit={createFolder}>
+                <input
+                  type="text"
+                  placeholder="Название папки (например, «Стрижки»)"
+                  value={newFolderName}
+                  maxLength={50}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                />
+                <button type="submit" disabled={folderCreating || !newFolderName.trim()}>
+                  {folderCreating ? 'Создание…' : '+ Папка'}
                 </button>
-                {photoFolders.map((f) => (
-                  <span key={f.id} className="staff-folder-chip-wrap">
-                    <button
-                      type="button"
-                      className={`staff-folder-chip${activePortfolioFolder === f.id ? ' active' : ''}`}
-                      onClick={() => setActivePortfolioFolder(f.id)}
-                    >
-                      {f.name}
-                    </button>
-                    <button
-                      type="button"
-                      className="staff-folder-chip-delete"
-                      onClick={() => deleteFolder(f.id)}
-                      aria-label={`Удалить папку ${f.name}`}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
+              </form>
             )}
 
-            {photosLoading ? (
-              <p className="staff-empty">Загрузка…</p>
-            ) : filteredPortfolioPhotos.length === 0 ? (
-              <p className="staff-empty">
-                {profilePhotos.length === 0
-                  ? 'Пока нет ни одного фото — добавьте примеры своих работ'
-                  : 'В этой папке пока нет фото'}
-              </p>
-            ) : (
-              <div className="staff-portfolio-grid">
-                {filteredPortfolioPhotos.map((p) => (
-                  <button key={p.id} type="button" className="staff-portfolio-thumb" onClick={() => openPhotoPreview(p)}>
-                    <img src={p.url} alt={p.caption ?? 'Фото работы'} />
+            <div className="staff-folder-chips">
+              <button
+                type="button"
+                className={`staff-folder-chip${portfolioView === 'photos' && activePortfolioFolder === 'all' ? ' active' : ''}`}
+                onClick={() => {
+                  setPortfolioView('photos')
+                  setActivePortfolioFolder('all')
+                }}
+              >
+                Все
+              </button>
+              {photoFolders.map((f) => (
+                <span key={f.id} className="staff-folder-chip-wrap">
+                  <button
+                    type="button"
+                    className={`staff-folder-chip${portfolioView === 'photos' && activePortfolioFolder === f.id ? ' active' : ''}`}
+                    onClick={() => {
+                      setPortfolioView('photos')
+                      setActivePortfolioFolder(f.id)
+                    }}
+                  >
+                    {f.name}
                   </button>
-                ))}
-              </div>
+                  <button
+                    type="button"
+                    className="staff-folder-chip-delete"
+                    onClick={() => deleteFolder(f.id)}
+                    aria-label={`Удалить папку ${f.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                className={`staff-folder-chip staff-folder-chip--inspiration${portfolioView === 'inspiration' ? ' active' : ''}`}
+                onClick={() => setPortfolioView('inspiration')}
+              >
+                ✨ Вдохновение
+              </button>
+            </div>
+
+            {portfolioView === 'photos' ? (
+              photosLoading ? (
+                <p className="staff-empty">Загрузка…</p>
+              ) : filteredPortfolioPhotos.length === 0 ? (
+                <p className="staff-empty">
+                  {profilePhotos.length === 0
+                    ? 'Пока нет ни одного фото — добавьте примеры своих работ'
+                    : 'В этой папке пока нет фото'}
+                </p>
+              ) : (
+                <div className="staff-portfolio-grid">
+                  {filteredPortfolioPhotos.map((p) => (
+                    <button key={p.id} type="button" className="staff-portfolio-thumb" onClick={() => openPhotoPreview(p)}>
+                      <img src={p.url} alt={p.caption ?? 'Фото работы'} />
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : (
+              <>
+                <p className="staff-profile-hint">Эти фото видят клиенты в разделе «Вдохновение» с кнопкой «Записаться на такое»</p>
+                <div className="staff-inspiration-upload-form">
+                  <select
+                    value={inspirationCategoryInput}
+                    onChange={(e) => setInspirationCategoryInput(e.target.value)}
+                  >
+                    <option value="">Выберите услугу…</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Теги через запятую (например: каре, блонд)"
+                    value={inspirationTagsInput}
+                    onChange={(e) => setInspirationTagsInput(e.target.value)}
+                  />
+                  <label className="staff-portfolio-add">
+                    {inspirationUploading ? 'Загрузка…' : '+ Добавить фото'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      disabled={inspirationUploading || !inspirationCategoryInput.trim()}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) uploadInspirationPhoto(file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {inspirationStats.length === 0 ? (
+                  <p className="staff-empty">Пока нет ни одного фото</p>
+                ) : (
+                  <div className="staff-inspiration-stats-list">
+                    {inspirationStats.map((p) => (
+                      <div key={p.id} className="staff-inspiration-stats-row">
+                        <img src={p.image_url} alt={p.category} />
+                        <div className="staff-inspiration-stats-body">
+                          <span className="staff-inspiration-stats-category">{p.category}</span>
+                          {p.tags.length > 0 && (
+                            <span className="staff-inspiration-stats-tags">{p.tags.join(', ')}</span>
+                          )}
+                        </div>
+                        <span className="staff-inspiration-stats-count" title="Нажали «Записаться на такое»">
+                          {p.click_count}
+                        </span>
+                        <button
+                          type="button"
+                          className="staff-remove-btn"
+                          onClick={() => deleteInspirationPhoto(p.id)}
+                        >
+                          Удалить
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -2037,76 +2125,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             </div>,
             document.body
           )}
-
-          <div className="staff-inspiration-stats">
-            <div className="staff-portfolio-header">
-              <span className="staff-checkbox-label">Фото в «Вдохновении»</span>
-            </div>
-            <p className="staff-profile-hint">
-              Эти фото видят клиенты в разделе «Вдохновение» — у каждого своя кнопка «Записаться на такое»,
-              которая сразу приводит клиента к вам
-            </p>
-
-            <div className="staff-inspiration-upload-form">
-              <select
-                value={inspirationCategoryInput}
-                onChange={(e) => setInspirationCategoryInput(e.target.value)}
-              >
-                <option value="">Выберите услугу…</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.name}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                placeholder="Теги через запятую (например: каре, блонд)"
-                value={inspirationTagsInput}
-                onChange={(e) => setInspirationTagsInput(e.target.value)}
-              />
-              <label className="staff-portfolio-add">
-                {inspirationUploading ? 'Загрузка…' : '+ Добавить фото'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  disabled={inspirationUploading || !inspirationCategoryInput.trim()}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadInspirationPhoto(file)
-                    e.target.value = ''
-                  }}
-                />
-              </label>
-            </div>
-
-            {inspirationStats.length > 0 && (
-              <div className="staff-inspiration-stats-list">
-                {inspirationStats.map((p) => (
-                  <div key={p.id} className="staff-inspiration-stats-row">
-                    <img src={p.image_url} alt={p.category} />
-                    <div className="staff-inspiration-stats-body">
-                      <span className="staff-inspiration-stats-category">{p.category}</span>
-                      {p.tags.length > 0 && (
-                        <span className="staff-inspiration-stats-tags">{p.tags.join(', ')}</span>
-                      )}
-                    </div>
-                    <span className="staff-inspiration-stats-count" title="Нажали «Записаться на такое»">
-                      {p.click_count}
-                    </span>
-                    <button
-                      type="button"
-                      className="staff-remove-btn"
-                      onClick={() => deleteInspirationPhoto(p.id)}
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </section>
       )}
 
