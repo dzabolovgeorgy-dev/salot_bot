@@ -80,6 +80,8 @@ export interface Booking {
   client_note?: string | null
   client_username?: string | null
   client_phone?: string | null
+  reference_photo_id?: number | null
+  reference_photo_url?: string | null
 }
 
 export interface ClientNote {

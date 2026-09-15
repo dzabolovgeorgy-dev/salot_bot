@@ -418,11 +418,20 @@ interface CreateBookingBody {
   client_name?: string;
   client_username?: string;
   redeem_points?: number;
+  reference_photo_id?: number;
 }
 
 api.post("/bookings", async (req, res) => {
-  const { client_telegram_id, master_id, service_id, starts_at, client_name, client_username, redeem_points } =
-    req.body as Partial<CreateBookingBody>;
+  const {
+    client_telegram_id,
+    master_id,
+    service_id,
+    starts_at,
+    client_name,
+    client_username,
+    redeem_points,
+    reference_photo_id,
+  } = req.body as Partial<CreateBookingBody>;
 
   if (!client_telegram_id || !master_id || !service_id || !starts_at) {
     res.status(400).json({ error: "Не хватает полей запроса" });
@@ -495,10 +504,20 @@ api.post("/bookings", async (req, res) => {
     return;
   }
 
+  // Фото-референс из "Вдохновения" — необязательное, проверяем, что оно
+  // реально существует, а не просто молча падаем на нарушении внешнего ключа
+  let referencePhotoId: number | null = null;
+  if (reference_photo_id) {
+    const { rows: photoRows } = await db.query("SELECT id FROM inspiration_photos WHERE id = $1", [
+      reference_photo_id,
+    ]);
+    if (photoRows[0]) referencePhotoId = reference_photo_id;
+  }
+
   const { rows: inserted } = await db.query(
-    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_username)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [client_telegram_id, master_id, service_id, starts_at, client_name ?? null, client_username ?? null]
+    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_username, reference_photo_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [client_telegram_id, master_id, service_id, starts_at, client_name ?? null, client_username ?? null, referencePhotoId]
   );
 
   // Проверка лимита уже прошла выше — тут только сам факт списания.
@@ -931,12 +950,14 @@ api.get("/staff/schedule", async (req, res) => {
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
             s.name AS service_name, s.duration_minutes, b.client_name, b.status,
             b.client_telegram_id, b.client_username, b.client_phone,
-            cn.note AS client_note
+            cn.note AS client_note,
+            b.reference_photo_id, ip.image_url AS reference_photo_url
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
      LEFT JOIN client_notes cn ON cn.client_telegram_id = b.client_telegram_id
        OR (b.client_telegram_id IS NULL AND cn.client_phone = b.client_phone)
+     LEFT JOIN inspiration_photos ip ON ip.id = b.reference_photo_id
      WHERE b.starts_at::date = $1::date
        AND ($2::int IS NULL OR b.master_id = $2)
      ORDER BY b.starts_at ASC`,

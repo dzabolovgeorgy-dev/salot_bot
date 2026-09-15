@@ -1295,6 +1295,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <p className="staff-card-line">{selectedBooking.service_name}</p>
           {role === 'admin' && <p className="staff-card-line">Мастер: {selectedBooking.master_name}</p>}
           <p className="staff-card-line">{formatTime(selectedBooking.starts_at)}</p>
+          {selectedBooking.reference_photo_url && (
+            <div className="staff-reference-photo">
+              <span className="staff-reference-photo-label">Клиент прикрепил фото-референс</span>
+              <img src={selectedBooking.reference_photo_url} alt="Референс от клиента" />
+            </div>
+          )}
           {selectedBooking.client_username ? (
             <a
               className="staff-telegram-link"

@@ -377,6 +377,27 @@
   line-height: 1.5;
 }
 
+.staff-reference-photo {
+  margin: 4px 0;
+}
+
+.staff-reference-photo-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+
+.staff-reference-photo img {
+  width: 100%;
+  max-width: 220px;
+  border-radius: var(--radius-md);
+  display: block;
+}
+
 .staff-month-calendar {
   background: var(--surface);
   backdrop-filter: blur(var(--glass-blur));

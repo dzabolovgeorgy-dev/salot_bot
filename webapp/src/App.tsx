@@ -356,6 +356,7 @@ function App() {
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedMaster, setSelectedMaster] = useState<Master | null>(null)
+  const [referencePhoto, setReferencePhoto] = useState<{ id: number; image_url: string } | null>(null)
   const [startsAt, setStartsAt] = useState('')
   const [dateKey, setDateKey] = useState('')
   const [timeSlot, setTimeSlot] = useState('')
@@ -431,7 +432,9 @@ function App() {
       .catch(() => setInspirationPhotos([]))
     apiFetch(`${API_URL}/api/saved-photos/${clientTelegramId}`)
       .then((r) => r.json())
-      .then(setSavedPhotos)
+      // Если сервер ответил ошибкой (например, 403), в теле придёт объект
+      // {error: ...}, а не массив — .map() на нём уронит весь экран клиента
+      .then((data) => setSavedPhotos(Array.isArray(data) ? data : []))
       .catch(() => setSavedPhotos([]))
   }, [])
 
@@ -538,6 +541,7 @@ function App() {
     const service = matchServiceByCategory(photo.category, services)
     const master = photo.master_id ? masters.find((m) => m.id === photo.master_id) ?? null : null
     setOpenInspirationPhoto(null)
+    setReferencePhoto({ id: photo.id, image_url: photo.image_url })
     if (master) {
       apiFetch(`${API_URL}/api/inspiration-photos/${photo.id}/click`, { method: 'POST' }).catch(() => {})
     }
@@ -602,6 +606,7 @@ function App() {
   const exitFlow = () => {
     setSelectedService(null)
     setSelectedMaster(null)
+    setReferencePhoto(null)
     setDateKey('')
     setTimeSlot('')
     setCalendarMonth(startOfMonth(new Date()))
@@ -764,6 +769,7 @@ function App() {
           client_name: getTelegramUserName(),
           client_username: getTelegramUsername() ?? undefined,
           redeem_points: useLoyaltyPoints ? loyaltyStatus?.max_redeemable ?? 0 : 0,
+          reference_photo_id: referencePhoto?.id ?? undefined,
         }),
       })
       const data = await res.json()
@@ -1690,6 +1696,37 @@ function App() {
               </div>
             </div>
           </article>
+        )}
+
+        {inFlow && flowStep === 'confirm' && (
+          <div className="reference-photo-section">
+            <p className="section-title">Фото-референс (необязательно)</p>
+            {referencePhoto ? (
+              <div className="reference-photo-picked">
+                <img src={referencePhoto.image_url} alt="Референс" />
+                <button type="button" className="reference-photo-remove" onClick={() => setReferencePhoto(null)}>
+                  Убрать
+                </button>
+              </div>
+            ) : savedPhotos.length > 0 ? (
+              <div className="reference-photo-picker">
+                {savedPhotos.map((p) => (
+                  <button
+                    key={p.photo_id}
+                    type="button"
+                    className="reference-photo-option"
+                    onClick={() => setReferencePhoto({ id: p.photo_id, image_url: p.image_url })}
+                  >
+                    <img src={p.image_url} alt={p.category} />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="reference-photo-hint">
+                Сохраняйте фото в «Вдохновении» — сможете прикрепить их к записи, чтобы мастер точно знал, чего вы хотите.
+              </p>
+            )}
+          </div>
         )}
 
         {inFlow && flowStep === 'confirm' && loyaltyStatus && loyaltyStatus.points_balance > 0 && (
