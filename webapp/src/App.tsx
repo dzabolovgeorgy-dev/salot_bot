@@ -345,8 +345,9 @@ function App() {
   const [activeInspirationCategory, setActiveInspirationCategory] = useState<string | 'all'>('all')
   const [activeInspirationTag, setActiveInspirationTag] = useState<string | 'all'>('all')
   const [openInspirationPhoto, setOpenInspirationPhoto] = useState<InspirationPhoto | null>(null)
-  const [savedPhotoIds, setSavedPhotoIds] = useState<Set<number>>(new Set())
+  const [savedPhotos, setSavedPhotos] = useState<SavedPhoto[]>([])
   const [savingPhotoId, setSavingPhotoId] = useState<number | null>(null)
+  const [savedPhotosOpen, setSavedPhotosOpen] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -430,8 +431,8 @@ function App() {
       .catch(() => setInspirationPhotos([]))
     apiFetch(`${API_URL}/api/saved-photos/${clientTelegramId}`)
       .then((r) => r.json())
-      .then((data: SavedPhoto[]) => setSavedPhotoIds(new Set(data.map((p) => p.photo_id))))
-      .catch(() => setSavedPhotoIds(new Set()))
+      .then(setSavedPhotos)
+      .catch(() => setSavedPhotos([]))
   }, [])
 
   useEffect(() => {
@@ -549,27 +550,48 @@ function App() {
     startFlow('services')
   }
 
+  // Убрать фото из "Сохранённого" — из полноэкранного просмотра и из самого
+  // раздела "Сохранённое" в профиле
+  const removeSavedPhoto = async (photoId: number) => {
+    setSavingPhotoId(photoId)
+    try {
+      await apiFetch(`${API_URL}/api/saved-photos/${clientTelegramId}/${photoId}`, { method: 'DELETE' })
+      setSavedPhotos((prev) => prev.filter((p) => p.photo_id !== photoId))
+    } catch {
+      // не критично — можно попробовать ещё раз
+    } finally {
+      setSavingPhotoId(null)
+    }
+  }
+
   // Сердечко "Сохранить" в полноэкранном просмотре — добавляет фото в
   // "Сохранённое" в профиле клиента (или убирает, если уже там)
   const toggleSavedPhoto = async (photo: InspirationPhoto) => {
-    const alreadySaved = savedPhotoIds.has(photo.id)
+    const alreadySaved = savedPhotos.some((p) => p.photo_id === photo.id)
+    if (alreadySaved) {
+      await removeSavedPhoto(photo.id)
+      return
+    }
     setSavingPhotoId(photo.id)
     try {
-      if (alreadySaved) {
-        await apiFetch(`${API_URL}/api/saved-photos/${clientTelegramId}/${photo.id}`, { method: 'DELETE' })
-        setSavedPhotoIds((prev) => {
-          const next = new Set(prev)
-          next.delete(photo.id)
-          return next
-        })
-      } else {
-        await apiFetch(`${API_URL}/api/saved-photos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_telegram_id: clientTelegramId, photo_id: photo.id }),
-        })
-        setSavedPhotoIds((prev) => new Set(prev).add(photo.id))
-      }
+      await apiFetch(`${API_URL}/api/saved-photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_telegram_id: clientTelegramId, photo_id: photo.id }),
+      })
+      setSavedPhotos((prev) => [
+        {
+          photo_id: photo.id,
+          saved_at: new Date().toISOString(),
+          image_url: photo.image_url,
+          category: photo.category,
+          tags: photo.tags,
+          master_id: photo.master_id,
+          master_name: photo.master_name,
+          master_photo_url: photo.master_photo_url,
+        },
+        ...prev,
+      ])
     } catch {
       // не критично — можно попробовать ещё раз
     } finally {
@@ -636,6 +658,10 @@ function App() {
 
   const goBack = () => {
     setError(null)
+    if (savedPhotosOpen) {
+      setSavedPhotosOpen(false)
+      return
+    }
     if (loyaltyCardOpen) {
       setLoyaltyCardOpen(false)
       return
@@ -869,6 +895,64 @@ function App() {
     )
   }
 
+  if (savedPhotosOpen) {
+    return (
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
+        <div className="topbar">
+          <button className="icon-back" onClick={goBack} aria-label="Назад">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="topbar-title">Сохранённое</div>
+        </div>
+        <div className="content">
+          {savedPhotos.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <Heart size={26} />
+              </div>
+              <h2>Пока пусто</h2>
+              <p>Сохраняйте понравившиеся фото в разделе «Вдохновение» — они появятся здесь.</p>
+            </div>
+          ) : (
+            <div className="inspiration-grid">
+              {savedPhotos.map((p) => (
+                <div key={p.photo_id} className="inspiration-card">
+                  <img src={p.image_url} alt={p.category} loading="lazy" />
+                  <button
+                    type="button"
+                    className="inspiration-card-remove"
+                    disabled={savingPhotoId === p.photo_id}
+                    onClick={() => removeSavedPhoto(p.photo_id)}
+                    aria-label="Убрать из сохранённого"
+                  >
+                    ✕
+                  </button>
+                  {p.master_id && p.master_name && (
+                    <div className="inspiration-card-master">
+                      {p.master_photo_url ? (
+                        <img className="inspiration-card-master-avatar" src={p.master_photo_url} alt={p.master_name} />
+                      ) : (
+                        <div className="inspiration-card-master-avatar inspiration-card-master-fallback">
+                          {initials(p.master_name)}
+                        </div>
+                      )}
+                      <span>{p.master_name}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+
   if (masterProfile) {
     const masterServices = services.filter((s) => masterProfile.service_ids.includes(s.id))
     const filteredProfilePhotos =
@@ -1069,6 +1153,7 @@ function App() {
 
   // "Вдохновение" — доступные категории и теги считаем прямо из того, что
   // реально есть у фото, а не храним отдельным списком где-то ещё
+  const savedPhotoIds = new Set(savedPhotos.map((p) => p.photo_id))
   const inspirationCategories = [...new Set(inspirationPhotos.map((p) => p.category))]
   const inspirationTags = [...new Set(inspirationPhotos.flatMap((p) => p.tags))]
   const filteredInspirationPhotos = inspirationPhotos.filter(
@@ -1172,6 +1257,21 @@ function App() {
               </button>
             )
           })()}
+
+        {isHomeHero && (
+          <button type="button" className="service-row" onClick={() => setSavedPhotosOpen(true)}>
+            <span className="service-row-icon">
+              <Heart size={20} />
+            </span>
+            <span className="service-row-body">
+              <span className="service-row-name">Сохранённое</span>
+              <span className="service-row-duration">
+                {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
+              </span>
+            </span>
+            <ChevronRight size={16} className="service-row-arrow" />
+          </button>
+        )}
 
         {isHomeHero &&
           (heroBooking && heroMaster ? (

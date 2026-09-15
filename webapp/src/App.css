@@ -871,6 +871,31 @@
   color: #fff;
 }
 
+/* Раздел "Сохранённое" в профиле — та же сетка, но с кнопкой убрать */
+.inspiration-card-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(46, 42, 38, 0.55);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inspiration-card-remove:disabled {
+  opacity: 0.5;
+}
+
 /* Полноэкранный просмотр фото из "Вдохновения" — фото + теги + мастер +
    кнопки "Сохранить" и "Записаться" */
 .inspiration-lightbox {
