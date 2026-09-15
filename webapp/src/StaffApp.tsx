@@ -20,6 +20,16 @@ interface MyStats {
   clients_count: number
 }
 
+// Статистика по одному фото мастера в клиентском разделе "Вдохновение" —
+// сколько раз под ним нажали "Записаться на такое"
+interface InspirationStat {
+  id: number
+  image_url: string
+  category: string
+  tags: string[]
+  click_count: number
+}
+
 const MONTH_LABELS = [
   'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
 ]
@@ -79,6 +89,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [activeTab, setActiveTabRaw] = useState<StaffTab>('main')
   const [myStats, setMyStats] = useState<MyStats | null>(null)
   const [salonStats, setSalonStats] = useState<MyStats | null>(null)
+  const [inspirationStats, setInspirationStats] = useState<InspirationStat[]>([])
   const [accessCode, setAccessCode] = useState<string | null>(null)
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
@@ -644,6 +655,23 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
 
   useEffect(() => {
     loadMyStats()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, masterId, telegramId])
+
+  // Профиль — сколько раз клиенты нажали "Записаться на такое" под фото
+  // мастера в клиентском разделе "Вдохновение"
+  async function loadInspirationStats() {
+    if (role !== 'master' || !masterId) return
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/inspiration-stats?telegram_id=${telegramId}`)
+      if (res.ok) setInspirationStats(await res.json())
+    } catch {
+      // тихо — в профиле просто не будет этого блока
+    }
+  }
+
+  useEffect(() => {
+    loadInspirationStats()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, masterId, telegramId])
 
@@ -1963,6 +1991,31 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
               </button>
             </div>,
             document.body
+          )}
+
+          {inspirationStats.length > 0 && (
+            <div className="staff-inspiration-stats">
+              <div className="staff-portfolio-header">
+                <span className="staff-checkbox-label">Статистика «Вдохновения»</span>
+              </div>
+              <p className="staff-profile-hint">
+                Сколько раз клиенты нажали «Записаться на такое» под вашими фото
+              </p>
+              <div className="staff-inspiration-stats-list">
+                {inspirationStats.map((p) => (
+                  <div key={p.id} className="staff-inspiration-stats-row">
+                    <img src={p.image_url} alt={p.category} />
+                    <div className="staff-inspiration-stats-body">
+                      <span className="staff-inspiration-stats-category">{p.category}</span>
+                      {p.tags.length > 0 && (
+                        <span className="staff-inspiration-stats-tags">{p.tags.join(', ')}</span>
+                      )}
+                    </div>
+                    <span className="staff-inspiration-stats-count">{p.click_count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </section>
       )}

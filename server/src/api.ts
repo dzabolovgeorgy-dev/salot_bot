@@ -1015,6 +1015,32 @@ api.get("/staff/my-stats", async (req, res) => {
   });
 });
 
+// Профиль мастера — сколько раз под каждым его фото в клиентском разделе
+// "Вдохновение" нажали "Записаться на такое" (click_count)
+api.get("/staff/inspiration-stats", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+
+  const role = await getRole(telegramId);
+  if (role.role !== "master") {
+    res.status(403).json({ error: "Доступно только мастеру" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT id, image_url, category, tags, click_count
+     FROM inspiration_photos
+     WHERE master_id = $1
+     ORDER BY click_count DESC, created_at DESC`,
+    [role.master_id]
+  );
+  res.json(rows);
+});
+
 // Главная у админа — похоже на my-stats у мастера (только за сегодня, а не за
 // месяц) и по всему салону (без фильтра по master_id)
 api.get("/staff/salon-stats", async (req, res) => {
