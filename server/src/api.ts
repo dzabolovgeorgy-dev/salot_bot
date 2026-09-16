@@ -2329,3 +2329,55 @@ api.post("/staff/inventory-items", async (req, res) => {
 
   res.status(201).json({ ...item, updated_at: toIso(item.updated_at) });
 });
+
+interface InventoryTransactionBody {
+  telegram_id: number;
+  change_amount: number;
+  reason?: string;
+}
+
+// Поступление (change_amount > 0) или списание (change_amount < 0) —
+// направление уже заложено в знак числа, отдельного поля "тип" не нужно
+api.post("/staff/inventory-items/:id/transactions", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, change_amount, reason } = req.body as Partial<InventoryTransactionBody>;
+  if (!id || !telegram_id || !change_amount) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!Number.isInteger(change_amount) || change_amount === 0) {
+    res.status(400).json({ error: "Некорректное количество" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  // Условие в WHERE не даёт остатку уйти в минус при списании — проверка и
+  // само обновление одним запросом, без риска, что между ними что-то изменится
+  const { rows: updated } = await db.query(
+    `UPDATE inventory_items SET quantity = quantity + $1, updated_at = now()
+     WHERE id = $2 AND quantity + $1 >= 0 RETURNING *`,
+    [change_amount, id]
+  );
+  if (!updated[0]) {
+    const { rows: existing } = await db.query("SELECT id FROM inventory_items WHERE id = $1", [id]);
+    if (!existing[0]) {
+      res.status(404).json({ error: "Материал не найден" });
+    } else {
+      res.status(400).json({ error: "Нельзя списать больше, чем есть на складе" });
+    }
+    return;
+  }
+
+  const trimmedReason = typeof reason === "string" && reason.trim() ? reason.trim() : null;
+  await db.query("INSERT INTO inventory_transactions (item_id, change_amount, reason) VALUES ($1, $2, $3)", [
+    id,
+    change_amount,
+    trimmedReason,
+  ]);
+
+  res.status(201).json({ ...updated[0], updated_at: toIso(updated[0].updated_at) });
+});
