@@ -108,6 +108,14 @@ export interface InventoryItem {
   updated_at: string
 }
 
+// Одна запись поступления/списания материала (change_amount со знаком)
+export interface InventoryTransaction {
+  id: number
+  change_amount: number
+  reason: string | null
+  created_at: string
+}
+
 export interface ClientSummary {
   client_telegram_id: string | number | null
   client_phone: string | null

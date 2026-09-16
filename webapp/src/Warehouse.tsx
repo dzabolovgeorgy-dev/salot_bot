@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { InventoryItem } from './types'
+import type { InventoryItem, InventoryTransaction } from './types'
 import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
@@ -14,6 +14,15 @@ interface WarehouseProps {
 const emptyForm = { name: '', unit: '', quantity: '', minThreshold: '' }
 
 type TxDirection = 'in' | 'out'
+
+function formatDateTime(iso: string): string {
+  return new Date(iso.replace(' ', 'T')).toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
   const [items, setItems] = useState<InventoryItem[]>([])
@@ -29,6 +38,9 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
   const [txAmount, setTxAmount] = useState('')
   const [txReason, setTxReason] = useState('')
   const [txSaving, setTxSaving] = useState(false)
+
+  const [history, setHistory] = useState<InventoryTransaction[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   async function loadItems() {
     setLoading(true)
@@ -79,12 +91,26 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
     }
   }
 
+  async function loadHistory(itemId: number) {
+    setHistoryLoading(true)
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/inventory-items/${itemId}/transactions?telegram_id=${telegramId}`)
+      const data = await res.json()
+      if (res.ok) setHistory(data)
+    } catch {
+      // тихо — карточка просто останется без истории
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
   function openItem(item: InventoryItem) {
     setSelectedItem(item)
     setTxDirection(null)
     setTxAmount('')
     setTxReason('')
     setError('')
+    loadHistory(item.id)
   }
 
   async function submitTransaction() {
@@ -113,6 +139,7 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
       setTxDirection(null)
       setTxAmount('')
       setTxReason('')
+      loadHistory(data.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
@@ -187,6 +214,27 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
               </button>
             </div>
           </div>
+        )}
+
+        <h3>История изменений</h3>
+        {historyLoading ? (
+          <p className="staff-empty">Загрузка…</p>
+        ) : history.length === 0 ? (
+          <p className="staff-empty">Пока нет изменений</p>
+        ) : (
+          <ul className="staff-list">
+            {history.map((tx) => (
+              <li key={tx.id} className="staff-list-item">
+                <span className="staff-list-body">
+                  <span className={tx.change_amount > 0 ? 'inventory-tx-amount inventory-tx-amount--in' : 'inventory-tx-amount'}>
+                    {tx.change_amount > 0 ? `+${tx.change_amount}` : tx.change_amount} {selectedItem.unit}
+                  </span>
+                  {tx.reason && <span className="staff-client-meta">{tx.reason}</span>}
+                </span>
+                <span className="staff-profile-hint">{formatDateTime(tx.created_at)}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     )

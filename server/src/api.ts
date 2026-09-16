@@ -2336,6 +2336,31 @@ interface InventoryTransactionBody {
   reason?: string;
 }
 
+// История поступлений/списаний конкретного материала — для карточки
+api.get("/staff/inventory-items/:id/transactions", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!id || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT id, change_amount, reason, created_at
+     FROM inventory_transactions
+     WHERE item_id = $1
+     ORDER BY created_at DESC
+     LIMIT 20`,
+    [id]
+  );
+  res.json(rows.map((r) => ({ ...r, created_at: toIso(r.created_at) })));
+});
+
 // Поступление (change_amount > 0) или списание (change_amount < 0) —
 // направление уже заложено в знак числа, отдельного поля "тип" не нужно
 api.post("/staff/inventory-items/:id/transactions", async (req, res) => {
