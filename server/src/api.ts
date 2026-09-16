@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import multer from "multer";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
-import { appendBookingRow, addClientSpend, syncClientExtraField } from "./sheets.js";
+import { appendBookingRow, addClientSpend, syncClientExtraField, syncInventoryItem } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons, ratingButtons, masterBookingActionButtons } from "./bookingScene.js";
@@ -1091,15 +1091,23 @@ async function writeOffServiceMaterials(serviceId: number, bookingId: number, se
     [serviceId]
   );
   for (const { item_id, quantity_per_use } of recipe) {
-    await db.query("UPDATE inventory_items SET quantity = quantity - $1, updated_at = now() WHERE id = $2", [
-      quantity_per_use,
-      item_id,
-    ]);
+    const { rows: updated } = await db.query(
+      "UPDATE inventory_items SET quantity = quantity - $1, updated_at = now() WHERE id = $2 RETURNING *",
+      [quantity_per_use, item_id]
+    );
     await db.query("INSERT INTO inventory_transactions (item_id, change_amount, reason) VALUES ($1, $2, $3)", [
       item_id,
       -quantity_per_use,
       `Автосписание: ${serviceName}, запись #${bookingId}`,
     ]);
+    if (updated[0]) {
+      syncInventoryItem({
+        name: updated[0].name,
+        quantity: updated[0].quantity,
+        unit: updated[0].unit,
+        minThreshold: updated[0].min_threshold,
+      });
+    }
   }
 }
 
@@ -2412,6 +2420,8 @@ api.post("/staff/inventory-items", async (req, res) => {
     );
   }
 
+  syncInventoryItem({ name: item.name, quantity: item.quantity, unit: item.unit, minThreshold: item.min_threshold });
+
   res.status(201).json({ ...item, updated_at: toIso(item.updated_at) });
 });
 
@@ -2470,6 +2480,14 @@ api.patch("/staff/inventory-items/:id", async (req, res) => {
     ]);
     Object.assign(item, corrected[0]);
   }
+
+  syncInventoryItem({
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    minThreshold: item.min_threshold,
+    previousName: item.name !== current.name ? current.name : undefined,
+  });
 
   res.json({ ...item, updated_at: toIso(item.updated_at) });
 });
@@ -2547,6 +2565,13 @@ api.post("/staff/inventory-items/:id/transactions", async (req, res) => {
     change_amount,
     trimmedReason,
   ]);
+
+  syncInventoryItem({
+    name: updated[0].name,
+    quantity: updated[0].quantity,
+    unit: updated[0].unit,
+    minThreshold: updated[0].min_threshold,
+  });
 
   res.status(201).json({ ...updated[0], updated_at: toIso(updated[0].updated_at) });
 });

@@ -288,3 +288,69 @@ export async function addClientSpend(clientKey: string, amount: number): Promise
   }
   });
 }
+
+// Вкладка "Склад" пользователь уже завёл сам, с колонками "Категория",
+// "Поставщик" и "Дата последней закупки" — их мы не трогаем, заполняет
+// вручную. Синхронизируем только то, чем управляет само приложение:
+// название, остаток, единицу и минимальный порог
+const WAREHOUSE_SHEET = "Склад";
+const WAREHOUSE_HEADER = ["Товар", "Категория", "Остаток", "Единица", "Мин. запас", "Поставщик", "Дата последней закупки"];
+
+// Вызывается при любом изменении материала на складе — добавлении, правке,
+// поступлении, списании (в том числе автоматическом при завершении услуги).
+// Ищем строку по названию материала: нашли — обновляем на месте, не нашли —
+// добавляем новую (значит материал создан до включения синхронизации).
+// previousName — если материал только что переименовали: ищем строку по
+// старому названию (иначе вместо обновления завелась бы вторая строка)
+export async function syncInventoryItem(params: {
+  name: string;
+  quantity: number;
+  unit: string;
+  minThreshold: number;
+  previousName?: string;
+}): Promise<void> {
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  if (!sheetId) return;
+
+  return runSerialized(async () => {
+  try {
+    await ensureSheetExists(sheetId, WAREHOUSE_SHEET, WAREHOUSE_HEADER);
+    const data = await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${WAREHOUSE_SHEET}'!A:A`)}`);
+    const rows: string[][] = data.values ?? [];
+    const searchName = params.previousName ?? params.name;
+    const rowIndex = rows.findIndex((r, i) => i > 0 && r[0] === searchName);
+
+    if (rowIndex === -1) {
+      await sheetsRequest(
+        sheetId,
+        `/values/${encodeURIComponent(`'${WAREHOUSE_SHEET}'!A:G`)}:append?valueInputOption=USER_ENTERED`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            values: [[params.name, "", params.quantity, params.unit, params.minThreshold, "", ""]],
+          }),
+        }
+      );
+      return;
+    }
+
+    const sheetRow = rowIndex + 1;
+    // Два отдельных запроса — колонку B (Категория) между "Товар" и "Остаток"
+    // трогать нельзя, её пользователь заполняет сам
+    await sheetsRequest(sheetId, `/values/${encodeURIComponent(`'${WAREHOUSE_SHEET}'!A${sheetRow}`)}?valueInputOption=USER_ENTERED`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [[params.name]] }),
+    });
+    await sheetsRequest(
+      sheetId,
+      `/values/${encodeURIComponent(`'${WAREHOUSE_SHEET}'!C${sheetRow}:E${sheetRow}`)}?valueInputOption=USER_ENTERED`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ values: [[params.quantity, params.unit, params.minThreshold]] }),
+      }
+    );
+  } catch (err) {
+    console.warn("Google Sheets: ошибка синхронизации склада", err instanceof Error ? err.message : err);
+  }
+  });
+}
