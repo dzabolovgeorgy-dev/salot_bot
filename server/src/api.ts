@@ -2268,3 +2268,64 @@ api.delete("/staff/:id", async (req, res) => {
   await db.query("DELETE FROM staff WHERE id = $1", [id]);
   res.json({ ok: true });
 });
+
+// ===== Склад (материалы: краска, лак и т.п.) — доступно только админу =====
+
+interface InventoryItemBody {
+  telegram_id: number;
+  name: string;
+  unit: string;
+  quantity?: number;
+  min_threshold?: number;
+}
+
+api.get("/staff/inventory-items", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    "SELECT id, name, unit, quantity, min_threshold, updated_at FROM inventory_items ORDER BY name ASC"
+  );
+  res.json(rows.map((r) => ({ ...r, updated_at: toIso(r.updated_at) })));
+});
+
+api.post("/staff/inventory-items", async (req, res) => {
+  const { telegram_id, name, unit, quantity, min_threshold } = req.body as Partial<InventoryItemBody>;
+  if (!telegram_id || !name?.trim() || !unit?.trim()) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const initialQuantity = Number.isFinite(quantity) && quantity! >= 0 ? Math.trunc(quantity!) : 0;
+  const threshold = Number.isFinite(min_threshold) && min_threshold! >= 0 ? Math.trunc(min_threshold!) : 0;
+
+  const { rows } = await db.query(
+    `INSERT INTO inventory_items (name, unit, quantity, min_threshold) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [name.trim(), unit.trim(), initialQuantity, threshold]
+  );
+  const item = rows[0];
+
+  // Начальный остаток тоже фиксируем в истории — иначе в карточке материала
+  // количество как будто "появляется из ниоткуда" без объяснения
+  if (initialQuantity > 0) {
+    await db.query(
+      "INSERT INTO inventory_transactions (item_id, change_amount, reason) VALUES ($1, $2, $3)",
+      [item.id, initialQuantity, "начальный остаток"]
+    );
+  }
+
+  res.status(201).json({ ...item, updated_at: toIso(item.updated_at) });
+});

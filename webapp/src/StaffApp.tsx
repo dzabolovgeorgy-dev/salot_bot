@@ -6,13 +6,14 @@ import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from '
 import { apiFetch } from './apiFetch'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 import AdminManage from './AdminManage'
+import Warehouse from './Warehouse'
 import ClientsPanel from './ClientsPanel'
 import { openPwaExternally } from './telegram'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more'
+type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more' | 'warehouse'
 
 interface MyStats {
   income: number
@@ -962,6 +963,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     profile: 'Профиль',
     myschedule: 'Мой график',
     more: 'Ещё',
+    warehouse: 'Склад',
   }
 
   return (
@@ -1323,6 +1325,9 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
         <section className="staff-more-menu">
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('manage')}>
             ⚙️ Управление
+          </button>
+          <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('warehouse')}>
+            📦 Склад
           </button>
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
@@ -2314,6 +2319,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
 
       {activeTab === 'manage' && <AdminManage telegramId={telegramId} onBack={() => setActiveTab('more')} />}
 
+      {activeTab === 'warehouse' && <Warehouse telegramId={telegramId} onBack={() => setActiveTab('more')} />}
+
       {role === 'master' && (
         <nav className="staff-bottom-nav">
           <button
@@ -2381,7 +2388,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           </button>
           <button
             type="button"
-            className={activeTab === 'more' || activeTab === 'manage' || activeTab === 'block' ? 'active' : ''}
+            className={
+              activeTab === 'more' || activeTab === 'manage' || activeTab === 'block' || activeTab === 'warehouse'
+                ? 'active'
+                : ''
+            }
             onClick={() => setActiveTab('more')}
           >
             <span className="staff-bottom-nav-icon">⚙️</span>

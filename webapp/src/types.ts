@@ -98,6 +98,16 @@ export interface BlockedSlot {
   note: string | null
 }
 
+// Материал на складе (краска, лак и т.п.)
+export interface InventoryItem {
+  id: number
+  name: string
+  unit: string
+  quantity: number
+  min_threshold: number
+  updated_at: string
+}
+
 export interface ClientSummary {
   client_telegram_id: string | number | null
   client_phone: string | null
