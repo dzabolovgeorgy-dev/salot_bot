@@ -288,6 +288,16 @@ export async function initDb(): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS inventory_transactions_item_idx ON inventory_transactions (item_id);
+
+    -- Состав услуги: сколько единиц материала уходит на одно выполнение.
+    -- Когда запись отмечают выполненной, по этой таблице сервер сам
+    -- списывает нужные материалы со склада — вручную ничего вводить не надо
+    CREATE TABLE IF NOT EXISTS service_inventory_items (
+      service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+      quantity_per_use INTEGER NOT NULL CHECK (quantity_per_use > 0),
+      PRIMARY KEY (service_id, item_id)
+    );
   `);
 
   // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
@@ -317,12 +327,14 @@ export async function initDb(): Promise<void> {
     ALTER TABLE master_ratings ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inventory_items ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inventory_transactions ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE service_inventory_items ENABLE ROW LEVEL SECURITY;
 
     REVOKE ALL ON
       masters, services, master_services, bookings, staff, pwa_sessions,
       blocked_slots, master_photos, photo_folders, master_photo_folders,
       inspiration_photos, saved_photos, client_notes, loyalty_points,
-      loyalty_transactions, master_ratings, inventory_items, inventory_transactions
+      loyalty_transactions, master_ratings, inventory_items, inventory_transactions,
+      service_inventory_items
     FROM anon, authenticated;
   `);
 

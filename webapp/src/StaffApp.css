@@ -951,6 +951,12 @@
   width: auto;
 }
 
+.staff-inventory-qty-input {
+  width: 56px;
+  padding: 6px 8px !important;
+  flex-shrink: 0;
+}
+
 .staff-form-actions {
   display: flex;
   gap: 10px;

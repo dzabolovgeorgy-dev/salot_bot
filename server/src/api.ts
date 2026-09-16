@@ -1080,6 +1080,29 @@ interface BookingStatusBody {
   status: "upcoming" | "completed" | "no_show";
 }
 
+// Автосписание расходников при завершении услуги — состав (что и сколько
+// уходит на одно выполнение) настраивается в карточке услуги и хранится в
+// service_inventory_items. Остаток может уйти в минус: это не должно мешать
+// мастеру отметить визит выполненным, а минус в остатке — честный сигнал,
+// что материала реально не хватает, а не повод блокировать работу
+async function writeOffServiceMaterials(serviceId: number, bookingId: number, serviceName: string): Promise<void> {
+  const { rows: recipe } = await db.query(
+    "SELECT item_id, quantity_per_use FROM service_inventory_items WHERE service_id = $1",
+    [serviceId]
+  );
+  for (const { item_id, quantity_per_use } of recipe) {
+    await db.query("UPDATE inventory_items SET quantity = quantity - $1, updated_at = now() WHERE id = $2", [
+      quantity_per_use,
+      item_id,
+    ]);
+    await db.query("INSERT INTO inventory_transactions (item_id, change_amount, reason) VALUES ($1, $2, $3)", [
+      item_id,
+      -quantity_per_use,
+      `Автосписание: ${serviceName}, запись #${bookingId}`,
+    ]);
+  }
+}
+
 api.patch("/staff/bookings/:id/status", async (req, res) => {
   const id = Number(req.params.id);
   const { telegram_id, status } = req.body as Partial<BookingStatusBody>;
@@ -1100,7 +1123,7 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.master_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, m.name AS master_name
+    `SELECT b.master_id, b.service_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, m.name AS master_name
      FROM bookings b JOIN services s ON s.id = b.service_id JOIN masters m ON m.id = b.master_id
      WHERE b.id = $1`,
     [id]
@@ -1108,6 +1131,7 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   const booking = rows[0] as
     | {
         master_id: number;
+        service_id: number;
         client_telegram_id: string | null;
         client_phone: string | null;
         price: number;
@@ -1127,6 +1151,12 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   await db.query("UPDATE bookings SET status = $1 WHERE id = $2", [status, id]);
 
   if (status === "completed") {
+    try {
+      await writeOffServiceMaterials(booking.service_id, id, booking.service_name);
+    } catch (err) {
+      console.warn("Не удалось списать материалы услуги:", err instanceof Error ? err.message : err);
+    }
+
     const clientKey = booking.client_telegram_id ?? booking.client_phone;
     if (clientKey) addClientSpend(clientKey, booking.price);
     // Кэшбэк начисляем только клиентам с Telegram ID — у записей без него
@@ -1977,6 +2007,61 @@ api.put("/services/:id/masters", async (req, res) => {
   await db.query("DELETE FROM master_services WHERE service_id = $1", [serviceId]);
   for (const masterId of master_ids) {
     await db.query("INSERT INTO master_services (master_id, service_id) VALUES ($1, $2)", [masterId, serviceId]);
+  }
+  res.json({ ok: true });
+});
+
+// Состав услуги — какие материалы и сколько списывать при её выполнении
+api.get("/services/:id/inventory-items", async (req, res) => {
+  const serviceId = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!serviceId || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT sii.item_id, sii.quantity_per_use, ii.name, ii.unit
+     FROM service_inventory_items sii
+     JOIN inventory_items ii ON ii.id = sii.item_id
+     WHERE sii.service_id = $1
+     ORDER BY ii.name ASC`,
+    [serviceId]
+  );
+  res.json(rows);
+});
+
+interface ServiceInventoryItemsBody {
+  telegram_id: number;
+  items: { item_id: number; quantity_per_use: number }[];
+}
+
+// Полностью заменяет состав услуги на переданный — так же, как /services/:id/masters
+api.put("/services/:id/inventory-items", async (req, res) => {
+  const serviceId = Number(req.params.id);
+  const { telegram_id, items } = req.body as Partial<ServiceInventoryItemsBody>;
+  if (!serviceId || !telegram_id || !Array.isArray(items)) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  await db.query("DELETE FROM service_inventory_items WHERE service_id = $1", [serviceId]);
+  for (const { item_id, quantity_per_use } of items) {
+    if (!item_id || !Number.isInteger(quantity_per_use) || quantity_per_use <= 0) continue;
+    await db.query(
+      "INSERT INTO service_inventory_items (service_id, item_id, quantity_per_use) VALUES ($1, $2, $3)",
+      [serviceId, item_id, quantity_per_use]
+    );
   }
   res.json({ ok: true });
 });

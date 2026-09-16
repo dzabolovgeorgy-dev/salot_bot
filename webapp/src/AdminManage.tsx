@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Master, Service, InspirationPhoto } from './types'
+import type { Master, Service, InspirationPhoto, InventoryItem } from './types'
 import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
@@ -31,20 +31,23 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   const [services, setServices] = useState<Service[]>([])
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [inspirationPhotos, setInspirationPhotos] = useState<InspirationPhoto[]>([])
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [error, setError] = useState('')
 
   async function loadAll() {
     try {
-      const [mRes, sRes, stRes, iRes] = await Promise.all([
+      const [mRes, sRes, stRes, iRes, invRes] = await Promise.all([
         apiFetch(`${API_URL}/api/masters`),
         apiFetch(`${API_URL}/api/services`),
         apiFetch(`${API_URL}/api/staff?telegram_id=${telegramId}`),
         apiFetch(`${API_URL}/api/inspiration-photos`),
+        apiFetch(`${API_URL}/api/staff/inventory-items?telegram_id=${telegramId}`),
       ])
       setMasters(await mRes.json())
       setServices(await sRes.json())
       setStaff(await stRes.json())
       setInspirationPhotos(await iRes.json())
+      setInventoryItems(await invRes.json())
     } catch {
       setError('Не удалось загрузить данные')
     }
@@ -192,6 +195,9 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   const [serviceForm, setServiceForm] = useState(emptyServiceForm)
   const [serviceMasterIds, setServiceMasterIds] = useState<number[]>([])
   const [serviceSaving, setServiceSaving] = useState(false)
+  // Состав услуги — сколько каждого материала списывать при её выполнении.
+  // Ключ — id материала, значение — количество текстом (пусто = не используется)
+  const [serviceItemQuantities, setServiceItemQuantities] = useState<Record<number, string>>({})
 
   function startEditService(s: Service) {
     setEditingServiceId(s.id)
@@ -202,12 +208,24 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
       requiresAllergyCheck: s.requires_allergy_check,
     })
     setServiceMasterIds(masters.filter((m) => m.service_ids.includes(s.id)).map((m) => m.id))
+    setServiceItemQuantities({})
+    apiFetch(`${API_URL}/api/services/${s.id}/inventory-items?telegram_id=${telegramId}`)
+      .then((r) => r.json())
+      .then((rows: { item_id: number; quantity_per_use: number }[]) => {
+        const map: Record<number, string> = {}
+        rows.forEach((r) => {
+          map[r.item_id] = String(r.quantity_per_use)
+        })
+        setServiceItemQuantities(map)
+      })
+      .catch(() => setServiceItemQuantities({}))
   }
 
   function startNewService() {
     setEditingServiceId(null)
     setServiceForm(emptyServiceForm)
     setServiceMasterIds([])
+    setServiceItemQuantities({})
   }
 
   function toggleServiceMaster(masterId: number) {
@@ -243,6 +261,15 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: telegramId, master_ids: serviceMasterIds }),
+      })
+
+      const items = Object.entries(serviceItemQuantities)
+        .map(([itemId, qty]) => ({ item_id: Number(itemId), quantity_per_use: Number(qty) }))
+        .filter((i) => i.quantity_per_use > 0)
+      await apiFetch(`${API_URL}/api/services/${serviceId}/inventory-items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, items }),
       })
 
       startNewService()
@@ -615,6 +642,30 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
                   {m.name}
                 </label>
               ))}
+            </div>
+            <div className="staff-checkbox-group">
+              <span className="staff-checkbox-label">
+                Расходники на одно выполнение — спишутся сами, когда запись отметят выполненной
+              </span>
+              {inventoryItems.length === 0 ? (
+                <p className="staff-form-hint">Материалов пока нет — добавьте их в разделе «Склад»</p>
+              ) : (
+                inventoryItems.map((item) => (
+                  <label key={item.id} className="staff-checkbox-row">
+                    <input
+                      type="number"
+                      min="0"
+                      className="staff-inventory-qty-input"
+                      value={serviceItemQuantities[item.id] ?? ''}
+                      onChange={(e) =>
+                        setServiceItemQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))
+                      }
+                      placeholder="0"
+                    />
+                    {item.name} ({item.unit})
+                  </label>
+                ))
+              )}
             </div>
             <div className="staff-form-actions">
               <button type="submit" disabled={serviceSaving}>
