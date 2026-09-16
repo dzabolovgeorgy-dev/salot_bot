@@ -265,6 +265,29 @@ export async function initDb(): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS master_ratings_master_idx ON master_ratings (master_id);
+
+    -- Склад — материалы (краска, лак и т.п.) с текущим остатком и порогом,
+    -- ниже которого админу нужно предупреждение, что материал заканчивается
+    CREATE TABLE IF NOT EXISTS inventory_items (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      min_threshold INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    -- История поступлений/списаний по каждому материалу — change_amount
+    -- положительный при поступлении, отрицательный при списании
+    CREATE TABLE IF NOT EXISTS inventory_transactions (
+      id SERIAL PRIMARY KEY,
+      item_id INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+      change_amount INTEGER NOT NULL,
+      reason TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS inventory_transactions_item_idx ON inventory_transactions (item_id);
   `);
 
   // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
@@ -292,12 +315,14 @@ export async function initDb(): Promise<void> {
     ALTER TABLE loyalty_points ENABLE ROW LEVEL SECURITY;
     ALTER TABLE loyalty_transactions ENABLE ROW LEVEL SECURITY;
     ALTER TABLE master_ratings ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE inventory_items ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE inventory_transactions ENABLE ROW LEVEL SECURITY;
 
     REVOKE ALL ON
       masters, services, master_services, bookings, staff, pwa_sessions,
       blocked_slots, master_photos, photo_folders, master_photo_folders,
       inspiration_photos, saved_photos, client_notes, loyalty_points,
-      loyalty_transactions, master_ratings
+      loyalty_transactions, master_ratings, inventory_items, inventory_transactions
     FROM anon, authenticated;
   `);
 
