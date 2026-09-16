@@ -42,6 +42,8 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
   const [history, setHistory] = useState<InventoryTransaction[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  const [lowStockAlert, setLowStockAlert] = useState<string | null>(null)
+
   async function loadItems() {
     setLoading(true)
     setError('')
@@ -110,6 +112,7 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
     setTxAmount('')
     setTxReason('')
     setError('')
+    setLowStockAlert(null)
     loadHistory(item.id)
   }
 
@@ -140,6 +143,14 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
       setTxAmount('')
       setTxReason('')
       loadHistory(data.id)
+
+      // Предупреждаем именно после списания — поступление, наоборот,
+      // может решить проблему, тогда старое предупреждение снимаем
+      if (txDirection === 'out' && data.quantity < data.min_threshold) {
+        setLowStockAlert(`Заканчивается ${data.name}, осталось ${data.quantity} ${data.unit}`)
+      } else {
+        setLowStockAlert(null)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
@@ -163,6 +174,13 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
           {low && <span className="staff-allergy-badge" title="Заканчивается"> ⚠ заканчивается</span>}
         </p>
         <p className="staff-profile-hint">Минимальный порог: {selectedItem.min_threshold} {selectedItem.unit}</p>
+
+        {lowStockAlert && (
+          <div className="staff-note-warning">
+            <span className="staff-note-warning-label">⚠ Уведомление</span>
+            <p>{lowStockAlert}</p>
+          </div>
+        )}
 
         {error && <div className="staff-error">{error}</div>}
 
