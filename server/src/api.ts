@@ -2415,6 +2415,65 @@ api.post("/staff/inventory-items", async (req, res) => {
   res.status(201).json({ ...item, updated_at: toIso(item.updated_at) });
 });
 
+interface InventoryItemUpdateBody {
+  telegram_id: number;
+  name?: string;
+  unit?: string;
+  min_threshold?: number;
+  quantity?: number;
+}
+
+// Исправление ошибок при заполнении: название, единица измерения, порог.
+// Если передано quantity — это прямая коррекция остатка (например, ошиблись
+// при вводе), она тоже попадает в историю отдельной строкой с причиной
+// "коррекция", чтобы в истории не появлялось необъяснимое изменение числа
+api.patch("/staff/inventory-items/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { telegram_id, name, unit, min_threshold, quantity } = req.body as Partial<InventoryItemUpdateBody>;
+  if (!id || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows: existing } = await db.query("SELECT * FROM inventory_items WHERE id = $1", [id]);
+  const current = existing[0];
+  if (!current) {
+    res.status(404).json({ error: "Материал не найден" });
+    return;
+  }
+
+  const newName = typeof name === "string" && name.trim() ? name.trim() : current.name;
+  const newUnit = typeof unit === "string" && unit.trim() ? unit.trim() : current.unit;
+  const newThreshold =
+    Number.isFinite(min_threshold) && min_threshold! >= 0 ? Math.trunc(min_threshold!) : current.min_threshold;
+
+  const { rows } = await db.query(
+    "UPDATE inventory_items SET name = $1, unit = $2, min_threshold = $3, updated_at = now() WHERE id = $4 RETURNING *",
+    [newName, newUnit, newThreshold, id]
+  );
+  const item = rows[0];
+
+  if (Number.isInteger(quantity) && quantity !== current.quantity && quantity! >= 0) {
+    const delta = quantity! - current.quantity;
+    const { rows: corrected } = await db.query(
+      "UPDATE inventory_items SET quantity = $1 WHERE id = $2 RETURNING *",
+      [quantity, id]
+    );
+    await db.query("INSERT INTO inventory_transactions (item_id, change_amount, reason) VALUES ($1, $2, 'коррекция')", [
+      id,
+      delta,
+    ]);
+    Object.assign(item, corrected[0]);
+  }
+
+  res.json({ ...item, updated_at: toIso(item.updated_at) });
+});
+
 interface InventoryTransactionBody {
   telegram_id: number;
   change_amount: number;

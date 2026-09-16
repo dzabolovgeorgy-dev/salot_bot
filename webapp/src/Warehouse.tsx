@@ -44,6 +44,10 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
 
   const [lowStockAlert, setLowStockAlert] = useState<string | null>(null)
 
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState(emptyForm)
+  const [editSaving, setEditSaving] = useState(false)
+
   async function loadItems() {
     setLoading(true)
     setError('')
@@ -113,7 +117,49 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
     setTxReason('')
     setError('')
     setLowStockAlert(null)
+    setEditOpen(false)
     loadHistory(item.id)
+  }
+
+  function startEditItem() {
+    if (!selectedItem) return
+    setEditForm({
+      name: selectedItem.name,
+      unit: selectedItem.unit,
+      quantity: String(selectedItem.quantity),
+      minThreshold: String(selectedItem.min_threshold),
+    })
+    setEditOpen(true)
+  }
+
+  async function submitEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!selectedItem || !editForm.name.trim() || !editForm.unit.trim()) return
+    setEditSaving(true)
+    setError('')
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/inventory-items/${selectedItem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          name: editForm.name.trim(),
+          unit: editForm.unit.trim(),
+          min_threshold: editForm.minThreshold ? Number(editForm.minThreshold) : 0,
+          quantity: editForm.quantity ? Number(editForm.quantity) : 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
+      setSelectedItem(data)
+      setItems((prev) => prev.map((i) => (i.id === data.id ? data : i)))
+      setEditOpen(false)
+      loadHistory(data.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить')
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   async function submitTransaction() {
@@ -165,7 +211,70 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
         <button type="button" className="staff-back-btn" onClick={() => setSelectedItem(null)}>
           ← Склад
         </button>
-        <h3>{selectedItem.name}</h3>
+        <div className="staff-portfolio-header">
+          <h3>{selectedItem.name}</h3>
+          {!editOpen && (
+            <button type="button" className="staff-cancel-btn" onClick={startEditItem}>
+              ✎ Редактировать
+            </button>
+          )}
+        </div>
+
+        {error && <div className="staff-error">{error}</div>}
+
+        {editOpen ? (
+          <form className="staff-admin-form" onSubmit={submitEdit}>
+            <label>
+              Название
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Единица измерения
+              <input
+                type="text"
+                value={editForm.unit}
+                onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Минимальный порог
+              <input
+                type="number"
+                min="0"
+                value={editForm.minThreshold}
+                onChange={(e) => setEditForm({ ...editForm, minThreshold: e.target.value })}
+              />
+            </label>
+            <label>
+              Остаток
+              <input
+                type="number"
+                min="0"
+                value={editForm.quantity}
+                onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+              />
+            </label>
+            <p className="staff-form-hint">
+              Если поменять остаток здесь — это попадёт в историю как «коррекция», отдельно от обычных
+              поступлений и списаний.
+            </p>
+            <div className="staff-form-actions">
+              <button type="submit" disabled={editSaving}>
+                {editSaving ? 'Сохранение…' : 'Сохранить'}
+              </button>
+              <button type="button" className="staff-cancel-btn" onClick={() => setEditOpen(false)}>
+                Отменить
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
         <p className="staff-card-line">
           Остаток:{' '}
           <span className={low ? 'inventory-quantity inventory-quantity--low' : 'inventory-quantity'}>
@@ -181,8 +290,6 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
             <p>{lowStockAlert}</p>
           </div>
         )}
-
-        {error && <div className="staff-error">{error}</div>}
 
         {!txDirection ? (
           <div className="staff-form-actions">
@@ -253,6 +360,8 @@ export default function Warehouse({ telegramId, onBack }: WarehouseProps) {
               </li>
             ))}
           </ul>
+        )}
+          </>
         )}
       </section>
     )
