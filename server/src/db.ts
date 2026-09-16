@@ -267,6 +267,40 @@ export async function initDb(): Promise<void> {
     CREATE INDEX IF NOT EXISTS master_ratings_master_idx ON master_ratings (master_id);
   `);
 
+  // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
+  // для базы (REST API), доступный кому угодно по одному лишь "анонимному"
+  // ключу проекта — этим адресом наше приложение никогда не пользуется (сервер
+  // обращается к базе напрямую под ролью postgres), но Supabase по умолчанию
+  // даёт этому чужому входу полный доступ (читать/менять/даже стирать) ко
+  // всем таблицам, если для них не включена защита на уровне строк (RLS).
+  // Роль postgres (которой мы и пользуемся) владеет таблицами и эту защиту
+  // не замечает — на работу сервера ничего из этого блока не влияет
+  await db.query(`
+    ALTER TABLE masters ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE master_services ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE pwa_sessions ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE blocked_slots ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE master_photos ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE photo_folders ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE master_photo_folders ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE inspiration_photos ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE saved_photos ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE client_notes ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE loyalty_points ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE loyalty_transactions ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE master_ratings ENABLE ROW LEVEL SECURITY;
+
+    REVOKE ALL ON
+      masters, services, master_services, bookings, staff, pwa_sessions,
+      blocked_slots, master_photos, photo_folders, master_photo_folders,
+      inspiration_photos, saved_photos, client_notes, loyalty_points,
+      loyalty_transactions, master_ratings
+    FROM anon, authenticated;
+  `);
+
   // Сотрудникам, добавленным ещё до появления входа по коду, нужно выдать
   // код задним числом — иначе они не смогут войти в PWA-версию
   const { rows: staffWithoutCode } = await db.query<{ id: number }>(
