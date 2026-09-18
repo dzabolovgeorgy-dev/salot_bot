@@ -177,15 +177,14 @@ async function upsertClient(
   );
 }
 
-// Заметка об аллергии или комментарий админа сохранились — обновляем нужный
-// столбец в уже существующей строке клиента. Если строки ещё нет (например
-// заметку сохранили до самой первой записи) — тихо ничего не делаем, при
-// следующей записи строка появится, а заметку можно будет обновить снова
-export async function syncClientExtraField(
-  field: "note" | "comment",
-  clientKey: string,
-  value: string | null
-): Promise<void> {
+// Комментарий админа сохранился — обновляем колонку "Комментарий" в уже
+// существующей строке клиента. Колонка "Аллергии" (G) больше не заполняется —
+// оставлена в таблице как есть, чтобы не сдвигать остальные колонки
+// в уже существующих у пользователя строках. Если строки клиента ещё нет
+// (например, комментарий сохранили до самой первой записи) — тихо ничего
+// не делаем, при следующей записи строка появится, комментарий можно будет
+// сохранить снова
+export async function syncClientComment(clientKey: string, value: string | null): Promise<void> {
   const sheetId = process.env.GOOGLE_SHEET_ID;
   if (!sheetId) return;
 
@@ -197,18 +196,17 @@ export async function syncClientExtraField(
       const rowIndex = rows.findIndex((r, i) => i > 0 && r[5] === clientKey);
       if (rowIndex === -1) return;
 
-      const column = field === "note" ? "G" : "H";
       const sheetRow = rowIndex + 1;
       await sheetsRequest(
         sheetId,
-        `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!${column}${sheetRow}`)}?valueInputOption=USER_ENTERED`,
+        `/values/${encodeURIComponent(`'${CLIENTS_SHEET}'!H${sheetRow}`)}?valueInputOption=USER_ENTERED`,
         {
           method: "PUT",
           body: JSON.stringify({ values: [[value ?? ""]] }),
         }
       );
     } catch (err) {
-      console.warn("Google Sheets: ошибка синхронизации заметки/комментария", err instanceof Error ? err.message : err);
+      console.warn("Google Sheets: ошибка синхронизации комментария", err instanceof Error ? err.message : err);
     }
   });
 }
@@ -221,7 +219,6 @@ export interface SheetBookingRow {
   masterName: string;
   startsAtIso: string;
   price: number;
-  allergyNote?: string | null;
   adminComment?: string | null;
 }
 
@@ -235,6 +232,9 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
     const monthTitle = monthTitleOf(row.startsAtIso);
     const display = formatDisplay(row.startsAtIso);
 
+    // Колонка "Аллергии" оставлена в заголовке и в позиции строки специально —
+    // чтобы не сдвигать "Комментарий" в уже существующих у пользователя
+    // вкладках месяцев. Больше не заполняется, всегда пустая строка
     await ensureSheetExists(sheetId, monthTitle, [
       "Дата", "Имя", "Контакт", "Услуга", "Мастер", "Время", "Цена", "Аллергии", "Комментарий",
     ]);
@@ -250,7 +250,7 @@ export async function appendBookingRow(row: SheetBookingRow): Promise<void> {
             row.masterName,
             timeDisplay(row.startsAtIso),
             row.price,
-            row.allergyNote ?? "",
+            "",
             row.adminComment ?? "",
           ],
         ],

@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import multer from "multer";
 import { db } from "./db.js";
 import { bot } from "./bot.js";
-import { appendBookingRow, addClientSpend, syncClientExtraField, syncInventoryItem } from "./sheets.js";
+import { appendBookingRow, addClientSpend, syncClientComment, syncInventoryItem } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons, ratingButtons, masterBookingActionButtons } from "./bookingScene.js";
@@ -39,20 +39,20 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
-// Заметка об аллергии и комментарий админа на момент создания записи —
-// чтобы сразу были видны в журнале записей в Google Таблице, а не только
-// в «Клиентах». Если у клиента их ещё нет — вернёт пустые значения
-async function getClientExtraFields(
+// Комментарий администратора на момент создания записи — чтобы сразу был
+// виден в журнале записей в Google Таблице, а не только в «Клиентах».
+// Если у клиента его ещё нет — вернёт пустое значение
+async function getClientAdminComment(
   clientTelegramId: number | null,
   clientPhone: string | null
-): Promise<{ note: string | null; adminComment: string | null }> {
+): Promise<string | null> {
   const { rows } = await db.query(
     clientTelegramId
-      ? "SELECT note, admin_comment FROM client_notes WHERE client_telegram_id = $1"
-      : "SELECT note, admin_comment FROM client_notes WHERE client_phone = $1",
+      ? "SELECT admin_comment FROM client_notes WHERE client_telegram_id = $1"
+      : "SELECT admin_comment FROM client_notes WHERE client_phone = $1",
     [clientTelegramId ?? clientPhone]
   );
-  return { note: rows[0]?.note ?? null, adminComment: rows[0]?.admin_comment ?? null };
+  return rows[0]?.admin_comment ?? null;
 }
 
 // Для уведомления мастеру о новой записи — способ связаться с клиентом.
@@ -127,24 +127,6 @@ function rejectIfNotVerified(req: Request, res: Response, claimedId: number): bo
   return true;
 }
 
-// Для эндпоинтов, доступных и клиенту (о себе), и персоналу (о любом клиенте) —
-// заметки о клиенте, где в самом запросе нет отдельного поля "кто спрашивает"
-async function canAccessClientNotes(req: Request, clientTelegramId: number): Promise<boolean> {
-  if (isVerifiedTelegramId(req, clientTelegramId)) return true;
-  if (req.verifiedTelegramId == null) return false;
-  const role = await getRole(req.verifiedTelegramId);
-  return role.role !== "client";
-}
-
-// Заметки клиента без Telegram (записан по телефону) — доступны только
-// персоналу, самого клиента здесь по определению нет
-async function isVerifiedStaff(req: Request): Promise<boolean> {
-  if (req.internalTrusted) return true;
-  if (req.verifiedTelegramId == null) return false;
-  const role = await getRole(req.verifiedTelegramId);
-  return role.role !== "client";
-}
-
 // Проверка, что у мастера нет другой записи или заблокированного времени,
 // пересекающегося по времени — с учётом перерыва между записями (у каждого
 // мастера свой, masters.buffer_minutes): соседние записи должны быть разнесены
@@ -198,9 +180,7 @@ api.get("/masters", async (_req, res) => {
 });
 
 api.get("/services", async (_req, res) => {
-  const { rows } = await db.query(
-    "SELECT id, name, duration_minutes, price, requires_allergy_check FROM services"
-  );
+  const { rows } = await db.query("SELECT id, name, duration_minutes, price FROM services");
   res.json(rows);
 });
 
@@ -531,12 +511,10 @@ api.post("/bookings", async (req, res) => {
     inserted[0].id
   );
 
-  // Заметка об аллергии (если есть) — сразу в уведомлении мастеру, чтобы не
-  // искать её отдельно в «Клиентах» перед визитом
-  const { note, adminComment } = await getClientExtraFields(client_telegram_id, null);
+  const adminComment = await getClientAdminComment(client_telegram_id, null);
   notifyMaster(
     master_id,
-    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`,
+    `📅 Новая запись\n\nКлиент: ${client_name ?? "Клиент"} (${clientContactLine(client_telegram_id, client_username)})\n${service.name}\n${formatRuDateTime(starts_at)}`,
     inserted[0].id
   );
 
@@ -548,7 +526,6 @@ api.post("/bookings", async (req, res) => {
     masterName: master.name,
     startsAtIso: starts_at,
     price: service.price,
-    allergyNote: note,
     adminComment,
   });
 
@@ -661,14 +638,14 @@ api.post("/staff/bookings", async (req, res) => {
       inserted[0].id
     );
   }
-  const { note, adminComment } = await getClientExtraFields(client_telegram_id ?? null, normalizedPhone);
+  const adminComment = await getClientAdminComment(client_telegram_id ?? null, normalizedPhone);
 
   // Если мастер завёл запись сам себе — он и так видит подтверждение в приложении,
   // уведомление в Telegram нужно только когда запись создал кто-то другой (клиент или админ)
   if (role.role !== "master") {
     notifyMaster(
       master_id,
-      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}${note ? `\n⚠️ Аллергия/особенности: ${note}` : ""}`,
+      `📅 Новая запись\n\nКлиент: ${client_name.trim()} (${clientContactLine(client_telegram_id, null, normalizedPhone)})\n${service.name}\n${formatRuDateTime(starts_at)}`,
       inserted[0].id
     );
   }
@@ -681,7 +658,6 @@ api.post("/staff/bookings", async (req, res) => {
     masterName: master.name,
     startsAtIso: starts_at,
     price: service.price,
-    allergyNote: note,
     adminComment,
   });
 
@@ -950,13 +926,10 @@ api.get("/staff/schedule", async (req, res) => {
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
             s.name AS service_name, s.duration_minutes, b.client_name, b.status,
             b.client_telegram_id, b.client_username, b.client_phone,
-            cn.note AS client_note,
             b.reference_photo_id, ip.image_url AS reference_photo_url
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
-     LEFT JOIN client_notes cn ON cn.client_telegram_id = b.client_telegram_id
-       OR (b.client_telegram_id IS NULL AND cn.client_phone = b.client_phone)
      LEFT JOIN inspiration_photos ip ON ip.id = b.reference_photo_id
      WHERE b.starts_at::date = $1::date
        AND ($2::int IS NULL OR b.master_id = $2)
@@ -1889,12 +1862,10 @@ interface ServiceBody {
   name: string;
   duration_minutes: number;
   price: number;
-  requires_allergy_check?: boolean;
 }
 
 api.post("/services", async (req, res) => {
-  const { telegram_id, name, duration_minutes, price, requires_allergy_check } =
-    req.body as Partial<ServiceBody>;
+  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
   if (!telegram_id || !name || !duration_minutes || price === undefined) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -1906,16 +1877,15 @@ api.post("/services", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `INSERT INTO services (name, duration_minutes, price, requires_allergy_check) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [name, duration_minutes, price, requires_allergy_check ?? false]
+    `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING *`,
+    [name, duration_minutes, price]
   );
   res.status(201).json(rows[0]);
 });
 
 api.patch("/services/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { telegram_id, name, duration_minutes, price, requires_allergy_check } =
-    req.body as Partial<ServiceBody>;
+  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
   if (!id || !telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -1930,10 +1900,9 @@ api.patch("/services/:id", async (req, res) => {
     `UPDATE services SET
        name = COALESCE($1, name),
        duration_minutes = COALESCE($2, duration_minutes),
-       price = COALESCE($3, price),
-       requires_allergy_check = COALESCE($4, requires_allergy_check)
-     WHERE id = $5 RETURNING *`,
-    [name ?? null, duration_minutes ?? null, price ?? null, requires_allergy_check ?? null, id]
+       price = COALESCE($3, price)
+     WHERE id = $4 RETURNING *`,
+    [name ?? null, duration_minutes ?? null, price ?? null, id]
   );
   if (!rows[0]) {
     res.status(404).json({ error: "Услуга не найдена" });
@@ -2142,104 +2111,30 @@ api.get("/staff/clients/:clientKey", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
 });
 
-// Заметка о клиенте (аллергии/особенности) — одна на клиента. Читает и пишет
-// и сам клиент (перед записью на услугу с риском), и мастер (после визита)
-api.get("/client-notes/:clientTelegramId", async (req, res) => {
-  const clientTelegramId = Number(req.params.clientTelegramId);
-  if (!clientTelegramId) {
+// Комментарий администратора о клиенте — читает его только сам админ
+// (симметрично PUT /staff/client-comment ниже, тем же доступом)
+api.get("/staff/client-comment", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  const clientTelegramId = req.query.client_telegram_id ? Number(req.query.client_telegram_id) : null;
+  const clientPhone = req.query.client_phone ? normalizePhone(String(req.query.client_phone)) : null;
+  if (!telegramId || (!clientTelegramId && !clientPhone)) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
   }
-  if (!(await canAccessClientNotes(req, clientTelegramId))) {
-    res.status(403).json({ error: "Не удалось подтвердить личность в Telegram" });
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
     return;
   }
 
   const { rows } = await db.query(
-    "SELECT note, admin_comment, updated_at FROM client_notes WHERE client_telegram_id = $1",
-    [clientTelegramId]
+    clientTelegramId
+      ? "SELECT admin_comment, updated_at FROM client_notes WHERE client_telegram_id = $1"
+      : "SELECT admin_comment, updated_at FROM client_notes WHERE client_phone = $1",
+    [clientTelegramId ?? clientPhone]
   );
-  const row = rows[0] as { note: string | null; admin_comment: string | null; updated_at: string } | undefined;
-  res.json(
-    row
-      ? { note: row.note, admin_comment: row.admin_comment, updated_at: toIso(row.updated_at) }
-      : { note: null, admin_comment: null, updated_at: null }
-  );
-});
-
-interface ClientNoteBody {
-  note: string;
-}
-
-api.put("/client-notes/:clientTelegramId", async (req, res) => {
-  const clientTelegramId = Number(req.params.clientTelegramId);
-  const { note } = req.body as Partial<ClientNoteBody>;
-  if (!clientTelegramId || !note) {
-    res.status(400).json({ error: "Не хватает параметров" });
-    return;
-  }
-  if (!(await canAccessClientNotes(req, clientTelegramId))) {
-    res.status(403).json({ error: "Не удалось подтвердить личность в Telegram" });
-    return;
-  }
-
-  const { rows } = await db.query(
-    `INSERT INTO client_notes (client_telegram_id, note, updated_at)
-     VALUES ($1, $2, now())
-     ON CONFLICT (client_telegram_id) DO UPDATE SET note = $2, updated_at = now()
-     RETURNING note, updated_at`,
-    [clientTelegramId, note]
-  );
-  syncClientExtraField("note", String(clientTelegramId), note);
-  res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
-});
-
-// Те же заметки, но для клиентов без Telegram (запись вручную по звонку/WhatsApp) —
-// телефон вместо Telegram ID как ключ
-api.get("/client-notes/by-phone/:phone", async (req, res) => {
-  const phone = normalizePhone(req.params.phone);
-  if (!phone) {
-    res.status(400).json({ error: "Не хватает параметров" });
-    return;
-  }
-  if (!(await isVerifiedStaff(req))) {
-    res.status(403).json({ error: "Доступно только персоналу" });
-    return;
-  }
-
-  const { rows } = await db.query(
-    "SELECT note, admin_comment, updated_at FROM client_notes WHERE client_phone = $1",
-    [phone]
-  );
-  const row = rows[0] as { note: string | null; admin_comment: string | null; updated_at: string } | undefined;
-  res.json(
-    row
-      ? { note: row.note, admin_comment: row.admin_comment, updated_at: toIso(row.updated_at) }
-      : { note: null, admin_comment: null, updated_at: null }
-  );
-});
-
-api.put("/client-notes/by-phone/:phone", async (req, res) => {
-  const phone = normalizePhone(req.params.phone);
-  const { note } = req.body as Partial<ClientNoteBody>;
-  if (!phone || !note) {
-    res.status(400).json({ error: "Не хватает параметров" });
-    return;
-  }
-  if (!(await isVerifiedStaff(req))) {
-    res.status(403).json({ error: "Доступно только персоналу" });
-    return;
-  }
-
-  const { rows } = await db.query(
-    `INSERT INTO client_notes (client_phone, note, updated_at)
-     VALUES ($1, $2, now())
-     ON CONFLICT (client_phone) DO UPDATE SET note = $2, updated_at = now()
-     RETURNING note, updated_at`,
-    [phone, note]
-  );
-  syncClientExtraField("note", phone, note);
-  res.json({ note: rows[0].note, updated_at: toIso(rows[0].updated_at) });
+  const row = rows[0] as { admin_comment: string | null; updated_at: string } | undefined;
+  res.json(row ? { admin_comment: row.admin_comment, updated_at: toIso(row.updated_at) } : { admin_comment: null, updated_at: null });
 });
 
 interface AdminCommentBody {
@@ -2249,8 +2144,7 @@ interface AdminCommentBody {
   comment: string;
 }
 
-// Комментарий администратора о клиенте — отдельно от заметки об аллергии
-// (ту может писать и клиент, и мастер; этот — только админ, для себя)
+// Комментарий администратора о клиенте — пишет и видит только сам админ
 api.put("/staff/client-comment", async (req, res) => {
   const { telegram_id, client_telegram_id, client_phone, comment } = req.body as Partial<AdminCommentBody>;
   if (!telegram_id || rejectIfNotVerified(req, res, telegram_id)) return;
@@ -2284,7 +2178,7 @@ api.put("/staff/client-comment", async (req, res) => {
       ).rows;
 
   const clientKey = client_telegram_id ? String(client_telegram_id) : normalizePhone(client_phone!);
-  syncClientExtraField("comment", clientKey, comment ?? null);
+  syncClientComment(clientKey, comment ?? null);
 
   res.json({ admin_comment: rows[0].admin_comment, updated_at: toIso(rows[0].updated_at) });
 });

@@ -62,7 +62,6 @@ export interface Service {
   name: string
   duration_minutes: number
   price: number
-  requires_allergy_check: boolean
 }
 
 export interface Booking {
@@ -77,16 +76,10 @@ export interface Booking {
   client_name?: string | null
   status?: 'upcoming' | 'completed' | 'no_show'
   client_telegram_id?: string | number | null
-  client_note?: string | null
   client_username?: string | null
   client_phone?: string | null
   reference_photo_id?: number | null
   reference_photo_url?: string | null
-}
-
-export interface ClientNote {
-  note: string | null
-  updated_at: string | null
 }
 
 export interface BlockedSlot {

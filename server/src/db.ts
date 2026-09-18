@@ -71,11 +71,10 @@ export async function initDb(): Promise<void> {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       duration_minutes INTEGER NOT NULL,
-      price INTEGER NOT NULL,
-      requires_allergy_check BOOLEAN NOT NULL DEFAULT false
+      price INTEGER NOT NULL
     );
 
-    ALTER TABLE services ADD COLUMN IF NOT EXISTS requires_allergy_check BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE services DROP COLUMN IF EXISTS requires_allergy_check;
 
     CREATE TABLE IF NOT EXISTS master_services (
       master_id INTEGER NOT NULL REFERENCES masters(id),
@@ -216,7 +215,6 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS client_notes (
       id SERIAL PRIMARY KEY,
       client_telegram_id BIGINT UNIQUE,
-      note TEXT,
       updated_at TIMESTAMP NOT NULL DEFAULT now(),
       client_phone TEXT,
       admin_comment TEXT
@@ -224,8 +222,8 @@ export async function initDb(): Promise<void> {
 
     ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS client_phone TEXT;
     ALTER TABLE client_notes ALTER COLUMN client_telegram_id DROP NOT NULL;
-    ALTER TABLE client_notes ALTER COLUMN note DROP NOT NULL;
     ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS admin_comment TEXT;
+    ALTER TABLE client_notes DROP COLUMN IF EXISTS note;
     CREATE UNIQUE INDEX IF NOT EXISTS client_notes_phone_key ON client_notes (client_phone);
 
     CREATE TABLE IF NOT EXISTS loyalty_points (
@@ -377,7 +375,7 @@ export async function initDb(): Promise<void> {
     ["Стрижка", 30, 15]
   );
   const color = await db.query(
-    `INSERT INTO services (name, duration_minutes, price, requires_allergy_check) VALUES ($1, $2, $3, true) RETURNING id`,
+    `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING id`,
     ["Окрашивание", 120, 45]
   );
   const manicure = await db.query(

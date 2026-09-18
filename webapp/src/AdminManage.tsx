@@ -23,7 +23,7 @@ interface AdminManageProps {
 }
 
 const emptyMasterForm = { name: '', bio: '', experience_years: '', photo_url: '', accessTelegramId: '' }
-const emptyServiceForm = { name: '', duration_minutes: '', price: '', requiresAllergyCheck: false }
+const emptyServiceForm = { name: '', duration_minutes: '', price: '' }
 
 export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   const [section, setSection] = useState<Section>('menu')
@@ -205,7 +205,6 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
       name: s.name,
       duration_minutes: s.duration_minutes.toString(),
       price: s.price.toString(),
-      requiresAllergyCheck: s.requires_allergy_check,
     })
     setServiceMasterIds(masters.filter((m) => m.service_ids.includes(s.id)).map((m) => m.id))
     setServiceItemQuantities({})
@@ -243,7 +242,6 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
         name: serviceForm.name,
         duration_minutes: Number(serviceForm.duration_minutes),
         price: Number(serviceForm.price),
-        requires_allergy_check: serviceForm.requiresAllergyCheck,
       }
       const res = await apiFetch(
         editingServiceId ? `${API_URL}/api/services/${editingServiceId}` : `${API_URL}/api/services`,
@@ -575,7 +573,6 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
               <li key={s.id} className="staff-list-item staff-list-item--clickable" onClick={() => startEditService(s)}>
                 <span className="staff-list-body">
                   {s.name} — {s.duration_minutes} мин, {s.price} €
-                  {s.requires_allergy_check && <span className="staff-client-meta">⚠ проверка на аллергию</span>}
                 </span>
                 <button
                   type="button"
@@ -621,14 +618,6 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
                 onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
                 required
               />
-            </label>
-            <label className="staff-checkbox-row">
-              <input
-                type="checkbox"
-                checked={serviceForm.requiresAllergyCheck}
-                onChange={(e) => setServiceForm({ ...serviceForm, requiresAllergyCheck: e.target.checked })}
-              />
-              Требует проверки на аллергию
             </label>
             <div className="staff-checkbox-group">
               <span className="staff-checkbox-label">Кто делает эту услугу</span>

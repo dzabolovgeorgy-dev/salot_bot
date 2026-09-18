@@ -99,7 +99,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   function setActiveTab(tab: StaffTab) {
     setActiveTabRaw(tab)
     setSelectedBooking(null)
-    setNotePromptBooking(null)
   }
   const [date, setDate] = useState(todayKey())
   const [masters, setMasters] = useState<Master[]>([])
@@ -167,7 +166,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [newBookingContact, setNewBookingContact] = useState<'phone' | 'telegram'>('phone')
   const [newBookingPhone, setNewBookingPhone] = useState('')
   const [newBookingTelegramId, setNewBookingTelegramId] = useState('')
-  const [newBookingNote, setNewBookingNote] = useState('')
   const [newBookingSaving, setNewBookingSaving] = useState(false)
   const [whatsappConfirmLink, setWhatsappConfirmLink] = useState<{ url: string; clientName: string } | null>(null)
 
@@ -211,26 +209,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       : newBookingConflict
         ? 'Это время уже занято, выберите другое'
         : null
-
-  // Услуга с риском аллергии — подтягиваем существующую заметку о клиенте,
-  // если она уже есть (чтобы админ не перезаписал её вслепую)
-  async function checkExistingNoteForNewBooking() {
-    if (!newBookingService?.requires_allergy_check) return
-    const url =
-      newBookingContact === 'telegram' && newBookingTelegramId.trim()
-        ? `${API_URL}/api/client-notes/${newBookingTelegramId.trim()}`
-        : newBookingContact === 'phone' && newBookingPhone.trim()
-          ? `${API_URL}/api/client-notes/by-phone/${encodeURIComponent(newBookingPhone.trim())}`
-          : null
-    if (!url) return
-    try {
-      const res = await apiFetch(url)
-      const data = await res.json()
-      if (data.note) setNewBookingNote(data.note)
-    } catch {
-      // тихо — необязательное удобство, не мешает записи
-    }
-  }
 
   useEffect(() => {
     apiFetch(`${API_URL}/api/masters`)
@@ -740,10 +718,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, telegramId])
 
-  const [notePromptBooking, setNotePromptBooking] = useState<Booking | null>(null)
-  const [noteText, setNoteText] = useState('')
-  const [noteSaving, setNoteSaving] = useState(false)
-
   async function setBookingStatus(bookingId: number, status: 'completed' | 'no_show') {
     setStatusSaving(true)
     setError('')
@@ -756,53 +730,12 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
       await Promise.all([loadToday(), loadWeek()])
-
-      // После "Выполнена" — предложить добавить/обновить заметку о клиенте.
-      // Заметка уже пришла вместе с записью (client_note) — отдельный запрос не нужен
-      if (status === 'completed' && (selectedBooking?.client_telegram_id || selectedBooking?.client_phone)) {
-        const booking = selectedBooking
-        setSelectedBooking(null)
-        setNotePromptBooking(booking)
-        setNoteText(booking.client_note ?? '')
-      } else {
-        setSelectedBooking(null)
-      }
+      setSelectedBooking(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
       setStatusSaving(false)
     }
-  }
-
-  async function saveNote() {
-    const booking = notePromptBooking
-    if (!booking?.client_telegram_id && !booking?.client_phone) return
-    if (!noteText.trim()) {
-      setNotePromptBooking(null)
-      return
-    }
-    setNoteSaving(true)
-    setError('')
-    try {
-      const url = booking.client_telegram_id
-        ? `${API_URL}/api/client-notes/${booking.client_telegram_id}`
-        : `${API_URL}/api/client-notes/by-phone/${booking.client_phone}`
-      const res = await apiFetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: noteText.trim() }),
-      })
-      if (!res.ok) throw new Error('Не удалось сохранить заметку')
-      setNotePromptBooking(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось сохранить заметку')
-    } finally {
-      setNoteSaving(false)
-    }
-  }
-
-  function skipNote() {
-    setNotePromptBooking(null)
   }
 
   async function submitBlock(e: FormEvent) {
@@ -864,18 +797,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить')
 
-      if (newBookingNote.trim()) {
-        const noteUrl =
-          newBookingContact === 'telegram'
-            ? `${API_URL}/api/client-notes/${newBookingTelegramId.trim()}`
-            : `${API_URL}/api/client-notes/by-phone/${encodeURIComponent(newBookingPhone.trim())}`
-        apiFetch(noteUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: newBookingNote.trim() }),
-        }).catch(() => {})
-      }
-
       if (newBookingContact === 'phone') {
         const masterName = masters.find((m) => m.id === newBookingMasterId)?.name ?? ''
         const message = `Здравствуйте, ${newBookingClientName.trim()}! Вы записаны в салон: ${newBookingService?.name ?? ''}, ${formatSelectedDate(date)} в ${newBookingTime}, мастер ${masterName}. Ждём вас!`
@@ -895,7 +816,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       setNewBookingPhone('')
       setNewBookingTelegramId('')
       setNewBookingContact('phone')
-      setNewBookingNote('')
       await loadSchedule()
       if (role === 'master') {
         loadToday()
@@ -1034,7 +954,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                   <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                   <span className="staff-list-body">
                     {b.client_name ?? 'Клиент'} — {b.service_name}
-                    {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠</span>}
                   </span>
                 </li>
               ))}
@@ -1159,7 +1078,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                     type="tel"
                     value={newBookingPhone}
                     onChange={(e) => setNewBookingPhone(e.target.value)}
-                    onBlur={checkExistingNoteForNewBooking}
                     placeholder="+7 999 123-45-67"
                     required
                   />
@@ -1171,21 +1089,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                     type="number"
                     value={newBookingTelegramId}
                     onChange={(e) => setNewBookingTelegramId(e.target.value)}
-                    onBlur={checkExistingNoteForNewBooking}
                     placeholder="Узнать можно через @userinfobot"
                     required
-                  />
-                </label>
-              )}
-              {newBookingService?.requires_allergy_check && (
-                <label>
-                  Заметка о клиенте (аллергии/особенности) — необязательно
-                  <textarea
-                    className="staff-note-textarea"
-                    value={newBookingNote}
-                    onChange={(e) => setNewBookingNote(e.target.value)}
-                    placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
-                    rows={3}
                   />
                 </label>
               )}
@@ -1282,7 +1187,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                   <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                   <span className="staff-list-body">
                     {b.client_name ?? 'Клиент'} — {b.service_name} · {b.master_name}
-                    {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠</span>}
                   </span>
                 </li>
               ))}
@@ -1291,7 +1195,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
         </section>
       )}
 
-      {role === 'master' && (activeTab === 'today' || activeTab === 'week') && !selectedBooking && !notePromptBooking && (
+      {role === 'master' && (activeTab === 'today' || activeTab === 'week') && !selectedBooking && (
         <div className="staff-mode-toggle staff-schedule-toggle">
           <button type="button" className={activeTab === 'today' ? 'active' : ''} onClick={() => setActiveTab('today')}>
             Сегодня
@@ -1343,7 +1247,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
         </section>
       )}
 
-      {activeTab === 'today' && !selectedBooking && !notePromptBooking && (
+      {activeTab === 'today' && !selectedBooking && (
         <section className="staff-schedule">
           {todayLoading ? (
             <p className="staff-empty">Загрузка…</p>
@@ -1356,7 +1260,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                   <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                   <span className="staff-list-body">
                     {b.client_name ?? 'Клиент'} — {b.service_name}
-                    {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠ есть заметка</span>}
                     {b.status === 'completed' && <span className="staff-status staff-status--done"> ✓ выполнено</span>}
                     {b.status === 'no_show' && <span className="staff-status staff-status--no-show"> ✕ не пришёл</span>}
                   </span>
@@ -1405,12 +1308,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
               Написать клиенту нельзя — нет контакта в Telegram
             </p>
           )}
-          {selectedBooking.client_note && (
-            <div className="staff-note-warning">
-              <span className="staff-note-warning-label">⚠ Заметка о клиенте</span>
-              <p>{selectedBooking.client_note}</p>
-            </div>
-          )}
           {selectedBooking.status !== 'upcoming' && (
             <p className="staff-card-line">
               Статус: {selectedBooking.status === 'completed' ? 'Выполнено' : 'Клиент не пришёл'}
@@ -1437,28 +1334,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
         </section>
       )}
 
-      {(activeTab === 'today' || activeTab === 'week') && notePromptBooking && (
-        <section className="staff-booking-card">
-          <h2>Добавить заметку о клиенте?</h2>
-          <p className="staff-card-line">{notePromptBooking.client_name ?? 'Клиент'} — необязательно</p>
-          <textarea
-            className="staff-note-textarea"
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
-            rows={4}
-          />
-          <div className="staff-card-actions">
-            <button type="button" className="staff-card-done" disabled={noteSaving} onClick={saveNote}>
-              {noteSaving ? 'Сохранение…' : 'Сохранить'}
-            </button>
-            <button type="button" className="staff-card-no-show" disabled={noteSaving} onClick={skipNote}>
-              Пропустить
-            </button>
-          </div>
-        </section>
-      )}
-
       {activeTab === 'week' && (
         <section className="staff-week">
           <div className="staff-week-nav">
@@ -1471,7 +1346,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           </div>
           {weekLoading ? (
             <p className="staff-empty">Загрузка…</p>
-          ) : selectedBooking || notePromptBooking ? null : (
+          ) : selectedBooking ? null : (
             weekDates(weekOffset).map((d) => {
               const key = dateKeyOf(d)
               const items = weekData[key] ?? []
@@ -1491,7 +1366,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                           <span className="staff-list-time">{formatTime(b.starts_at)}</span>
                           <span className="staff-list-body">
                             {b.client_name ?? 'Клиент'} — {b.service_name}
-                            {b.client_note && <span className="staff-allergy-badge" title={b.client_note}> ⚠</span>}
                             {b.status === 'completed' && <span className="staff-status staff-status--done"> ✓</span>}
                             {b.status === 'no_show' && <span className="staff-status staff-status--no-show"> ✕</span>}
                           </span>
@@ -1723,7 +1597,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                     type="tel"
                     value={newBookingPhone}
                     onChange={(e) => setNewBookingPhone(e.target.value)}
-                    onBlur={checkExistingNoteForNewBooking}
                     placeholder="+7 999 123-45-67"
                     required
                   />
@@ -1735,21 +1608,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                     type="number"
                     value={newBookingTelegramId}
                     onChange={(e) => setNewBookingTelegramId(e.target.value)}
-                    onBlur={checkExistingNoteForNewBooking}
                     placeholder="Узнать можно через @userinfobot"
                     required
-                  />
-                </label>
-              )}
-              {newBookingService?.requires_allergy_check && (
-                <label>
-                  Заметка о клиенте (аллергии/особенности) — необязательно
-                  <textarea
-                    className="staff-note-textarea"
-                    value={newBookingNote}
-                    onChange={(e) => setNewBookingNote(e.target.value)}
-                    placeholder="Например: аллергия на аммиак, чувствительная кожа головы…"
-                    rows={3}
                   />
                 </label>
               )}
