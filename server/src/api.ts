@@ -12,11 +12,13 @@ import { toIso, formatRuDateTime } from "./format.js";
 import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem, getLoyaltyHistory } from "./loyalty.js";
 import {
   assignAccessCode,
-  findStaffByAccessCode,
+  createLoginCode,
+  consumeLoginCode,
   createPwaSession,
   deletePwaSession,
   PWA_SESSION_HEADER,
 } from "./pwaAuth.js";
+import { secondsUntilUnblocked, recordFailure, recordSuccess } from "./loginRateLimit.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
 // Storage. Современные телефоны (особенно iPhone) снимают фото по 10-15 МБ
@@ -842,49 +844,58 @@ api.get("/me", async (req, res) => {
   res.json(await getRole(telegramId));
 });
 
-// Код для входа в PWA-версию — показывается самому сотруднику в его же
-// разделе "Ещё"/"Профиль", поэтому claimedId здесь — это он сам
-api.get("/staff/access-code", async (req, res) => {
-  const telegramId = Number(req.query.telegram_id);
-  if (!telegramId) {
-    res.status(400).json({ error: "Не хватает telegram_id" });
+// Сотрудник запрашивает одноразовый код для входа в PWA — из приложения в
+// Telegram или из уже открытой PWA (например, чтобы войти на втором телефоне).
+// Личность здесь подтверждена подписью Telegram или действующей сессией,
+// поэтому код получит только тот, кто уже вошёл, и только для самого себя
+api.post("/pwa/login-code", async (req, res) => {
+  const telegramId = req.verifiedTelegramId;
+  if (telegramId == null) {
+    res.status(401).json({ error: "Не удалось подтвердить личность" });
     return;
   }
-  if (rejectIfNotVerified(req, res, telegramId)) return;
-
-  const { rows } = await db.query<{ access_code: string | null }>(
-    "SELECT access_code FROM staff WHERE telegram_id = $1",
-    [telegramId]
-  );
-  if (!rows[0]) {
-    res.status(404).json({ error: "Сотрудник не найден" });
+  const role = await getRole(telegramId);
+  if (role.role === "client") {
+    res.status(403).json({ error: "Доступно только персоналу" });
     return;
   }
-  res.json({ access_code: rows[0].access_code });
+  const { code, expiresAt } = await createLoginCode(telegramId);
+  res.json({ code, expires_at: expiresAt.toISOString() });
 });
 
-// Вход в PWA-версию по короткому коду — без Telegram. Специально не проверяет
-// verifiedTelegramId (его тут и не может быть): именно этот код и заменяет
-// подтверждение личности
+// Вход в PWA-версию по одноразовому коду — без Telegram. Специально не
+// проверяет verifiedTelegramId (его тут и не может быть): именно этот код и
+// заменяет подтверждение личности. Код сгорает при первом же использовании,
+// а число неудачных попыток с одного адреса ограничено
 api.post("/pwa/login", async (req, res) => {
-  const { code } = req.body as { code?: string };
-  if (!code || !code.trim()) {
+  const { code } = req.body as { code?: unknown };
+  if (typeof code !== "string" || !code.trim() || code.length > 32) {
     res.status(400).json({ error: "Введите код" });
     return;
   }
 
-  const staff = await findStaffByAccessCode(code);
-  if (!staff) {
-    res.status(404).json({ error: "Код не найден, проверьте правильность" });
+  const ip = req.ip ?? "unknown";
+  const waitSeconds = secondsUntilUnblocked(ip);
+  if (waitSeconds > 0) {
+    res.status(429).json({ error: `Слишком много неверных попыток. Подождите ${Math.ceil(waitSeconds / 60)} мин.` });
     return;
   }
+
+  const telegramId = await consumeLoginCode(code);
+  const role = telegramId != null ? await getRole(telegramId) : null;
+  if (telegramId == null || !role || role.role === "client") {
+    recordFailure(ip);
+    res.status(404).json({ error: "Код не найден, устарел или уже использован" });
+    return;
+  }
+  recordSuccess(ip);
 
   // Токен возвращаем в теле ответа — сохранить его должен сам клиент
   // (в localStorage, см. webapp/src/staffSession.ts) и присылать дальше
   // заголовком X-Staff-Session. httpOnly cookie раньше не запоминалась на
   // iPhone в установленном на экран приложении между запусками
-  const { token } = await createPwaSession(staff.telegram_id);
-  res.json({ ...(await getRole(staff.telegram_id)), telegram_id: staff.telegram_id, session_token: token });
+  const { token } = await createPwaSession(telegramId);
+  res.json({ ...role, telegram_id: telegramId, session_token: token });
 });
 
 // Проверка сессии при открытии PWA — attachTelegramIdentity уже разобрал

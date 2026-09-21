@@ -66,6 +66,13 @@
   font-size: 0.9rem;
 }
 
+.pwa-login-hint {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+  color: var(--text);
+  text-align: center;
+}
+
 .pwa-login-input {
   width: 100%;
   box-sizing: border-box;

@@ -18,23 +18,11 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Переход по кнопке "Установить приложение" из Telegram помечен ?install=1,
-  // а сам код передан прямо в ссылке (?code=...) — здесь код вводить незачем,
-  // показываем его для копирования вместе с инструкцией по установке.
-  // Тот же код нужно будет ввести один раз — уже на самом значке на домашнем
-  // экране при первом открытии
+  // Переход по кнопке "Установить приложение" из Telegram помечен ?install=1 —
+  // здесь входить незачем, показываем инструкцию по установке. Одноразовый код
+  // для входа сотрудник получает отдельно, в самом приложении Telegram
   const params = new URLSearchParams(window.location.search)
   const [showLoginForm, setShowLoginForm] = useState(() => params.get('install') !== '1')
-  const installCode = params.get('code')
-  const [installCodeCopied, setInstallCodeCopied] = useState(false)
-
-  function copyInstallCode() {
-    if (!installCode) return
-    navigator.clipboard.writeText(installCode).then(() => {
-      setInstallCodeCopied(true)
-      setTimeout(() => setInstallCodeCopied(false), 1500)
-    })
-  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -73,6 +61,9 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
         {showLoginForm ? (
           <>
             <p className="pwa-login-subtitle">Вход для мастеров и администраторов</p>
+            <p className="pwa-login-hint">
+              Одноразовый код — в приложении Telegram: Ещё → Вход на телефоне. Он действует 10 минут.
+            </p>
             <form onSubmit={handleSubmit}>
               <input
                 type="text"
@@ -83,7 +74,7 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
                 placeholder="Код доступа"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                maxLength={6}
+                maxLength={8}
               />
               {error && <p className="pwa-login-error">{error}</p>}
               <button type="submit" className="pwa-login-submit" disabled={loading || !code.trim()}>
@@ -93,15 +84,10 @@ export default function PwaLogin({ onSuccess }: PwaLoginProps) {
           </>
         ) : (
           <>
-            <p className="pwa-login-subtitle">Скопируйте код — он понадобится при первом открытии приложения</p>
-            {installCode && (
-              <div className="pwa-install-code">
-                <span className="pwa-install-code-value">{installCode}</span>
-                <button type="button" className="pwa-install-code-copy" onClick={copyInstallCode}>
-                  {installCodeCopied ? 'Скопировано' : 'Скопировать'}
-                </button>
-              </div>
-            )}
+            <p className="pwa-login-subtitle">
+              Добавьте приложение на домашний экран, затем откройте его и введите одноразовый код из Telegram
+              (Ещё → Вход на телефоне)
+            </p>
           </>
         )}
         <InstallPrompt />

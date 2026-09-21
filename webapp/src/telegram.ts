@@ -34,14 +34,11 @@ export function getInitData(): string {
 // между разными адресами, а сервер и PWA теперь на одном).
 //
 // ?install=1 — метка "это переход ради установки, а не ради входа": на этом
-// экране сразу видны код и инструкция по установке, без формы входа —
-// сам код передаём тут же в ссылке (?code=...), чтобы не спрашивать его
-// заново на телефоне — а спросит его уже сам значок на домашнем экране
-// при первом открытии, туда этот код и нужно будет ввести
-export function openPwaExternally(code?: string | null): void {
+// экране сразу видна инструкция по установке, без формы входа. Сам код в
+// ссылку не кладём — он одноразовый и показывается в приложении Telegram
+export function openPwaExternally(): void {
   const base = (import.meta.env.VITE_API_URL as string | undefined) || window.location.origin
   const params = new URLSearchParams({ install: '1' })
-  if (code) params.set('code', code)
   const pwaUrl = `${base.replace(/\/$/, '')}/?${params.toString()}`
   const webApp = (window as any).Telegram?.WebApp
   if (webApp?.openLink) {

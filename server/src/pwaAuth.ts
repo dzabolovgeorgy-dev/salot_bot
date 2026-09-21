@@ -51,6 +51,49 @@ export async function findStaffByAccessCode(code: string): Promise<StaffByCode |
   return { telegram_id: Number(rows[0].telegram_id) };
 }
 
+// Одноразовый код входа: живёт 10 минут (хватает, чтобы открыть сайт, добавить
+// его на домашний экран и ввести код) и сгорает при первом же использовании.
+// 8 символов из 32 — около 1,1 триллиона вариантов, а перебор к тому же
+// ограничен по числу попыток (см. loginRateLimit.ts)
+const LOGIN_CODE_LIFETIME_MS = 10 * 60 * 1000;
+const LOGIN_CODE_LENGTH = 8;
+
+function hashLoginCode(code: string): string {
+  return crypto.createHash("sha256").update(code.trim().toUpperCase()).digest("hex");
+}
+
+// У человека всегда только один действующий код — новый заменяет прежний
+export async function createLoginCode(telegramId: number): Promise<{ code: string; expiresAt: Date }> {
+  const expiresAt = new Date(Date.now() + LOGIN_CODE_LIFETIME_MS);
+  await db.query("DELETE FROM pwa_login_codes WHERE telegram_id = $1 OR expires_at < now()", [telegramId]);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateAccessCode(LOGIN_CODE_LENGTH);
+    try {
+      await db.query("INSERT INTO pwa_login_codes (code_hash, telegram_id, expires_at) VALUES ($1, $2, $3)", [
+        hashLoginCode(code),
+        telegramId,
+        expiresAt,
+      ]);
+      return { code, expiresAt };
+    } catch {
+      // такой отпечаток уже есть — почти невозможно, пробуем другой код
+    }
+  }
+  throw new Error("Не удалось создать код входа");
+}
+
+// Проверка и погашение одним запросом: удаление и чтение id происходят вместе,
+// поэтому один и тот же код не может сработать дважды, даже если его отправят
+// одновременно двумя запросами
+export async function consumeLoginCode(code: string): Promise<number | null> {
+  if (!code) return null;
+  const { rows } = await db.query<{ telegram_id: string }>(
+    "DELETE FROM pwa_login_codes WHERE code_hash = $1 AND expires_at > now() RETURNING telegram_id",
+    [hashLoginCode(code)]
+  );
+  return rows[0] ? Number(rows[0].telegram_id) : null;
+}
+
 // Создаёт новую сессию (случайный непредсказуемый токен) и возвращает его —
 // вернуть его клиенту (чтобы сохранил в localStorage) должен вызывающий код
 export async function createPwaSession(telegramId: number): Promise<{ token: string; expiresAt: Date }> {
