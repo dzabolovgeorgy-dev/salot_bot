@@ -8,12 +8,12 @@ import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells }
 import AdminManage from './AdminManage'
 import Warehouse from './Warehouse'
 import ClientsPanel from './ClientsPanel'
-import { openPwaExternally } from './telegram'
+import PwaAccess from './PwaAccess'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more' | 'warehouse'
+type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more' | 'warehouse' | 'pwa'
 
 interface MyStats {
   income: number
@@ -91,7 +91,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [myStats, setMyStats] = useState<MyStats | null>(null)
   const [salonStats, setSalonStats] = useState<MyStats | null>(null)
   const [inspirationStats, setInspirationStats] = useState<InspirationStat[]>([])
-  const [accessCode, setAccessCode] = useState<string | null>(null)
 
   // Карточка открытой записи (selectedBooking) общая для «Мой день» и «Неделя» —
   // без сброса при переключении вкладки она "зависала" бы поверх другой вкладки,
@@ -220,13 +219,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
       .then(setServices)
       .catch(() => {})
   }, [])
-
-  useEffect(() => {
-    apiFetch(`${API_URL}/api/staff/access-code?telegram_id=${telegramId}`)
-      .then((r) => r.json())
-      .then((data: { access_code: string | null }) => setAccessCode(data.access_code))
-      .catch(() => {})
-  }, [telegramId])
 
   const myMaster = role === 'master' ? masters.find((m) => m.id === masterId) : undefined
 
@@ -884,6 +876,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     myschedule: 'Мой график',
     more: 'Ещё',
     warehouse: 'Склад',
+    pwa: 'Вход на телефоне',
   }
 
   return (
@@ -1214,8 +1207,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
           </button>
-          <button type="button" className="staff-more-menu-item" onClick={() => openPwaExternally(accessCode)}>
-            📲 Установить приложение на телефон
+          <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('pwa')}>
+            📲 Вход на телефоне
           </button>
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
@@ -1236,14 +1229,23 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('block')}>
             🚫 Заблокировать время
           </button>
-          <button type="button" className="staff-more-menu-item" onClick={() => openPwaExternally(accessCode)}>
-            📲 Установить приложение на телефон
+          <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('pwa')}>
+            📲 Вход на телефоне
           </button>
           {onLogout && (
             <button type="button" className="staff-more-menu-item staff-logout-item" onClick={onLogout}>
               🚪 Выйти
             </button>
           )}
+        </section>
+      )}
+
+      {activeTab === 'pwa' && (
+        <section className="staff-block-form">
+          <button type="button" className="staff-back-btn" onClick={() => setActiveTab('more')}>
+            ← Ещё
+          </button>
+          <PwaAccess />
         </section>
       )}
 
@@ -2211,7 +2213,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           </button>
           <button
             type="button"
-            className={activeTab === 'more' || activeTab === 'myschedule' || activeTab === 'block' ? 'active' : ''}
+            className={activeTab === 'more' || activeTab === 'myschedule' || activeTab === 'block' || activeTab === 'pwa' ? 'active' : ''}
             onClick={() => setActiveTab('more')}
           >
             <span className="staff-bottom-nav-icon">⚙️</span>
@@ -2249,7 +2251,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button
             type="button"
             className={
-              activeTab === 'more' || activeTab === 'manage' || activeTab === 'block' || activeTab === 'warehouse'
+              activeTab === 'more' || activeTab === 'manage' || activeTab === 'block' || activeTab === 'warehouse' || activeTab === 'pwa'
                 ? 'active'
                 : ''
             }

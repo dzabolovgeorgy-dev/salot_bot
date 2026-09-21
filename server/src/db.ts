@@ -134,6 +134,17 @@ export async function initDb(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS pwa_sessions_expires_idx ON pwa_sessions (expires_at);
 
+    -- Одноразовые коды входа в PWA: сотрудник получает код в приложении Telegram
+    -- (личность подтверждена подписью), вводит его в PWA, и код сразу удаляется.
+    -- В базе лежит не сам код, а его отпечаток (sha256), и живёт он недолго
+    CREATE TABLE IF NOT EXISTS pwa_login_codes (
+      code_hash TEXT PRIMARY KEY,
+      telegram_id BIGINT NOT NULL,
+      expires_at TIMESTAMP NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS pwa_login_codes_telegram_idx ON pwa_login_codes (telegram_id);
+
     CREATE TABLE IF NOT EXISTS blocked_slots (
       id SERIAL PRIMARY KEY,
       master_id INTEGER NOT NULL REFERENCES masters(id),
@@ -313,6 +324,7 @@ export async function initDb(): Promise<void> {
     ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
     ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
     ALTER TABLE pwa_sessions ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE pwa_login_codes ENABLE ROW LEVEL SECURITY;
     ALTER TABLE blocked_slots ENABLE ROW LEVEL SECURITY;
     ALTER TABLE master_photos ENABLE ROW LEVEL SECURITY;
     ALTER TABLE photo_folders ENABLE ROW LEVEL SECURITY;
@@ -328,7 +340,7 @@ export async function initDb(): Promise<void> {
     ALTER TABLE service_inventory_items ENABLE ROW LEVEL SECURITY;
 
     REVOKE ALL ON
-      masters, services, master_services, bookings, staff, pwa_sessions,
+      masters, services, master_services, bookings, staff, pwa_sessions, pwa_login_codes,
       blocked_slots, master_photos, photo_folders, master_photo_folders,
       inspiration_photos, saved_photos, client_notes, loyalty_points,
       loyalty_transactions, master_ratings, inventory_items, inventory_transactions,
