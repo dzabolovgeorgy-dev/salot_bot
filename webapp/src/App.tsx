@@ -38,10 +38,11 @@ import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from '
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 // Нижняя навигация сокращена до 3 разделов: "Записаться" объединяет в себе
-// бывшие Услуги + Мастера + Вдохновение (см. BookSubTab ниже), "Главная" как
-// отдельная вкладка убрана — её место занял стартовый экран-приветствие
-// (показывается один раз при открытии, см. showWelcome), а карта лояльности
-// и "Сохранённое" переехали в "Профиль"
+// бывшие Услуги + Мастера + Вдохновение (см. BookSubTab ниже). "Главная" как
+// отдельная вкладка нижней навигации убрана, но её содержимое (карта
+// лояльности, "Сохранённое", статус ближайшей записи) по-прежнему первое,
+// что видно при открытии TWA — просто не как отдельная вкладка, а один раз
+// за сессию, пока не открыли любую из трёх вкладок (см. showWelcome)
 type Tab = 'book' | 'bookings' | 'profile'
 type BookSubTab = 'services' | 'inspiration'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
@@ -333,8 +334,9 @@ function DateTimePicker({
 }
 
 function App() {
-  // Стартовый экран-приветствие показывается один раз за сессию — пока true,
-  // остальной интерфейс (вкладки, данные) под ним уже загружен, но не виден
+  // true — показан хаб (как раньше вкладка "Главная"): открывается один раз
+  // при заходе в TWA за сессию и исчезает насовсем, как только открыли любую
+  // из трёх вкладок нижней навигации
   const [showWelcome, setShowWelcome] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('book')
   const [activeBookSubTab, setActiveBookSubTab] = useState<BookSubTab>('services')
@@ -1071,37 +1073,6 @@ function App() {
     )
   }
 
-  // Стартовый экран — показывается один раз при открытии TWA за сессию,
-  // без постоянной кнопки в нижней навигации (раньше это была вкладка "Главная")
-  if (showWelcome) {
-    return (
-      <motion.div
-        className="app"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
-      >
-        <div className="hero hero-compact">
-          <img className="hero-photo" src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`} alt="" />
-          <div className="hero-scrim" />
-          {isTestUser && <div className="hero-badge">тест</div>}
-          <div className="hero-text">
-            <p className="hero-eyebrow">САЛОН КРАСОТЫ</p>
-            <div className="hero-name">Добро пожаловать</div>
-          </div>
-        </div>
-        <div className="done-screen">
-          <p>Запишитесь на услугу, выберите мастера и удобное время — всё в пару касаний.</p>
-        </div>
-        <div className="footer">
-          <button className="primary" onClick={() => setShowWelcome(false)}>
-            Начать
-          </button>
-        </div>
-      </motion.div>
-    )
-  }
-
   const inFlow = flowOrigin !== null
   const flowSteps = flowOrigin ? FLOW_STEPS[flowOrigin] : null
   const flowStep = flowSteps ? flowSteps[flowIndex] : null
@@ -1144,7 +1115,16 @@ function App() {
     ? 'reschedule'
     : inFlow
       ? `flow-${flowStep}`
-      : `tab-${activeTab}${activeTab === 'book' ? `-${activeBookSubTab}` : ''}`
+      : showWelcome
+        ? 'hub'
+        : `tab-${activeTab}${activeTab === 'book' ? `-${activeBookSubTab}` : ''}`
+  // Хаб — стартовый экран при открытии TWA (карта лояльности, "Сохранённое",
+  // статус ближайшей записи), как раньше была вкладка "Главная". Отдельной
+  // вкладки для него больше нет — уходит насовсем, как только открыли любую
+  // из трёх вкладок нижней навигации (см. TABS.map ниже)
+  const isHomeHero = !inFlow && !reschedule && showWelcome
+  const heroBooking = bookings[0] ?? null
+  const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
 
   // "Вдохновение" — доступные категории и теги считаем прямо из того, что
   // реально есть у фото, а не храним отдельным списком где-то ещё
@@ -1159,21 +1139,41 @@ function App() {
 
   return (
     <div className="app">
-      <div className="topbar">
-        {(inFlow || reschedule) && (
-          <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label="Назад">
-            <ArrowLeft size={18} />
-          </button>
-        )}
-        <div className="topbar-title">
-          {reschedule
-            ? 'Дата и время'
-            : inFlow && flowStep
-              ? STEP_TITLES[flowStep]
-              : TAB_TITLES[activeTab]}
+      {isHomeHero ? (
+        <div className="hero hero-compact">
+          {heroMaster?.photo_url ? (
+            <img className="hero-photo" src={heroMaster.photo_url} alt="" />
+          ) : (
+            <img
+              className="hero-photo"
+              src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`}
+              alt=""
+            />
+          )}
+          <div className="hero-scrim" />
+          {isTestUser && <div className="hero-badge">тест</div>}
+          <div className="hero-text">
+            <p className="hero-eyebrow">{heroBooking ? 'ВАША ЗАПИСЬ' : 'САЛОН КРАСОТЫ'}</p>
+            <div className="hero-name">{heroBooking ? heroBooking.service_name : 'Добро пожаловать'}</div>
+          </div>
         </div>
-        {isTestUser && <div className="test-badge">тест</div>}
-      </div>
+      ) : (
+        <div className="topbar">
+          {(inFlow || reschedule) && (
+            <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label="Назад">
+              <ArrowLeft size={18} />
+            </button>
+          )}
+          <div className="topbar-title">
+            {reschedule
+              ? 'Дата и время'
+              : inFlow && flowStep
+                ? STEP_TITLES[flowStep]
+                : TAB_TITLES[activeTab]}
+          </div>
+          {isTestUser && <div className="test-badge">тест</div>}
+        </div>
+      )}
 
       {inFlow && (
         <div className="progress">
@@ -1184,7 +1184,7 @@ function App() {
       <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={screenKey}
-        className={`content${showChrome ? ' content-with-tabbar' : ''}`}
+        className={`content${isHomeHero ? ' sheet' : ''}${showChrome ? ' content-with-tabbar' : ''}`}
         initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -16 }}
@@ -1192,7 +1192,159 @@ function App() {
       >
         {error && <p className="error">{error}</p>}
 
-        {!inFlow && !reschedule && activeTab === 'profile' && (
+        {isHomeHero &&
+          profileLoyalty &&
+          (() => {
+            const { current, next, pct } = tierProgress(profileLoyalty)
+            return (
+              <button
+                type="button"
+                className="loyalty-card"
+                onClick={() => setLoyaltyCardOpen(true)}
+                style={{ '--tier-color': current.color, '--tier-bg': current.bg } as CSSProperties}
+              >
+                <div className="loyalty-card-top">
+                  <span className="loyalty-card-tier">
+                    <Award size={15} />
+                    {current.name}
+                  </span>
+                  <span className="loyalty-card-cashback">Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%</span>
+                </div>
+
+                <div className="loyalty-card-balance">
+                  <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
+                  <span className="loyalty-card-balance-label">баллов на счету</span>
+                </div>
+
+                <div className="loyalty-card-track">
+                  <div className="loyalty-card-track-fill" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="loyalty-card-track-labels">
+                  <span>{current.name}</span>
+                  <span>{next ? next.name : 'максимум'}</span>
+                </div>
+
+                <p className="loyalty-card-hint">
+                  {next && profileLoyalty.amount_to_next_tier != null
+                    ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
+                    : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
+                </p>
+              </button>
+            )
+          })()}
+
+        {isHomeHero && (
+          <button type="button" className="service-row" onClick={() => setSavedPhotosOpen(true)}>
+            <span className="service-row-icon">
+              <Heart size={20} />
+            </span>
+            <span className="service-row-body">
+              <span className="service-row-name">Сохранённое</span>
+              <span className="service-row-duration">
+                {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
+              </span>
+            </span>
+            <ChevronRight size={16} className="service-row-arrow" />
+          </button>
+        )}
+
+        {isHomeHero &&
+          (heroBooking && heroMaster ? (
+            <>
+              <article className="confirm-card">
+                <div className="confirm-card-media">
+                  <ServiceIcon name={heroBooking.service_name} size={26} />
+                </div>
+                <div className="confirm-card-body">
+                  <div>
+                    <p className="confirm-eyebrow">Подтверждено</p>
+                    <h2 className="confirm-title">{heroBooking.service_name}</h2>
+                  </div>
+                  <div className="confirm-master-row">
+                    {heroMaster.photo_url ? (
+                      <img className="avatar-photo" src={heroMaster.photo_url} alt={heroMaster.name} />
+                    ) : (
+                      <div className="avatar">{initials(heroMaster.name)}</div>
+                    )}
+                    <span className="confirm-master-name">{heroMaster.name}</span>
+                  </div>
+                </div>
+              </article>
+
+              <div className="details-grid">
+                <div className="details-col">
+                  <p className="eyebrow-label">Быстрые действия</p>
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      setShowWelcome(false)
+                      setActiveBookSubTab('services')
+                      setActiveTab('book')
+                    }}
+                  >
+                    Все услуги
+                  </button>
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      setShowWelcome(false)
+                      setActiveTab('profile')
+                    }}
+                  >
+                    Профиль и баллы
+                  </button>
+                </div>
+                <div className="details-col">
+                  <p className="eyebrow-label">Дата и время</p>
+                  <div className="detail-row">
+                    <span>Дата</span>
+                    <strong>{formatDateTime(heroBooking.starts_at)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                className="primary"
+                onClick={() => {
+                  setShowWelcome(false)
+                  setActiveTab('bookings')
+                }}
+              >
+                Мои записи
+              </button>
+              <button
+                className="link-button"
+                onClick={() => {
+                  setShowWelcome(false)
+                  setActiveBookSubTab('services')
+                  setActiveTab('book')
+                }}
+              >
+                Смотреть все услуги <Sparkles size={14} />
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="empty-state empty-state-compact">
+                <div className="empty-icon">
+                  <CalendarDays size={26} />
+                </div>
+                <p>У вас пока нет записи</p>
+              </div>
+              <button
+                className="primary"
+                onClick={() => {
+                  setShowWelcome(false)
+                  setActiveBookSubTab('services')
+                  setActiveTab('book')
+                }}
+              >
+                Записаться
+              </button>
+            </>
+          ))}
+
+        {!showWelcome && !inFlow && !reschedule && activeTab === 'profile' && (
           <>
             <article className="profile-user-card">
               <div className="avatar">{initials(getTelegramUserName())}</div>
@@ -1261,7 +1413,7 @@ function App() {
           </>
         )}
 
-        {!inFlow && !reschedule && activeTab === 'book' && (
+        {!showWelcome && !inFlow && !reschedule && activeTab === 'book' && (
           <div className="book-subtabs">
             {BOOK_SUB_TABS.map((t) => (
               <button
@@ -1276,7 +1428,7 @@ function App() {
           </div>
         )}
 
-        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'services' && (
+        {!showWelcome && !inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'services' && (
           <div className="list">
             {services.map((s) => (
               <ServiceRow
@@ -1291,7 +1443,7 @@ function App() {
           </div>
         )}
 
-        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'inspiration' && (
+        {!showWelcome && !inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'inspiration' && (
           <div className="inspiration-section">
             {inspirationCategories.length > 0 && (
               <div className="inspiration-chips">
@@ -1724,9 +1876,10 @@ function App() {
           {TABS.map((t) => (
             <button
               key={t.key}
-              className={`tab-item${activeTab === t.key ? ' active' : ''}`}
+              className={`tab-item${!showWelcome && activeTab === t.key ? ' active' : ''}`}
               onClick={() => {
                 setError(null)
+                setShowWelcome(false)
                 setActiveTab(t.key)
               }}
             >
