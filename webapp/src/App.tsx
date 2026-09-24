@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock3,
   Heart,
+  Home,
   Images,
   Palette,
   Scissors,
@@ -37,24 +38,24 @@ import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
-// Нижняя навигация сокращена до 3 разделов: "Записаться" объединяет в себе
-// бывшие Услуги + Мастера + Вдохновение (см. BookSubTab ниже). "Главная" как
-// отдельная вкладка нижней навигации убрана, но её содержимое (карта
-// лояльности, "Сохранённое", статус ближайшей записи) по-прежнему первое,
-// что видно при открытии TWA — просто не как отдельная вкладка, а один раз
-// за сессию, пока не открыли любую из трёх вкладок (см. showWelcome)
-type Tab = 'book' | 'bookings' | 'profile'
+// Нижняя навигация: 4 раздела. "Главная" — снова полноценная вкладка (карта
+// лояльности, "Сохранённое", статус ближайшей записи), как было изначально.
+// "Записаться" объединяет в себе бывшие Услуги + Мастера + Вдохновение
+// (см. BookSubTab ниже). "Профиль" — карточка клиента (имя, контакт)
+type Tab = 'home' | 'book' | 'bookings' | 'profile'
 type BookSubTab = 'services' | 'inspiration'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
 const TABS: { key: Tab; label: string; Icon: LucideIcon }[] = [
+  { key: 'home', label: 'Главная', Icon: Home },
   { key: 'book', label: 'Записаться', Icon: Sparkles },
   { key: 'bookings', label: 'Мои записи', Icon: CalendarDays },
   { key: 'profile', label: 'Профиль', Icon: UserRound },
 ]
 
 const TAB_TITLES: Record<Tab, string> = {
+  home: 'Главная',
   book: 'Записаться',
   bookings: 'Мои записи',
   profile: 'Профиль',
@@ -334,11 +335,7 @@ function DateTimePicker({
 }
 
 function App() {
-  // true — показан хаб (как раньше вкладка "Главная"): открывается один раз
-  // при заходе в TWA за сессию и исчезает насовсем, как только открыли любую
-  // из трёх вкладок нижней навигации
-  const [showWelcome, setShowWelcome] = useState(true)
-  const [activeTab, setActiveTab] = useState<Tab>('book')
+  const [activeTab, setActiveTab] = useState<Tab>('home')
   const [activeBookSubTab, setActiveBookSubTab] = useState<BookSubTab>('services')
   const [flowOrigin, setFlowOrigin] = useState<FlowOrigin | null>(null)
   const [flowIndex, setFlowIndex] = useState(0)
@@ -1115,14 +1112,8 @@ function App() {
     ? 'reschedule'
     : inFlow
       ? `flow-${flowStep}`
-      : showWelcome
-        ? 'hub'
-        : `tab-${activeTab}${activeTab === 'book' ? `-${activeBookSubTab}` : ''}`
-  // Хаб — стартовый экран при открытии TWA (карта лояльности, "Сохранённое",
-  // статус ближайшей записи), как раньше была вкладка "Главная". Отдельной
-  // вкладки для него больше нет — уходит насовсем, как только открыли любую
-  // из трёх вкладок нижней навигации (см. TABS.map ниже)
-  const isHomeHero = !inFlow && !reschedule && showWelcome
+      : `tab-${activeTab}${activeTab === 'book' ? `-${activeBookSubTab}` : ''}`
+  const isHomeHero = !inFlow && !reschedule && activeTab === 'home'
   const heroBooking = bookings[0] ?? null
   const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
 
@@ -1277,20 +1268,13 @@ function App() {
                   <button
                     className="text-link"
                     onClick={() => {
-                      setShowWelcome(false)
                       setActiveBookSubTab('services')
                       setActiveTab('book')
                     }}
                   >
                     Все услуги
                   </button>
-                  <button
-                    className="text-link"
-                    onClick={() => {
-                      setShowWelcome(false)
-                      setActiveTab('profile')
-                    }}
-                  >
+                  <button className="text-link" onClick={() => setActiveTab('profile')}>
                     Профиль и баллы
                   </button>
                 </div>
@@ -1303,19 +1287,12 @@ function App() {
                 </div>
               </div>
 
-              <button
-                className="primary"
-                onClick={() => {
-                  setShowWelcome(false)
-                  setActiveTab('bookings')
-                }}
-              >
+              <button className="primary" onClick={() => setActiveTab('bookings')}>
                 Мои записи
               </button>
               <button
                 className="link-button"
                 onClick={() => {
-                  setShowWelcome(false)
                   setActiveBookSubTab('services')
                   setActiveTab('book')
                 }}
@@ -1334,7 +1311,6 @@ function App() {
               <button
                 className="primary"
                 onClick={() => {
-                  setShowWelcome(false)
                   setActiveBookSubTab('services')
                   setActiveTab('book')
                 }}
@@ -1344,7 +1320,7 @@ function App() {
             </>
           ))}
 
-        {!showWelcome && !inFlow && !reschedule && activeTab === 'profile' && (
+        {!inFlow && !reschedule && activeTab === 'profile' && (
           <>
             <article className="profile-user-card">
               <div className="avatar">{initials(getTelegramUserName())}</div>
@@ -1413,7 +1389,7 @@ function App() {
           </>
         )}
 
-        {!showWelcome && !inFlow && !reschedule && activeTab === 'book' && (
+        {!inFlow && !reschedule && activeTab === 'book' && (
           <div className="book-subtabs">
             {BOOK_SUB_TABS.map((t) => (
               <button
@@ -1428,7 +1404,7 @@ function App() {
           </div>
         )}
 
-        {!showWelcome && !inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'services' && (
+        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'services' && (
           <div className="list">
             {services.map((s) => (
               <ServiceRow
@@ -1443,7 +1419,7 @@ function App() {
           </div>
         )}
 
-        {!showWelcome && !inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'inspiration' && (
+        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'inspiration' && (
           <div className="inspiration-section">
             {inspirationCategories.length > 0 && (
               <div className="inspiration-chips">
@@ -1876,10 +1852,9 @@ function App() {
           {TABS.map((t) => (
             <button
               key={t.key}
-              className={`tab-item${!showWelcome && activeTab === t.key ? ' active' : ''}`}
+              className={`tab-item${activeTab === t.key ? ' active' : ''}`}
               onClick={() => {
                 setError(null)
-                setShowWelcome(false)
                 setActiveTab(t.key)
               }}
             >
