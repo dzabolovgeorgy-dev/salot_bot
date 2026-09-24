@@ -11,7 +11,6 @@ import {
   ChevronRight,
   Clock3,
   Heart,
-  Home,
   Images,
   Palette,
   Scissors,
@@ -38,25 +37,32 @@ import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
-type Tab = 'home' | 'services' | 'masters' | 'inspiration' | 'bookings'
+// Нижняя навигация сокращена до 3 разделов: "Записаться" объединяет в себе
+// бывшие Услуги + Мастера + Вдохновение (см. BookSubTab ниже), "Главная" как
+// отдельная вкладка убрана — её место занял стартовый экран-приветствие
+// (показывается один раз при открытии, см. showWelcome), а карта лояльности
+// и "Сохранённое" переехали в "Профиль"
+type Tab = 'book' | 'bookings' | 'profile'
+type BookSubTab = 'services' | 'inspiration'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
 const TABS: { key: Tab; label: string; Icon: LucideIcon }[] = [
-  { key: 'home', label: 'Главная', Icon: Home },
-  { key: 'services', label: 'Услуги', Icon: Sparkles },
-  { key: 'masters', label: 'Мастера', Icon: UserRound },
-  { key: 'inspiration', label: 'Вдохновение', Icon: Images },
-  { key: 'bookings', label: 'Записи', Icon: CalendarDays },
+  { key: 'book', label: 'Записаться', Icon: Sparkles },
+  { key: 'bookings', label: 'Мои записи', Icon: CalendarDays },
+  { key: 'profile', label: 'Профиль', Icon: UserRound },
 ]
 
 const TAB_TITLES: Record<Tab, string> = {
-  home: 'Главная',
-  services: 'Услуги',
-  masters: 'Мастера',
-  inspiration: 'Вдохновение',
+  book: 'Записаться',
   bookings: 'Мои записи',
+  profile: 'Профиль',
 }
+
+const BOOK_SUB_TABS: { key: BookSubTab; label: string }[] = [
+  { key: 'services', label: 'Список услуг' },
+  { key: 'inspiration', label: 'Вдохновение' },
+]
 
 // Какие шаги остаются пройти в зависимости от того, откуда начали запись
 // (если зашли через конкретную услугу/мастера — этот выбор уже сделано)
@@ -327,7 +333,11 @@ function DateTimePicker({
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('home')
+  // Стартовый экран-приветствие показывается один раз за сессию — пока true,
+  // остальной интерфейс (вкладки, данные) под ним уже загружен, но не виден
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [activeTab, setActiveTab] = useState<Tab>('book')
+  const [activeBookSubTab, setActiveBookSubTab] = useState<BookSubTab>('services')
   const [flowOrigin, setFlowOrigin] = useState<FlowOrigin | null>(null)
   const [flowIndex, setFlowIndex] = useState(0)
   const [isDone, setIsDone] = useState(false)
@@ -1061,6 +1071,37 @@ function App() {
     )
   }
 
+  // Стартовый экран — показывается один раз при открытии TWA за сессию,
+  // без постоянной кнопки в нижней навигации (раньше это была вкладка "Главная")
+  if (showWelcome) {
+    return (
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
+        <div className="hero hero-compact">
+          <img className="hero-photo" src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`} alt="" />
+          <div className="hero-scrim" />
+          {isTestUser && <div className="hero-badge">тест</div>}
+          <div className="hero-text">
+            <p className="hero-eyebrow">САЛОН КРАСОТЫ</p>
+            <div className="hero-name">Добро пожаловать</div>
+          </div>
+        </div>
+        <div className="done-screen">
+          <p>Запишитесь на услугу, выберите мастера и удобное время — всё в пару касаний.</p>
+        </div>
+        <div className="footer">
+          <button className="primary" onClick={() => setShowWelcome(false)}>
+            Начать
+          </button>
+        </div>
+      </motion.div>
+    )
+  }
+
   const inFlow = flowOrigin !== null
   const flowSteps = flowOrigin ? FLOW_STEPS[flowOrigin] : null
   const flowStep = flowSteps ? flowSteps[flowIndex] : null
@@ -1099,10 +1140,11 @@ function App() {
   const prevMonth = () => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))
   const nextMonth = () => setCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))
 
-  const screenKey = reschedule ? 'reschedule' : inFlow ? `flow-${flowStep}` : `tab-${activeTab}`
-  const isHomeHero = !inFlow && !reschedule && activeTab === 'home'
-  const heroBooking = bookings[0] ?? null
-  const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
+  const screenKey = reschedule
+    ? 'reschedule'
+    : inFlow
+      ? `flow-${flowStep}`
+      : `tab-${activeTab}${activeTab === 'book' ? `-${activeBookSubTab}` : ''}`
 
   // "Вдохновение" — доступные категории и теги считаем прямо из того, что
   // реально есть у фото, а не храним отдельным списком где-то ещё
@@ -1117,41 +1159,21 @@ function App() {
 
   return (
     <div className="app">
-      {isHomeHero ? (
-        <div className="hero hero-compact">
-          {heroMaster?.photo_url ? (
-            <img className="hero-photo" src={heroMaster.photo_url} alt="" />
-          ) : (
-            <img
-              className="hero-photo"
-              src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`}
-              alt=""
-            />
-          )}
-          <div className="hero-scrim" />
-          {isTestUser && <div className="hero-badge">тест</div>}
-          <div className="hero-text">
-            <p className="hero-eyebrow">{heroBooking ? 'ВАША ЗАПИСЬ' : 'САЛОН КРАСОТЫ'}</p>
-            <div className="hero-name">{heroBooking ? heroBooking.service_name : 'Добро пожаловать'}</div>
-          </div>
+      <div className="topbar">
+        {(inFlow || reschedule) && (
+          <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label="Назад">
+            <ArrowLeft size={18} />
+          </button>
+        )}
+        <div className="topbar-title">
+          {reschedule
+            ? 'Дата и время'
+            : inFlow && flowStep
+              ? STEP_TITLES[flowStep]
+              : TAB_TITLES[activeTab]}
         </div>
-      ) : (
-        <div className="topbar">
-          {(inFlow || reschedule) && (
-            <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label="Назад">
-              <ArrowLeft size={18} />
-            </button>
-          )}
-          <div className="topbar-title">
-            {reschedule
-              ? 'Дата и время'
-              : inFlow && flowStep
-                ? STEP_TITLES[flowStep]
-                : TAB_TITLES[activeTab]}
-          </div>
-          {isTestUser && <div className="test-badge">тест</div>}
-        </div>
-      )}
+        {isTestUser && <div className="test-badge">тест</div>}
+      </div>
 
       {inFlow && (
         <div className="progress">
@@ -1162,7 +1184,7 @@ function App() {
       <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={screenKey}
-        className={`content${isHomeHero ? ' sheet' : ''}${showChrome ? ' content-with-tabbar' : ''}`}
+        className={`content${showChrome ? ' content-with-tabbar' : ''}`}
         initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -16 }}
@@ -1170,121 +1192,91 @@ function App() {
       >
         {error && <p className="error">{error}</p>}
 
-        {isHomeHero &&
-          profileLoyalty &&
-          (() => {
-            const { current, next, pct } = tierProgress(profileLoyalty)
-            return (
-              <button
-                type="button"
-                className="loyalty-card"
-                onClick={() => setLoyaltyCardOpen(true)}
-                style={{ '--tier-color': current.color, '--tier-bg': current.bg } as CSSProperties}
-              >
-                <div className="loyalty-card-top">
-                  <span className="loyalty-card-tier">
-                    <Award size={15} />
-                    {current.name}
-                  </span>
-                  <span className="loyalty-card-cashback">Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%</span>
+        {!inFlow && !reschedule && activeTab === 'profile' && (
+          <>
+            <article className="profile-user-card">
+              <div className="avatar">{initials(getTelegramUserName())}</div>
+              <div className="profile-user-body">
+                <div className="profile-user-name">{getTelegramUserName()}</div>
+                <div className="profile-user-contact">
+                  {getTelegramUsername() ? `@${getTelegramUsername()}` : `Telegram ID: ${clientTelegramId}`}
                 </div>
+              </div>
+            </article>
 
-                <div className="loyalty-card-balance">
-                  <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
-                  <span className="loyalty-card-balance-label">баллов на счету</span>
-                </div>
+            {profileLoyalty &&
+              (() => {
+                const { current, next, pct } = tierProgress(profileLoyalty)
+                return (
+                  <button
+                    type="button"
+                    className="loyalty-card"
+                    onClick={() => setLoyaltyCardOpen(true)}
+                    style={{ '--tier-color': current.color, '--tier-bg': current.bg } as CSSProperties}
+                  >
+                    <div className="loyalty-card-top">
+                      <span className="loyalty-card-tier">
+                        <Award size={15} />
+                        {current.name}
+                      </span>
+                      <span className="loyalty-card-cashback">
+                        Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%
+                      </span>
+                    </div>
 
-                <div className="loyalty-card-track">
-                  <div className="loyalty-card-track-fill" style={{ width: `${pct}%` }} />
-                </div>
-                <div className="loyalty-card-track-labels">
-                  <span>{current.name}</span>
-                  <span>{next ? next.name : 'максимум'}</span>
-                </div>
+                    <div className="loyalty-card-balance">
+                      <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
+                      <span className="loyalty-card-balance-label">баллов на счету</span>
+                    </div>
 
-                <p className="loyalty-card-hint">
-                  {next && profileLoyalty.amount_to_next_tier != null
-                    ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
-                    : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
-                </p>
-              </button>
-            )
-          })()}
+                    <div className="loyalty-card-track">
+                      <div className="loyalty-card-track-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="loyalty-card-track-labels">
+                      <span>{current.name}</span>
+                      <span>{next ? next.name : 'максимум'}</span>
+                    </div>
 
-        {isHomeHero && (
-          <button type="button" className="service-row" onClick={() => setSavedPhotosOpen(true)}>
-            <span className="service-row-icon">
-              <Heart size={20} />
-            </span>
-            <span className="service-row-body">
-              <span className="service-row-name">Сохранённое</span>
-              <span className="service-row-duration">
-                {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
+                    <p className="loyalty-card-hint">
+                      {next && profileLoyalty.amount_to_next_tier != null
+                        ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
+                        : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
+                    </p>
+                  </button>
+                )
+              })()}
+
+            <button type="button" className="service-row" onClick={() => setSavedPhotosOpen(true)}>
+              <span className="service-row-icon">
+                <Heart size={20} />
               </span>
-            </span>
-            <ChevronRight size={16} className="service-row-arrow" />
-          </button>
+              <span className="service-row-body">
+                <span className="service-row-name">Сохранённое</span>
+                <span className="service-row-duration">
+                  {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
+                </span>
+              </span>
+              <ChevronRight size={16} className="service-row-arrow" />
+            </button>
+          </>
         )}
 
-        {isHomeHero &&
-          (heroBooking && heroMaster ? (
-            <>
-              <article className="confirm-card">
-                <div className="confirm-card-media">
-                  <ServiceIcon name={heroBooking.service_name} size={26} />
-                </div>
-                <div className="confirm-card-body">
-                  <div>
-                    <p className="confirm-eyebrow">Подтверждено</p>
-                    <h2 className="confirm-title">{heroBooking.service_name}</h2>
-                  </div>
-                  <div className="confirm-master-row">
-                    {heroMaster.photo_url ? (
-                      <img className="avatar-photo" src={heroMaster.photo_url} alt={heroMaster.name} />
-                    ) : (
-                      <div className="avatar">{initials(heroMaster.name)}</div>
-                    )}
-                    <span className="confirm-master-name">{heroMaster.name}</span>
-                  </div>
-                </div>
-              </article>
-
-              <div className="details-grid">
-                <div className="details-col">
-                  <p className="eyebrow-label">Быстрые действия</p>
-                  <button className="text-link" onClick={() => setActiveTab('services')}>
-                    Все услуги
-                  </button>
-                  <button className="text-link" onClick={() => setActiveTab('masters')}>
-                    Наши мастера
-                  </button>
-                </div>
-                <div className="details-col">
-                  <p className="eyebrow-label">Дата и время</p>
-                  <div className="detail-row">
-                    <span>Дата</span>
-                    <strong>{formatDateTime(heroBooking.starts_at)}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <button className="primary" onClick={() => setActiveTab('bookings')}>
-                Мои записи
+        {!inFlow && !reschedule && activeTab === 'book' && (
+          <div className="book-subtabs">
+            {BOOK_SUB_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={`book-subtab${activeBookSubTab === t.key ? ' active' : ''}`}
+                onClick={() => setActiveBookSubTab(t.key)}
+              >
+                {t.label}
               </button>
-              <button className="link-button" onClick={() => setActiveTab('services')}>
-                Смотреть все услуги <Sparkles size={14} />
-              </button>
-            </>
-          ) : (
-            <div className="empty-state empty-state-compact">
-              <div className="empty-icon">
-                <CalendarDays size={26} />
-              </div>
-              <p>У вас пока нет записи</p>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
 
-        {!inFlow && !reschedule && activeTab === 'services' && (
+        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'services' && (
           <div className="list">
             {services.map((s) => (
               <ServiceRow
@@ -1299,36 +1291,7 @@ function App() {
           </div>
         )}
 
-        {!inFlow && !reschedule && activeTab === 'masters' && (
-          <div className="masters-grid">
-            {masters.map((m, i) => (
-              <button
-                key={m.id}
-                className={`master-tile master-tile-${i % 3}`}
-                onClick={() => setMasterProfile(m)}
-              >
-                {m.photo_url ? (
-                  <img src={m.photo_url} alt={m.name} />
-                ) : (
-                  <div className="master-tile-fallback">{initials(m.name)}</div>
-                )}
-                <div className="master-tile-scrim" />
-                <div className="master-tile-caption">
-                  <div className="master-tile-name">{m.name}</div>
-                  {(m.experience_years != null || m.ratings_count > 0) && (
-                    <div className="master-tile-sub">
-                      {m.experience_years != null ? `${pluralizeYears(m.experience_years)} опыта` : ''}
-                      {m.experience_years != null && m.ratings_count > 0 ? ' · ' : ''}
-                      {m.ratings_count > 0 ? `${m.avg_rating} ⭐` : ''}
-                    </div>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {!inFlow && !reschedule && activeTab === 'inspiration' && (
+        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'inspiration' && (
           <div className="inspiration-section">
             {inspirationCategories.length > 0 && (
               <div className="inspiration-chips">
@@ -1486,7 +1449,13 @@ function App() {
               </div>
               <h2>Записей пока нет</h2>
               <p>Выберите услугу и найдите удобное время для визита.</p>
-              <button className="primary" onClick={() => setActiveTab('services')}>
+              <button
+                className="primary"
+                onClick={() => {
+                  setActiveBookSubTab('services')
+                  setActiveTab('book')
+                }}
+              >
                 Выбрать услугу
               </button>
             </div>
@@ -1547,25 +1516,32 @@ function App() {
         )}
 
         {inFlow && flowStep === 'master' && (
-          <div className="list">
-            {flowMasters.map((m) => (
+          // Та же плиточная сетка, что раньше была отдельной вкладкой "Мастера" —
+          // открывает полный профиль мастера (био, портфолио, отзывы), где выбор
+          // услуги из списка "Услуги мастера" (bookFromProfile) и завершает шаг
+          <div className="masters-grid">
+            {flowMasters.map((m, i) => (
               <button
                 key={m.id}
-                className="card"
-                onClick={() => {
-                  setSelectedMaster(m)
-                  setFlowIndex((i) => i + 1)
-                }}
+                className={`master-tile master-tile-${i % 3}`}
+                onClick={() => setMasterProfile(m)}
               >
                 {m.photo_url ? (
-                  <img className="avatar-photo" src={m.photo_url} alt={m.name} />
+                  <img src={m.photo_url} alt={m.name} />
                 ) : (
-                  <div className="avatar">{initials(m.name)}</div>
+                  <div className="master-tile-fallback">{initials(m.name)}</div>
                 )}
-                <div className="card-body">
-                  <div className="card-title">{m.name}</div>
+                <div className="master-tile-scrim" />
+                <div className="master-tile-caption">
+                  <div className="master-tile-name">{m.name}</div>
+                  {(m.experience_years != null || m.ratings_count > 0) && (
+                    <div className="master-tile-sub">
+                      {m.experience_years != null ? `${pluralizeYears(m.experience_years)} опыта` : ''}
+                      {m.experience_years != null && m.ratings_count > 0 ? ' · ' : ''}
+                      {m.ratings_count > 0 ? `${m.avg_rating} ⭐` : ''}
+                    </div>
+                  )}
                 </div>
-                <div className="card-arrow">›</div>
               </button>
             ))}
           </div>
