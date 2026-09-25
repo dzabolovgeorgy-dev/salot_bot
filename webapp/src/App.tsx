@@ -38,11 +38,14 @@ import { apiFetch } from './apiFetch'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
-// Нижняя навигация: 4 раздела. "Главная" — снова полноценная вкладка (карта
-// лояльности, "Сохранённое", статус ближайшей записи), как было изначально.
+// Нижняя навигация: 3 раздела. "Главная" — карточка клиента (имя, контакт),
+// карта лояльности, "Сохранённое" и статус ближайшей записи — как было
+// изначально, плюс карточка клиента (раньше жила в отдельной вкладке
+// "Профиль", но дублировала "Главную" почти целиком — убрали, чтобы не
+// путать одно и то же под двумя разными кнопками).
 // "Записаться" объединяет в себе бывшие Услуги + Мастера + Вдохновение
-// (см. BookSubTab ниже). "Профиль" — карточка клиента (имя, контакт)
-type Tab = 'home' | 'book' | 'bookings' | 'profile'
+// (см. BookSubTab ниже)
+type Tab = 'home' | 'book' | 'bookings'
 type BookSubTab = 'services' | 'inspiration'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
@@ -51,14 +54,12 @@ const TABS: { key: Tab; label: string; Icon: LucideIcon }[] = [
   { key: 'home', label: 'Главная', Icon: Home },
   { key: 'book', label: 'Записаться', Icon: Sparkles },
   { key: 'bookings', label: 'Мои записи', Icon: CalendarDays },
-  { key: 'profile', label: 'Профиль', Icon: UserRound },
 ]
 
 const TAB_TITLES: Record<Tab, string> = {
   home: 'Главная',
   book: 'Записаться',
   bookings: 'Мои записи',
-  profile: 'Профиль',
 }
 
 const BOOK_SUB_TABS: { key: BookSubTab; label: string }[] = [
@@ -1183,6 +1184,18 @@ function App() {
       >
         {error && <p className="error">{error}</p>}
 
+        {isHomeHero && (
+          <article className="profile-user-card">
+            <div className="avatar">{initials(getTelegramUserName())}</div>
+            <div className="profile-user-body">
+              <div className="profile-user-name">{getTelegramUserName()}</div>
+              <div className="profile-user-contact">
+                {getTelegramUsername() ? `@${getTelegramUsername()}` : `Telegram ID: ${clientTelegramId}`}
+              </div>
+            </div>
+          </article>
+        )}
+
         {isHomeHero &&
           profileLoyalty &&
           (() => {
@@ -1274,8 +1287,8 @@ function App() {
                   >
                     Все услуги
                   </button>
-                  <button className="text-link" onClick={() => setActiveTab('profile')}>
-                    Профиль и баллы
+                  <button className="text-link" onClick={() => setSavedPhotosOpen(true)}>
+                    Сохранённое
                   </button>
                 </div>
                 <div className="details-col">
@@ -1319,75 +1332,6 @@ function App() {
               </button>
             </>
           ))}
-
-        {!inFlow && !reschedule && activeTab === 'profile' && (
-          <>
-            <article className="profile-user-card">
-              <div className="avatar">{initials(getTelegramUserName())}</div>
-              <div className="profile-user-body">
-                <div className="profile-user-name">{getTelegramUserName()}</div>
-                <div className="profile-user-contact">
-                  {getTelegramUsername() ? `@${getTelegramUsername()}` : `Telegram ID: ${clientTelegramId}`}
-                </div>
-              </div>
-            </article>
-
-            {profileLoyalty &&
-              (() => {
-                const { current, next, pct } = tierProgress(profileLoyalty)
-                return (
-                  <button
-                    type="button"
-                    className="loyalty-card"
-                    onClick={() => setLoyaltyCardOpen(true)}
-                    style={{ '--tier-color': current.color, '--tier-bg': current.bg } as CSSProperties}
-                  >
-                    <div className="loyalty-card-top">
-                      <span className="loyalty-card-tier">
-                        <Award size={15} />
-                        {current.name}
-                      </span>
-                      <span className="loyalty-card-cashback">
-                        Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%
-                      </span>
-                    </div>
-
-                    <div className="loyalty-card-balance">
-                      <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
-                      <span className="loyalty-card-balance-label">баллов на счету</span>
-                    </div>
-
-                    <div className="loyalty-card-track">
-                      <div className="loyalty-card-track-fill" style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="loyalty-card-track-labels">
-                      <span>{current.name}</span>
-                      <span>{next ? next.name : 'максимум'}</span>
-                    </div>
-
-                    <p className="loyalty-card-hint">
-                      {next && profileLoyalty.amount_to_next_tier != null
-                        ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
-                        : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
-                    </p>
-                  </button>
-                )
-              })()}
-
-            <button type="button" className="service-row" onClick={() => setSavedPhotosOpen(true)}>
-              <span className="service-row-icon">
-                <Heart size={20} />
-              </span>
-              <span className="service-row-body">
-                <span className="service-row-name">Сохранённое</span>
-                <span className="service-row-duration">
-                  {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
-                </span>
-              </span>
-              <ChevronRight size={16} className="service-row-arrow" />
-            </button>
-          </>
-        )}
 
         {!inFlow && !reschedule && activeTab === 'book' && (
           <div className="book-subtabs">
