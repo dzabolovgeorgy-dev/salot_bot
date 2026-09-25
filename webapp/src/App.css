@@ -223,12 +223,22 @@
   cursor: pointer;
 }
 
+/* Закреплена сверху (не уезжает вместе со списком при прокрутке) — иначе на
+   длинных экранах (шаги записи, "Сохранённое", карта лояльности) кнопка
+   "назад" пропадала из виду, пока не прокрутишь обратно наверх.
+   Полупрозрачная и размытая — та же "стеклянная" поверхность, что у нижней
+   панели вкладок (var(--surface) + var(--glass-blur)), а не сплошная заливка */
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: calc(16px + env(safe-area-inset-top)) 16px 16px;
-  background: var(--bg);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-bottom: 1px solid var(--border);
 }
 
