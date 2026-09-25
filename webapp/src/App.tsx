@@ -1238,17 +1238,17 @@ function App() {
           })()}
 
         {isHomeHero && (
-          <button type="button" className="service-row" onClick={() => setSavedPhotosOpen(true)}>
-            <span className="service-row-icon">
-              <Heart size={20} />
+          <button type="button" className="home-saved-row" onClick={() => setSavedPhotosOpen(true)}>
+            <span className="home-saved-row-icon">
+              <Heart size={16} />
             </span>
-            <span className="service-row-body">
-              <span className="service-row-name">Сохранённое</span>
-              <span className="service-row-duration">
+            <span className="home-saved-row-body">
+              <span className="home-saved-row-name">Сохранённое</span>
+              <span className="home-saved-row-count">
                 {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
               </span>
             </span>
-            <ChevronRight size={16} className="service-row-arrow" />
+            <ChevronRight size={14} className="home-saved-row-arrow" />
           </button>
         )}
 

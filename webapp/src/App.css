@@ -477,6 +477,60 @@
   flex-shrink: 0;
 }
 
+/* "Сохранённое" на "Главной" — та же идея, что service-row, но заметно
+   компактнее: это второстепенная строка-ссылка, а не карточка услуги */
+.home-saved-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-h);
+  width: 100%;
+}
+
+.home-saved-row-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.home-saved-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.home-saved-row-name {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.home-saved-row-count {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.home-saved-row-arrow {
+  color: var(--text);
+  flex-shrink: 0;
+}
+
 /* Generic list cards (master step, fallback) */
 
 .list {
