@@ -46,7 +46,7 @@ import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells }
 // "Записаться" объединяет в себе бывшие Услуги + Мастера + Вдохновение
 // (см. BookSubTab ниже)
 type Tab = 'home' | 'book' | 'bookings'
-type BookSubTab = 'services' | 'inspiration'
+type BookSubTab = 'services' | 'masters' | 'inspiration'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
@@ -63,7 +63,8 @@ const TAB_TITLES: Record<Tab, string> = {
 }
 
 const BOOK_SUB_TABS: { key: BookSubTab; label: string }[] = [
-  { key: 'services', label: 'Список услуг' },
+  { key: 'services', label: 'Услуги' },
+  { key: 'masters', label: 'Мастера' },
   { key: 'inspiration', label: 'Вдохновение' },
 ]
 
@@ -1359,6 +1360,38 @@ function App() {
                   startFlow('services')
                 }}
               />
+            ))}
+          </div>
+        )}
+
+        {!inFlow && !reschedule && activeTab === 'book' && activeBookSubTab === 'masters' && (
+          // Полный список мастеров (без привязки к заранее выбранной услуге) —
+          // тап открывает профиль (био, портфолио, отзывы), а выбор услуги там
+          // же, в "Услуги мастера", запускает запись сразу с шага "Дата и время"
+          <div className="masters-grid">
+            {masters.map((m, i) => (
+              <button
+                key={m.id}
+                className={`master-tile master-tile-${i % 3}`}
+                onClick={() => setMasterProfile(m)}
+              >
+                {m.photo_url ? (
+                  <img src={m.photo_url} alt={m.name} />
+                ) : (
+                  <div className="master-tile-fallback">{initials(m.name)}</div>
+                )}
+                <div className="master-tile-scrim" />
+                <div className="master-tile-caption">
+                  <div className="master-tile-name">{m.name}</div>
+                  {(m.experience_years != null || m.ratings_count > 0) && (
+                    <div className="master-tile-sub">
+                      {m.experience_years != null ? `${pluralizeYears(m.experience_years)} опыта` : ''}
+                      {m.experience_years != null && m.ratings_count > 0 ? ' · ' : ''}
+                      {m.ratings_count > 0 ? `${m.avg_rating} ⭐` : ''}
+                    </div>
+                  )}
+                </div>
+              </button>
             ))}
           </div>
         )}
