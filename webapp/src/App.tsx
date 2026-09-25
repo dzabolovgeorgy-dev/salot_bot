@@ -369,6 +369,7 @@ function App() {
   const [activeBookingsSubTab, setActiveBookingsSubTab] = useState<BookingsSubTab>('upcoming')
   const [bookingHistory, setBookingHistory] = useState<Booking[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [openHistoryBooking, setOpenHistoryBooking] = useState<Booking | null>(null)
   const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -529,6 +530,7 @@ function App() {
       setError('Эта услуга или мастер больше недоступны — выберите другую запись вручную')
       return
     }
+    setOpenHistoryBooking(null)
     bookFromProfile(master, service)
   }
 
@@ -660,6 +662,10 @@ function App() {
 
   const goBack = () => {
     setError(null)
+    if (openHistoryBooking) {
+      setOpenHistoryBooking(null)
+      return
+    }
     if (savedPhotosOpen) {
       setSavedPhotosOpen(false)
       return
@@ -893,6 +899,88 @@ function App() {
               ))}
             </div>
           )}
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (openHistoryBooking) {
+    const b = openHistoryBooking
+    const historyMaster = masters.find((m) => m.id === b.master_id)
+    const canRepeat = masters.some((m) => m.id === b.master_id) && services.some((s) => s.id === b.service_id)
+    return (
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
+        <div className="topbar">
+          <button className="icon-back" onClick={goBack} aria-label="Назад">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="topbar-title">Визит</div>
+        </div>
+        <div className="content">
+          <article className="confirm-card confirm-card-tall">
+            {historyMaster?.photo_url ? (
+              <img className="confirm-card-photo" src={historyMaster.photo_url} alt={b.master_name} />
+            ) : (
+              <div className="confirm-card-photo confirm-card-photo-fallback">{initials(b.master_name)}</div>
+            )}
+            <div className="confirm-card-tall-body">
+              <p className="confirm-eyebrow">{b.status === 'no_show' ? 'Не пришли' : 'Выполнена'}</p>
+              <h2 className="confirm-title">{b.service_name}</h2>
+              <div className="confirm-master-row">
+                {historyMaster?.photo_url ? (
+                  <img className="avatar-photo" src={historyMaster.photo_url} alt={b.master_name} />
+                ) : (
+                  <div className="avatar">{initials(b.master_name)}</div>
+                )}
+                <span className="confirm-master-name">{b.master_name}</span>
+              </div>
+              <div className="summary-list">
+                <div className="summary-row">
+                  <span className="summary-label">Дата и время</span>
+                  <span className="summary-value">{formatDateTime(b.starts_at)}</span>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Длительность</span>
+                  <span className="summary-value">{b.duration_minutes} мин</span>
+                </div>
+                {b.price != null && (
+                  <div className="summary-row">
+                    <span className="summary-label">Стоимость</span>
+                    <span className="summary-value">{b.price} €</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </article>
+
+          <div className="section-title">Ваша оценка</div>
+          {b.rating ? (
+            <article className="review-card">
+              <div className="review-card-top">
+                <span className="review-stars">
+                  {'★'.repeat(b.rating)}
+                  {'☆'.repeat(5 - b.rating)}
+                </span>
+              </div>
+              {b.comment && <p className="review-comment">{b.comment}</p>}
+            </article>
+          ) : (
+            <p className="hub-greeting">
+              Вы ещё не оценили этот визит — оценка запрашивается ботом в чате после того, как мастер отметит
+              запись выполненной.
+            </p>
+          )}
+        </div>
+        <div className="footer">
+          <button className="primary" disabled={!canRepeat} onClick={() => repeatBooking(b)}>
+            Повторить запись
+          </button>
+          {!canRepeat && <p className="footer-hint">Эта услуга или мастер больше недоступны</p>}
         </div>
       </motion.div>
     )
@@ -1677,7 +1765,16 @@ function App() {
               {bookingHistory.map((b) => {
                 const master = masters.find((m) => m.id === b.master_id)
                 return (
-                  <article key={b.id} className="booking-tile">
+                  <article
+                    key={b.id}
+                    className="booking-tile booking-tile--clickable"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setOpenHistoryBooking(b)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') setOpenHistoryBooking(b)
+                    }}
+                  >
                     {master?.photo_url ? (
                       <img className="booking-tile-photo" src={master.photo_url} alt={master.name} />
                     ) : (
@@ -1703,7 +1800,13 @@ function App() {
                             </span>
                           ) : null}
                         </div>
-                        <button className="text-link-inline" onClick={() => repeatBooking(b)}>
+                        <button
+                          className="text-link-inline"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            repeatBooking(b)
+                          }}
+                        >
                           Повторить запись
                         </button>
                       </div>
