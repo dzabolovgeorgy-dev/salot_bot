@@ -2136,13 +2136,13 @@
   background: var(--surface);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
 
 /* Запас снизу у контента, чтобы закреплённая панель не перекрывала
    последние карточки/фото */
 .content-with-tabbar {
-  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
 
 .tab-item {
@@ -2150,15 +2150,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text);
-  font-size: 11px;
+  font-size: 10px;
   font: inherit;
-  padding: 6px 4px;
+  padding: 4px 2px;
   border-radius: var(--radius-lg);
+  white-space: nowrap;
 }
 
 .tab-item.active {
@@ -2167,6 +2168,6 @@
 }
 
 .tab-icon {
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1;
 }
