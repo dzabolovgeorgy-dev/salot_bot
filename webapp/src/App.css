@@ -410,11 +410,13 @@
 }
 
 /* "Экран в экране" — фото на "Главной" не во весь край, а плавающая
-   скруглённая карточка с блёклой второй карточкой, выглядывающей сзади
-   сверху (как следующая в стопке). overflow: visible переопределяет
-   overflow: hidden у .hero — обрезка фото под скруглённые углы переезжает
-   во внутреннюю обёртку .hero-compact-media, чтобы декоративный срез
-   .hero-compact::before не обрезался вместе с ним */
+   скруглённая карточка. "Слияние" с экраном — размытое цветное свечение
+   теми же цветами, что и на фото (приём из Spotify/Apple Music), а не
+   отдельная плашка чужого цвета: у карточки нет чёткой границы с фоном,
+   вокруг неё цветной туман, растворяющийся в фоне страницы.
+   overflow: visible переопределяет overflow: hidden у .hero — обрезка фото
+   под скруглённые углы переезжает во внутреннюю обёртку
+   .hero-compact-media, чтобы свечение не обрезалось вместе с ней */
 .hero-compact {
   aspect-ratio: unset;
   height: 280px;
@@ -425,6 +427,30 @@
   border-radius: var(--radius-3xl);
 }
 
+/* Без z-index намеренно: отрицательный уводил слой за рамку анимирующей
+   обёртки framer-motion, и он переставал быть виден вообще. Порядка в DOM
+   достаточно — этот div идёт раньше .hero-compact-media, то есть визуально
+   рисуется под ней */
+.hero-compact-glow {
+  /* Снизу без нахлёста (bottom: 0) — там уже начинаются карточки контента,
+     цветной туман поверх текста выглядел бы грязно, а не как слияние.
+     Сверху и по бокам, где рядом только фон страницы, свечению есть куда
+     растворяться */
+  position: absolute;
+  top: -28px;
+  left: -20px;
+  right: -20px;
+  bottom: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(30px) saturate(1.4) brightness(0.95);
+  opacity: 0.75;
+  border-radius: var(--radius-3xl);
+  transform: scale(1.06);
+  pointer-events: none;
+}
+
 .hero-compact-media {
   position: relative;
   width: 100%;
@@ -432,21 +458,6 @@
   overflow: hidden;
   border-radius: inherit;
   box-shadow: var(--shadow);
-}
-
-.hero-compact::before {
-  /* Без z-index намеренно: отрицательный уводил срез за рамку анимирующей
-     обёртки framer-motion и он переставал быть виден вообще. Порядка в DOM
-     достаточно — как псевдоэлемент ::before он и так рисуется раньше
-     .hero-compact-media, то есть визуально под ней */
-  content: '';
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  top: -10px;
-  height: 26px;
-  border-radius: var(--radius-3xl) var(--radius-3xl) 0 0;
-  background: var(--accent-soft);
 }
 
 /* Service row (list item) */

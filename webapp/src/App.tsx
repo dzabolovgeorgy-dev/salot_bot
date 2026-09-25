@@ -656,7 +656,9 @@ function App() {
     }
     apiFetch(`${API_URL}/api/loyalty/${clientTelegramId}/history`)
       .then((r) => r.json())
-      .then(setLoyaltyHistory)
+      // Как и с записями/историей визитов — если сервер ответил ошибкой,
+      // в теле придёт {error: ...}, а не массив
+      .then((data) => setLoyaltyHistory(Array.isArray(data) ? data : []))
       .catch(() => setLoyaltyHistory([]))
   }, [loyaltyCardOpen])
 
@@ -1245,6 +1247,7 @@ function App() {
   const isHomeHero = !inFlow && !reschedule && activeTab === 'home'
   const heroBooking = bookings[0] ?? null
   const heroMaster = heroBooking ? masters.find((m) => m.id === heroBooking.master_id) ?? null : null
+  const heroPhotoSrc = heroMaster?.photo_url || `${import.meta.env.BASE_URL}images/atelier-header.jpg`
 
   // "Вдохновение" — доступные категории и теги считаем прямо из того, что
   // реально есть у фото, а не храним отдельным списком где-то ещё
@@ -1261,21 +1264,14 @@ function App() {
     <div className="app">
       {isHomeHero ? (
         <div className="hero hero-compact">
-          {/* Блёклая "вторая карточка" выглядывает из-за фото сверху — эффект
-              стопки карточек ("экран в экране"), см. .hero-compact::before.
-              Само фото и текст — во внутренней обёртке с обрезкой углов,
-              чтобы у внешней можно было оставить overflow: visible ради
-              этого декоративного среза */}
+          {/* Карточка "сливается" с экраном через размытое свечение теми же
+              цветами, что и на самом фото (приём из Spotify/Apple Music) —
+              не отдельная плашка контрастного цвета, а цветной туман вокруг
+              карточки. pointer-events: none — это чисто декоративный слой,
+              не должен перехватывать клики у карточки поверх него */}
+          <div className="hero-compact-glow" style={{ backgroundImage: `url(${heroPhotoSrc})` }} />
           <div className="hero-compact-media">
-            {heroMaster?.photo_url ? (
-              <img className="hero-photo" src={heroMaster.photo_url} alt="" />
-            ) : (
-              <img
-                className="hero-photo"
-                src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`}
-                alt=""
-              />
-            )}
+            <img className="hero-photo" src={heroPhotoSrc} alt="" />
             <div className="hero-scrim" />
             {isTestUser && <div className="hero-badge">тест</div>}
             <div className="hero-text">
