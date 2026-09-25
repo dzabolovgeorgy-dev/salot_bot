@@ -2049,14 +2049,13 @@ function App() {
             <button
               key={t.key}
               className={`tab-item${activeTab === t.key ? ' active' : ''}`}
-              aria-label={t.label}
               onClick={() => {
                 setError(null)
                 setActiveTab(t.key)
               }}
             >
               <t.Icon className="tab-icon" size={20} strokeWidth={1.75} />
-              <span className="sr-only">{t.label}</span>
+              <span>{t.label}</span>
             </button>
           ))}
         </div>
