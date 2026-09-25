@@ -80,6 +80,10 @@ export interface Booking {
   client_phone?: string | null
   reference_photo_id?: number | null
   reference_photo_url?: string | null
+  // Только у записей из истории (GET /bookings/history) — оценка, которую
+  // клиент уже поставил визиту через бота, если поставил
+  rating?: number | null
+  comment?: string | null
 }
 
 export interface BlockedSlot {

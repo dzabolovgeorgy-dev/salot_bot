@@ -320,6 +320,36 @@ api.get("/bookings", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
 });
 
+// История визитов — вкладка "Мои записи" в TWA, раздел "История". Только
+// завершённые ("Выполнена"/"Не пришёл") — их статус выставляет мастер/админ
+// в своей панели. Отменённые клиентом записи в истории не появляются: они
+// не помечаются статусом, а удаляются из базы совсем (см. DELETE /bookings/:id)
+api.get("/bookings/history", async (req, res) => {
+  const clientTelegramId = Number(req.query.client_telegram_id);
+  if (!clientTelegramId) {
+    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, clientTelegramId)) return;
+
+  const { rows } = await db.query(
+    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
+            b.service_id, s.name AS service_name, s.duration_minutes, s.price, b.status,
+            r.rating, r.comment
+     FROM bookings b
+     JOIN masters m ON m.id = b.master_id
+     JOIN services s ON s.id = b.service_id
+     LEFT JOIN master_ratings r ON r.booking_id = b.id
+     WHERE b.client_telegram_id = $1
+       AND b.status IN ('completed', 'no_show')
+     ORDER BY b.starts_at DESC
+     LIMIT 50`,
+    [clientTelegramId]
+  );
+
+  res.json(rows.map((r) => ({ ...r, starts_at: toIso(r.starts_at) })));
+});
+
 api.get("/loyalty/:client_telegram_id", async (req, res) => {
   const clientTelegramId = Number(req.params.client_telegram_id);
   if (!clientTelegramId) {

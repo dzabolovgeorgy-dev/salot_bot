@@ -47,6 +47,7 @@ import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells }
 // (см. BookSubTab ниже)
 type Tab = 'home' | 'book' | 'bookings'
 type BookSubTab = 'services' | 'masters' | 'inspiration'
+type BookingsSubTab = 'upcoming' | 'history'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
@@ -66,6 +67,11 @@ const BOOK_SUB_TABS: { key: BookSubTab; label: string }[] = [
   { key: 'services', label: 'Услуги' },
   { key: 'masters', label: 'Мастера' },
   { key: 'inspiration', label: 'Вдохновение' },
+]
+
+const BOOKINGS_SUB_TABS: { key: BookingsSubTab; label: string }[] = [
+  { key: 'upcoming', label: 'Предстоящие' },
+  { key: 'history', label: 'История' },
 ]
 
 // Какие шаги остаются пройти в зависимости от того, откуда начали запись
@@ -360,6 +366,9 @@ function App() {
   const [savingPhotoId, setSavingPhotoId] = useState<number | null>(null)
   const [savedPhotosOpen, setSavedPhotosOpen] = useState(false)
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [activeBookingsSubTab, setActiveBookingsSubTab] = useState<BookingsSubTab>('upcoming')
+  const [bookingHistory, setBookingHistory] = useState<Booking[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -405,7 +414,22 @@ function App() {
   const fetchBookings = () =>
     apiFetch(`${API_URL}/api/bookings?client_telegram_id=${clientTelegramId}`)
       .then((r) => r.json())
-      .then(setBookings)
+      // Если сервер ответил ошибкой (например, подпись Telegram не сошлась),
+      // в теле придёт объект {error: ...}, а не массив — .map() на нём уронит
+      // весь экран клиента, а не просто оставит список записей пустым
+      .then((data) => setBookings(Array.isArray(data) ? data : []))
+
+  // История визитов ("Мои записи" → "История") — подгружаем один раз, при
+  // первом открытии этой подвкладки, а не сразу при заходе в приложение:
+  // раздел не главный, незачем тратить на него запрос, если в него не зашли
+  useEffect(() => {
+    if (activeTab !== 'bookings' || activeBookingsSubTab !== 'history' || historyLoaded) return
+    apiFetch(`${API_URL}/api/bookings/history?client_telegram_id=${clientTelegramId}`)
+      .then((r) => r.json())
+      .then((data) => setBookingHistory(Array.isArray(data) ? data : []))
+      .catch(() => setBookingHistory([]))
+      .finally(() => setHistoryLoaded(true))
+  }, [activeTab, activeBookingsSubTab, historyLoaded])
 
   // Карточка лояльности в профиле — не критична для загрузки экрана, поэтому
   // подгружаем отдельно и молча ничего не показываем, если не получилось
@@ -1544,9 +1568,25 @@ function App() {
             document.body
           )}
 
+        {!inFlow && !reschedule && activeTab === 'bookings' && (
+          <div className="book-subtabs">
+            {BOOKINGS_SUB_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={`book-subtab${activeBookingsSubTab === t.key ? ' active' : ''}`}
+                onClick={() => setActiveBookingsSubTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {!inFlow &&
           !reschedule &&
           activeTab === 'bookings' &&
+          activeBookingsSubTab === 'upcoming' &&
           (bookings.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">
@@ -1597,6 +1637,55 @@ function App() {
                             {cancellingId === b.id ? 'Отменяем…' : 'Отменить'}
                           </button>
                         </div>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          ))}
+
+        {!inFlow &&
+          !reschedule &&
+          activeTab === 'bookings' &&
+          activeBookingsSubTab === 'history' &&
+          (bookingHistory.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <CalendarDays size={26} />
+              </div>
+              <h2>{historyLoaded ? 'История пока пуста' : 'Загрузка…'}</h2>
+              {historyLoaded && <p>Здесь появятся визиты, которые уже прошли.</p>}
+            </div>
+          ) : (
+            <div className="list">
+              {bookingHistory.map((b) => {
+                const master = masters.find((m) => m.id === b.master_id)
+                return (
+                  <article key={b.id} className="booking-tile">
+                    {master?.photo_url ? (
+                      <img className="booking-tile-photo" src={master.photo_url} alt={master.name} />
+                    ) : (
+                      <div className="booking-tile-photo booking-tile-photo-fallback">
+                        <ServiceIcon name={b.service_name} size={24} />
+                      </div>
+                    )}
+                    <div className="booking-tile-body">
+                      <div>
+                        <p className="confirm-eyebrow">
+                          {b.status === 'no_show' ? 'Не пришли' : 'Выполнена'}
+                        </p>
+                        <h2 className="confirm-title">{b.service_name}</h2>
+                        <p className="booking-tile-master">{b.master_name}</p>
+                      </div>
+                      <div className="booking-tile-footer">
+                        <span className="booking-tile-time">{formatDateTime(b.starts_at)}</span>
+                        {b.rating ? (
+                          <span className="booking-tile-rating">
+                            {'★'.repeat(b.rating)}
+                            {'☆'.repeat(5 - b.rating)}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </article>
@@ -1781,7 +1870,11 @@ function App() {
       </motion.div>
       </AnimatePresence>
 
-      {!inFlow && !reschedule && activeTab === 'bookings' && bookings.length > 0 && (
+      {!inFlow &&
+        !reschedule &&
+        activeTab === 'bookings' &&
+        activeBookingsSubTab === 'upcoming' &&
+        bookings.length > 0 && (
         <div className="footer">
           <button className="primary" onClick={() => startFlow('bookings')}>
             Записаться

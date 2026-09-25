@@ -1930,6 +1930,14 @@
   gap: 12px;
 }
 
+/* Звёзды оценки на карточке визита в "Истории" — сама оценка ставится
+   клиентом в чате с ботом (кнопки под уведомлением), здесь только показываем */
+.booking-tile-rating {
+  color: var(--primary);
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
 .text-link-inline {
   background: none;
   border: none;
