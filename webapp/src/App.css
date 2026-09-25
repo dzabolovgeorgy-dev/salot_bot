@@ -1924,6 +1924,14 @@
   color: var(--text-h);
 }
 
+/* Дата + оценка (если есть) вместе слева в футере карточки визита из
+   "Истории" — справа от них кнопка "Повторить запись" */
+.booking-tile-footer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .booking-tile-actions {
   display: flex;
   align-items: center;

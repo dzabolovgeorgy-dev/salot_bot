@@ -517,6 +517,21 @@ function App() {
     setFlowIndex(FLOW_STEPS.masters.indexOf('time'))
   }
 
+  // "Повторить запись" на карточке визита в "Истории" — то же самое, что и
+  // выбор услуги в профиле мастера (bookFromProfile): мастер и услуга уже
+  // известны из прошлой записи, сразу переходим к выбору даты и времени.
+  // Услугу или мастера могли к этому моменту удалить — тогда просто не даём
+  // повторить и объясняем, почему, а не падаем на несуществующих данных
+  const repeatBooking = (b: Booking) => {
+    const master = masters.find((m) => m.id === b.master_id)
+    const service = services.find((s) => s.id === b.service_id)
+    if (!master || !service) {
+      setError('Эта услуга или мастер больше недоступны — выберите другую запись вручную')
+      return
+    }
+    bookFromProfile(master, service)
+  }
+
   // Кнопка "Записаться на такое"/"Записаться" в полноэкранном просмотре фото
   // из "Вдохновения" — подставляет мастера (если фото его) и услугу по категории
   const bookFromInspiration = (photo: InspirationPhoto) => {
@@ -1679,13 +1694,18 @@ function App() {
                         <p className="booking-tile-master">{b.master_name}</p>
                       </div>
                       <div className="booking-tile-footer">
-                        <span className="booking-tile-time">{formatDateTime(b.starts_at)}</span>
-                        {b.rating ? (
-                          <span className="booking-tile-rating">
-                            {'★'.repeat(b.rating)}
-                            {'☆'.repeat(5 - b.rating)}
-                          </span>
-                        ) : null}
+                        <div className="booking-tile-footer-info">
+                          <span className="booking-tile-time">{formatDateTime(b.starts_at)}</span>
+                          {b.rating ? (
+                            <span className="booking-tile-rating">
+                              {'★'.repeat(b.rating)}
+                              {'☆'.repeat(5 - b.rating)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <button className="text-link-inline" onClick={() => repeatBooking(b)}>
+                          Повторить запись
+                        </button>
                       </div>
                     </div>
                   </article>
