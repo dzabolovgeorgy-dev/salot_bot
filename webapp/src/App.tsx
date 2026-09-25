@@ -1261,20 +1261,27 @@ function App() {
     <div className="app">
       {isHomeHero ? (
         <div className="hero hero-compact">
-          {heroMaster?.photo_url ? (
-            <img className="hero-photo" src={heroMaster.photo_url} alt="" />
-          ) : (
-            <img
-              className="hero-photo"
-              src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`}
-              alt=""
-            />
-          )}
-          <div className="hero-scrim" />
-          {isTestUser && <div className="hero-badge">тест</div>}
-          <div className="hero-text">
-            <p className="hero-eyebrow">{heroBooking ? 'ВАША ЗАПИСЬ' : 'САЛОН КРАСОТЫ'}</p>
-            <div className="hero-name">{heroBooking ? heroBooking.service_name : 'Добро пожаловать'}</div>
+          {/* Блёклая "вторая карточка" выглядывает из-за фото сверху — эффект
+              стопки карточек ("экран в экране"), см. .hero-compact::before.
+              Само фото и текст — во внутренней обёртке с обрезкой углов,
+              чтобы у внешней можно было оставить overflow: visible ради
+              этого декоративного среза */}
+          <div className="hero-compact-media">
+            {heroMaster?.photo_url ? (
+              <img className="hero-photo" src={heroMaster.photo_url} alt="" />
+            ) : (
+              <img
+                className="hero-photo"
+                src={`${import.meta.env.BASE_URL}images/atelier-header.jpg`}
+                alt=""
+              />
+            )}
+            <div className="hero-scrim" />
+            {isTestUser && <div className="hero-badge">тест</div>}
+            <div className="hero-text">
+              <p className="hero-eyebrow">{heroBooking ? 'ВАША ЗАПИСЬ' : 'САЛОН КРАСОТЫ'}</p>
+              <div className="hero-name">{heroBooking ? heroBooking.service_name : 'Добро пожаловать'}</div>
+            </div>
           </div>
         </div>
       ) : (
@@ -2046,13 +2053,14 @@ function App() {
             <button
               key={t.key}
               className={`tab-item${activeTab === t.key ? ' active' : ''}`}
+              aria-label={t.label}
               onClick={() => {
                 setError(null)
                 setActiveTab(t.key)
               }}
             >
               <t.Icon className="tab-icon" size={20} strokeWidth={1.75} />
-              <span>{t.label}</span>
+              <span className="sr-only">{t.label}</span>
             </button>
           ))}
         </div>
