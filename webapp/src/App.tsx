@@ -1356,25 +1356,20 @@ function App() {
         )}
 
         {/* ВРЕМЕННЫЙ переключатель языка — только для проверки мультиязычности,
-            не финальный интерфейс. Строка dev.fallbackProbe есть лишь в русском
-            словаре: на другом языке она должна показаться по-русски (запасной
-            вариант), а не пропасть и не превратиться в имя ключа */}
+            не финальный интерфейс. Маленькая полупрозрачная пилюля у верхнего
+            края экрана, чтобы не мешать (position: fixed — см. App.css) */}
         {isHomeHero && (
           <div className="dev-lang-switcher">
-            <div className="dev-lang-switcher-label">{t('dev.switcherLabel')}</div>
-            <div className="dev-lang-switcher-buttons">
-              {SUPPORTED_LANGS.map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  className={`dev-lang-btn${lang === l ? ' active' : ''}`}
-                  onClick={() => switchLanguage(l)}
-                >
-                  {l.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <div className="dev-lang-switcher-probe">{t('dev.fallbackProbe')}</div>
+            {SUPPORTED_LANGS.map((l) => (
+              <button
+                key={l}
+                type="button"
+                className={`dev-lang-btn${lang === l ? ' active' : ''}`}
+                onClick={() => switchLanguage(l)}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
           </div>
         )}
 
