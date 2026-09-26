@@ -1,6 +1,7 @@
 import { Context, Scenes } from "telegraf";
 import { isWorkDay, generateTimeSlots, slotStep, type MasterSchedule } from "./schedule.js";
 import { internalHeaders } from "./internalAuth.js";
+import { t, type Lang } from "./i18n.js";
 
 interface InlineButton {
   text: string;
@@ -12,16 +13,24 @@ export const API_BASE = `http://localhost:${process.env.PORT ?? 3000}/api`;
 // Текст постоянной кнопки быстрой записи внизу чата (задаётся в bot.ts) —
 // экспортируем отсюда, чтобы bot.ts мог её импортировать, не создавая
 // круговую зависимость (bot.ts и так уже импортирует эту сцену)
-export const BOOK_BUTTON_TEXT = "📅 Записаться в чате";
+export function bookButtonText(lang: Lang): string {
+  return t(lang, "bot.bookButton");
+}
+
+// Заголовок для запросов к нашему же API — чтобы имена услуг и описания
+// мастеров пришли на языке пользователя (а если перевода нет — по-русски)
+function langHeaders(lang: Lang): Record<string, string> {
+  return { "X-Lang": lang };
+}
 
 // Кнопки "Перенести"/"Отменить" под уведомлением о записи в чате — используются
 // и в api.ts (когда шлёт подтверждение записи), и в bot.ts (чтобы вернуть их
 // после того как человек передумал отменять — см. cancelbk_no)
-export function bookingActionButtons(bookingId: number): InlineButton[][] {
+export function bookingActionButtons(bookingId: number, lang: Lang): InlineButton[][] {
   return [
     [
-      { text: "🔄 Перенести", callback_data: `resched:${bookingId}` },
-      { text: "❌ Отменить", callback_data: `cancelbk:${bookingId}` },
+      { text: t(lang, "buttons.reschedule"), callback_data: `resched:${bookingId}` },
+      { text: t(lang, "buttons.cancelBooking"), callback_data: `cancelbk:${bookingId}` },
     ],
   ];
 }
@@ -30,13 +39,13 @@ export function bookingActionButtons(bookingId: number): InlineButton[][] {
 // сообщить, что вот-вот начнётся запись, а предупредить об опоздании раньше
 // времени смысла нет — поэтому не добавляем эту кнопку в bookingActionButtons,
 // который используется и сразу при создании записи
-export function reminderActionButtons(bookingId: number): InlineButton[][] {
+export function reminderActionButtons(bookingId: number, lang: Lang): InlineButton[][] {
   return [
     [
-      { text: "🔄 Перенести", callback_data: `resched:${bookingId}` },
-      { text: "❌ Отменить", callback_data: `cancelbk:${bookingId}` },
+      { text: t(lang, "buttons.reschedule"), callback_data: `resched:${bookingId}` },
+      { text: t(lang, "buttons.cancelBooking"), callback_data: `cancelbk:${bookingId}` },
     ],
-    [{ text: "⏳ Я опаздываю", callback_data: `late:${bookingId}` }],
+    [{ text: t(lang, "buttons.late"), callback_data: `late:${bookingId}` }],
   ];
 }
 
@@ -63,6 +72,10 @@ export function masterBookingActionButtons(bookingId: number): InlineButton[][] 
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
 interface BookingSceneState {
+  // Язык диалога — берётся один раз при входе в сцену (из сохранённого языка
+  // пользователя) и держится в состоянии диалога до его конца, а не
+  // запрашивается заново на каждом шаге
+  lang?: Lang;
   serviceId?: number;
   serviceName?: string;
   serviceDuration?: number;
@@ -97,6 +110,9 @@ interface BookingSceneSessionData extends Scenes.SceneSessionData {
 }
 
 export interface BotContext extends Context {
+  // Язык пользователя (сохранённый в базе, при первом обращении определяется
+  // по языку Telegram) — выставляется в bot.ts до всех остальных обработчиков
+  lang: Lang;
   scene: Scenes.SceneContextScene<BotContext, BookingSceneSessionData>;
   session: Scenes.SceneSession<BookingSceneSessionData>;
 }
@@ -119,23 +135,17 @@ interface Master extends MasterSchedule {
   ratings_count: number;
 }
 
-function masterLabel(m: Master): string {
-  return m.ratings_count > 0 ? `${m.name} — ${m.avg_rating} ⭐` : m.name;
+function masterLabel(m: Master, lang: Lang): string {
+  return m.ratings_count > 0 ? t(lang, "book.masterLabel", { name: m.name, rating: m.avg_rating ?? "" }) : m.name;
 }
-
-const MONTH_NAMES = [
-  "января", "февраля", "марта", "апреля", "мая", "июня",
-  "июля", "августа", "сентября", "октября", "ноября", "декабря",
-];
-const WEEKDAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 function dateKey(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function formatDayLabel(d: Date): string {
-  return `${WEEKDAY_NAMES[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+function formatDayLabel(d: Date, lang: Lang): string {
+  return `${t(lang, `calendar.wd_${(d.getDay() + 6) % 7}`)}, ${d.getDate()} ${t(lang, `calendar.month_${d.getMonth()}`)}`;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -149,6 +159,12 @@ function state(ctx: BotContext): BookingSceneState {
   return ctx.scene.session.booking;
 }
 
+// Язык этого диалога: зафиксированный при входе в сцену, а если состояние
+// потерялось (сервер перезапускался) — текущий язык пользователя
+function L(ctx: BotContext): Lang {
+  return state(ctx).lang ?? ctx.lang;
+}
+
 // Если сервер перезапустился (данные диалога хранятся в памяти, не в базе) —
 // шаг сессии теряется. Просим начать заново, а не падаем с ошибкой
 async function requireField<K extends keyof BookingSceneState>(
@@ -157,8 +173,9 @@ async function requireField<K extends keyof BookingSceneState>(
 ): Promise<BookingSceneState[K] | undefined> {
   const value = state(ctx)[field];
   if (value === undefined) {
-    await ctx.answerCbQuery("Сессия сброшена — начните заново");
-    await ctx.reply(`Похоже, сервер перезапускался и диалог сбросился. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`);
+    const lang = L(ctx);
+    await ctx.answerCbQuery(t(lang, "book.sessionReset"));
+    await ctx.reply(t(lang, "book.sessionLost", { button: bookButtonText(lang) }));
     await ctx.scene.leave();
   }
   return value;
@@ -168,6 +185,7 @@ async function requireField<K extends keyof BookingSceneState>(
 // мастера), и при переносе существующей записи (сразу после входа в сцену,
 // услуга и мастер уже известны из старой записи)
 async function sendDayPicker(ctx: BotContext, master: Master, send: (text: string, extra: object) => Promise<unknown>) {
+  const lang = L(ctx);
   const days: Date[] = [];
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
@@ -177,19 +195,16 @@ async function sendDayPicker(ctx: BotContext, master: Master, send: (text: strin
     if (isWorkDay(dateKey(d), master)) days.push(d);
   }
   if (days.length === 0) {
-    await send(
-      `У мастера ${master.name} нет рабочих дней в ближайший месяц. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`,
-      {}
-    );
+    await send(t(lang, "book.noWorkDays", { master: master.name, button: bookButtonText(lang) }), {});
     await ctx.scene.leave();
     return;
   }
   const buttons: InlineButton[][] = chunk(
-    days.map((d) => ({ text: formatDayLabel(d), callback_data: `day:${dateKey(d)}` })),
+    days.map((d) => ({ text: formatDayLabel(d, lang), callback_data: `day:${dateKey(d)}` })),
     2
   );
-  buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
-  await send(`Мастер: ${master.name}\n\nВыберите день:`, { reply_markup: { inline_keyboard: buttons } });
+  buttons.push([{ text: t(lang, "common.cancel"), callback_data: "cancel" }]);
+  await send(t(lang, "book.pickDay", { master: master.name }), { reply_markup: { inline_keyboard: buttons } });
 }
 
 export const bookingScene = new Scenes.BaseScene<BotContext>("booking");
@@ -197,9 +212,11 @@ export const bookingScene = new Scenes.BaseScene<BotContext>("booking");
 bookingScene.enter(async (ctx) => {
   const entryState = ctx.scene.state as RescheduleEntryState;
   const reschedule = entryState.reschedule;
+  const lang = ctx.lang;
 
   if (reschedule) {
     ctx.scene.session.booking = {
+      lang,
       rescheduleBookingId: reschedule.bookingId,
       masterId: reschedule.masterId,
       masterName: reschedule.masterName,
@@ -208,11 +225,11 @@ bookingScene.enter(async (ctx) => {
       serviceDuration: reschedule.serviceDuration,
       servicePrice: reschedule.servicePrice,
     };
-    const mastersRes = await fetch(`${API_BASE}/masters`);
+    const mastersRes = await fetch(`${API_BASE}/masters`, { headers: langHeaders(lang) });
     const masters = (await mastersRes.json()) as Master[];
     const master = masters.find((m) => m.id === reschedule.masterId);
     if (!master) {
-      await ctx.reply("Этого мастера больше нет — перенести запись не получится, отмените и запишитесь заново.");
+      await ctx.reply(t(lang, "book.masterGone"));
       await ctx.scene.leave();
       return;
     }
@@ -220,37 +237,45 @@ bookingScene.enter(async (ctx) => {
     return;
   }
 
-  ctx.scene.session.booking = {};
-  const res = await fetch(`${API_BASE}/services`);
+  ctx.scene.session.booking = { lang };
+  const res = await fetch(`${API_BASE}/services`, { headers: langHeaders(lang) });
   const services = (await res.json()) as Service[];
   if (services.length === 0) {
-    await ctx.reply("Пока нет доступных услуг, попробуйте позже.");
+    await ctx.reply(t(lang, "book.noServices"));
     await ctx.scene.leave();
     return;
   }
   const buttons: InlineButton[][] = services.map((s) => [
-    { text: `${s.name} — ${s.price} € (${s.duration_minutes} мин)`, callback_data: `svc:${s.id}` },
+    {
+      text: t(lang, "book.serviceButton", { name: s.name, price: s.price, minutes: s.duration_minutes }),
+      callback_data: `svc:${s.id}`,
+    },
   ]);
-  buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
-  await ctx.reply("Какая услуга вас интересует?", { reply_markup: { inline_keyboard: buttons } });
+  buttons.push([{ text: t(lang, "common.cancel"), callback_data: "cancel" }]);
+  await ctx.reply(t(lang, "book.pickService"), { reply_markup: { inline_keyboard: buttons } });
 });
 
 bookingScene.action("cancel", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.editMessageText(`Запись отменена. Если захотите начать заново — нажмите «${BOOK_BUTTON_TEXT}».`);
+  const lang = L(ctx);
+  await ctx.editMessageText(t(lang, "book.cancelled", { button: bookButtonText(lang) }));
   await ctx.scene.leave();
 });
 
 bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const serviceId = Number(ctx.match[1]);
+  const lang = L(ctx);
   // Оба запроса не зависят друг от друга — запускаем сразу вместе, а не по
   // очереди, чтобы каждый шаг диалога отвечал быстрее
-  const [res, mastersRes] = await Promise.all([fetch(`${API_BASE}/services`), fetch(`${API_BASE}/masters`)]);
+  const [res, mastersRes] = await Promise.all([
+    fetch(`${API_BASE}/services`, { headers: langHeaders(lang) }),
+    fetch(`${API_BASE}/masters`, { headers: langHeaders(lang) }),
+  ]);
   const services = (await res.json()) as Service[];
   const service = services.find((s) => s.id === serviceId);
   if (!service) {
-    await ctx.editMessageText(`Эта услуга уже недоступна. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`);
+    await ctx.editMessageText(t(lang, "book.serviceGone", { button: bookButtonText(lang) }));
     await ctx.scene.leave();
     return;
   }
@@ -264,15 +289,15 @@ bookingScene.action(/^svc:(\d+)$/, async (ctx) => {
   const masters = (await mastersRes.json()) as Master[];
   const available = masters.filter((m) => m.service_ids.includes(serviceId));
   if (available.length === 0) {
-    await ctx.editMessageText(`Для этой услуги пока нет мастеров. Нажмите «${BOOK_BUTTON_TEXT}», чтобы выбрать другую услугу.`);
+    await ctx.editMessageText(t(lang, "book.noMastersForService", { button: bookButtonText(lang) }));
     await ctx.scene.leave();
     return;
   }
   const buttons: InlineButton[][] = available.map((m) => [
-    { text: masterLabel(m), callback_data: `mst:${m.id}` },
+    { text: masterLabel(m, lang), callback_data: `mst:${m.id}` },
   ]);
-  buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
-  await ctx.editMessageText(`Услуга: ${service.name}\n\nВыберите мастера:`, {
+  buttons.push([{ text: t(lang, "common.cancel"), callback_data: "cancel" }]);
+  await ctx.editMessageText(t(lang, "book.pickMaster", { service: service.name }), {
     reply_markup: { inline_keyboard: buttons },
   });
 });
@@ -281,11 +306,12 @@ bookingScene.action(/^mst:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   if ((await requireField(ctx, "serviceId")) === undefined) return;
   const masterId = Number(ctx.match[1]);
-  const mastersRes = await fetch(`${API_BASE}/masters`);
+  const lang = L(ctx);
+  const mastersRes = await fetch(`${API_BASE}/masters`, { headers: langHeaders(lang) });
   const masters = (await mastersRes.json()) as Master[];
   const master = masters.find((m) => m.id === masterId);
   if (!master) {
-    await ctx.editMessageText(`Этот мастер уже недоступен. Нажмите «${BOOK_BUTTON_TEXT}», чтобы начать заново.`);
+    await ctx.editMessageText(t(lang, "book.masterUnavailable", { button: bookButtonText(lang) }));
     await ctx.scene.leave();
     return;
   }
@@ -301,10 +327,11 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
   const duration = await requireField(ctx, "serviceDuration");
   if (masterId === undefined || duration === undefined) return;
   const date = ctx.match[1];
+  const lang = L(ctx);
   state(ctx).date = date;
 
   const [mastersRes, busyRes] = await Promise.all([
-    fetch(`${API_BASE}/masters`),
+    fetch(`${API_BASE}/masters`, { headers: langHeaders(lang) }),
     fetch(`${API_BASE}/masters/${masterId}/bookings?date=${date}`),
   ]);
   const masters = (await mastersRes.json()) as Master[];
@@ -329,9 +356,7 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
   });
 
   if (freeSlots.length === 0) {
-    await ctx.editMessageText(
-      `На этот день свободного времени не осталось. Нажмите «${BOOK_BUTTON_TEXT}», чтобы выбрать другой день.`
-    );
+    await ctx.editMessageText(t(lang, "book.noFreeTime", { button: bookButtonText(lang) }));
     await ctx.scene.leave();
     return;
   }
@@ -339,9 +364,9 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
     freeSlots.map((t) => ({ text: t, callback_data: `time:${t}` })),
     4
   );
-  buttons.push([{ text: "Отмена", callback_data: "cancel" }]);
+  buttons.push([{ text: t(lang, "common.cancel"), callback_data: "cancel" }]);
   const dateObj = new Date(`${date}T00:00:00`);
-  await ctx.editMessageText(`${formatDayLabel(dateObj)}\n\nВыберите время:`, {
+  await ctx.editMessageText(t(lang, "book.pickTime", { day: formatDayLabel(dateObj, lang) }), {
     reply_markup: { inline_keyboard: buttons },
   });
 });
@@ -349,14 +374,22 @@ bookingScene.action(/^day:([\d-]+)$/, async (ctx) => {
 // Экран "Проверьте запись" — общий финальный шаг перед подтверждением.
 async function sendConfirmScreen(ctx: BotContext) {
   const s = state(ctx);
+  const lang = L(ctx);
   const dateObj = new Date(`${s.date}T00:00:00`);
-  const heading = s.rescheduleBookingId ? "Перенести запись на:" : "Проверьте запись:";
-  const text = `${heading}\n\nУслуга: ${s.serviceName}\nМастер: ${s.masterName}\n${formatDayLabel(dateObj)}, ${s.time}\nЦена: ${s.servicePrice} €\n\nВсё верно?`;
+  const heading = t(lang, s.rescheduleBookingId ? "book.confirmHeadingReschedule" : "book.confirmHeading");
+  const text = t(lang, "book.confirmBody", {
+    heading,
+    service: s.serviceName ?? "",
+    master: s.masterName ?? "",
+    day: formatDayLabel(dateObj, lang),
+    time: s.time ?? "",
+    price: s.servicePrice ?? "",
+  });
   const extra = {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "✅ Подтвердить", callback_data: "confirm" }],
-        [{ text: "Отмена", callback_data: "cancel" }],
+        [{ text: t(lang, "book.confirm"), callback_data: "confirm" }],
+        [{ text: t(lang, "common.cancel"), callback_data: "cancel" }],
       ],
     },
   };
@@ -389,33 +422,37 @@ bookingScene.action("confirm", async (ctx) => {
     return;
 
   const from = ctx.from!;
-  const clientName = [from.first_name, from.last_name].filter(Boolean).join(" ") || from.username || "Клиент";
+  const lang = L(ctx);
+  const clientName = [from.first_name, from.last_name].filter(Boolean).join(" ") || from.username || t(lang, "common.client");
   const startsAt = `${s.date}T${s.time}:00`;
 
   if (s.rescheduleBookingId) {
-    await ctx.editMessageText("Переношу…");
+    await ctx.editMessageText(t(lang, "book.moving"));
     const res = await fetch(`${API_BASE}/bookings/${s.rescheduleBookingId}`, {
       method: "PATCH",
-      headers: internalHeaders({ "Content-Type": "application/json" }),
+      headers: internalHeaders({ "Content-Type": "application/json", ...langHeaders(lang) }),
       body: JSON.stringify({ client_telegram_id: from.id, starts_at: startsAt }),
     });
     const data = await res.json();
     if (!res.ok) {
       await ctx.editMessageText(
-        `Не получилось перенести: ${data.error ?? "неизвестная ошибка"}. Нажмите «${BOOK_BUTTON_TEXT}», чтобы попробовать снова.`
+        t(lang, "book.moveFailed", {
+          error: data.error ?? t(lang, "common.unknownError"),
+          button: bookButtonText(lang),
+        })
       );
       await ctx.scene.leave();
       return;
     }
-    await ctx.editMessageText("✅ Перенесено! Подробности пришлю следующим сообщением.");
+    await ctx.editMessageText(t(lang, "book.moved"));
     await ctx.scene.leave();
     return;
   }
 
-  await ctx.editMessageText("Записываю…");
+  await ctx.editMessageText(t(lang, "book.booking"));
   const res = await fetch(`${API_BASE}/bookings`, {
     method: "POST",
-    headers: internalHeaders({ "Content-Type": "application/json" }),
+    headers: internalHeaders({ "Content-Type": "application/json", ...langHeaders(lang) }),
     body: JSON.stringify({
       client_telegram_id: from.id,
       client_username: from.username,
@@ -428,11 +465,14 @@ bookingScene.action("confirm", async (ctx) => {
   const data = await res.json();
   if (!res.ok) {
     await ctx.editMessageText(
-      `Не получилось записать: ${data.error ?? "неизвестная ошибка"}. Нажмите «${BOOK_BUTTON_TEXT}», чтобы попробовать снова.`
+      t(lang, "book.bookFailed", {
+        error: data.error ?? t(lang, "common.unknownError"),
+        button: bookButtonText(lang),
+      })
     );
     await ctx.scene.leave();
     return;
   }
-  await ctx.editMessageText("✅ Готово! Подробности пришлю следующим сообщением.");
+  await ctx.editMessageText(t(lang, "book.booked"));
   await ctx.scene.leave();
 });

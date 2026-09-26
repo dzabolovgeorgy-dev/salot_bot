@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import i18n from './i18n'
 import App from './App.tsx'
 import StaffApp from './StaffApp.tsx'
 import PwaLogin from './PwaLogin.tsx'
@@ -80,7 +81,7 @@ function PwaRoot() {
   }
 
   if (!checkedSession) {
-    return <div className="loading-screen">Загрузка…</div>
+    return <div className="loading-screen">{i18n.t('common.loading')}</div>
   }
 
   if (!identity) {
@@ -117,7 +118,7 @@ function Gate() {
   }, [])
 
   if (!role) {
-    return <div className="loading-screen">Загрузка…</div>
+    return <div className="loading-screen">{i18n.t('common.loading')}</div>
   }
 
   if (role.role === 'master') {

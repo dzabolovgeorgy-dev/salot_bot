@@ -10,6 +10,16 @@ import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
 import { attachTelegramIdentity } from "./telegramAuthMiddleware.js";
 import { startReminderScheduler } from "./reminders.js";
+import { normalizeLang, type Lang } from "./i18n.js";
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      lang: Lang;
+    }
+  }
+}
 
 // Сервер на Render по умолчанию работает по UTC, а салон — по своему местному
 // времени. Даты/время клиента и мастера везде считаются в браузере (там уже
@@ -40,7 +50,15 @@ app.use(express.json());
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, PATCH, PUT");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data, X-Staff-Session");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Telegram-Init-Data, X-Staff-Session, X-Lang");
+  next();
+});
+
+// Язык, на котором клиент хочет получить ответ (тексты ошибок, названия услуг).
+// Приложение и бот присылают его заголовком X-Lang; нет заголовка или язык
+// неизвестен — русский. Панель персонала заголовок не шлёт и остаётся русской
+app.use((req, _res, next) => {
+  req.lang = normalizeLang(req.header("X-Lang"));
   next();
 });
 

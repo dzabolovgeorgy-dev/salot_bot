@@ -60,6 +60,9 @@ export interface SavedPhoto {
 export interface Service {
   id: number
   name: string
+  // Русское название — всегда, даже на другом языке: по нему подбирается иконка
+  // и категория из "Вдохновения" (name уже может быть переводом)
+  name_ru: string
   duration_minutes: number
   price: number
 }
@@ -71,6 +74,7 @@ export interface Booking {
   master_name: string
   service_id: number
   service_name: string
+  service_name_ru?: string
   duration_minutes: number
   price?: number
   client_name?: string | null

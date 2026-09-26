@@ -307,6 +307,23 @@ export async function initDb(): Promise<void> {
       quantity_per_use INTEGER NOT NULL CHECK (quantity_per_use > 0),
       PRIMARY KEY (service_id, item_id)
     );
+
+    -- Мультиязычность. Основной (русский) текст живёт в прежних колонках
+    -- (services.name, masters.bio), переводы — в соседних колонках с суффиксом
+    -- языка (name_en, bio_en). Пустая/NULL колонка перевода = "перевода нет",
+    -- тогда показывается русский текст (см. server/src/i18n.ts). Новый язык —
+    -- новые колонки name_<язык>/bio_<язык> и запись в SUPPORTED_LANGS
+    ALTER TABLE services ADD COLUMN IF NOT EXISTS name_en TEXT;
+    ALTER TABLE masters ADD COLUMN IF NOT EXISTS bio_en TEXT;
+
+    -- Язык интерфейса каждого пользователя: определяется один раз по языку
+    -- Telegram (language_code) при первом обращении и дальше берётся отсюда,
+    -- а не определяется заново. Одна запись на человека — общая для бота и TWA
+    CREATE TABLE IF NOT EXISTS user_languages (
+      telegram_id BIGINT PRIMARY KEY,
+      language TEXT NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT now()
+    );
   `);
 
   // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
@@ -324,6 +341,7 @@ export async function initDb(): Promise<void> {
     ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
     ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
     ALTER TABLE pwa_sessions ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE user_languages ENABLE ROW LEVEL SECURITY;
     ALTER TABLE pwa_login_codes ENABLE ROW LEVEL SECURITY;
     ALTER TABLE blocked_slots ENABLE ROW LEVEL SECURITY;
     ALTER TABLE master_photos ENABLE ROW LEVEL SECURITY;
@@ -340,7 +358,7 @@ export async function initDb(): Promise<void> {
     ALTER TABLE service_inventory_items ENABLE ROW LEVEL SECURITY;
 
     REVOKE ALL ON
-      masters, services, master_services, bookings, staff, pwa_sessions, pwa_login_codes,
+      masters, services, master_services, bookings, staff, pwa_sessions, pwa_login_codes, user_languages,
       blocked_slots, master_photos, photo_folders, master_photo_folders,
       inspiration_photos, saved_photos, client_notes, loyalty_points,
       loyalty_transactions, master_ratings, inventory_items, inventory_transactions,

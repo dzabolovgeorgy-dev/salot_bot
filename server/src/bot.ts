@@ -2,7 +2,7 @@ import { Telegraf, Markup, Scenes, session } from "telegraf";
 import { db } from "./db.js";
 import {
   bookingScene,
-  BOOK_BUTTON_TEXT,
+  bookButtonText,
   API_BASE,
   bookingActionButtons,
   reminderActionButtons,
@@ -11,6 +11,8 @@ import {
 } from "./bookingScene.js";
 import { internalHeaders } from "./internalAuth.js";
 import { getRole } from "./roles.js";
+import { DEFAULT_LANG, SUPPORTED_LANGS, allLangs, isSupportedLang, localizedSql, t, type Lang } from "./i18n.js";
+import { resolveLanguage, saveLanguage } from "./userLanguage.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -33,6 +35,14 @@ export const bot = new Telegraf<BotContext>(token);
 // хранится в памяти сервера (не в базе) — если сервер перезапустится посреди
 // диалога, человеку придётся начать заново командой /book
 const stage = new Scenes.Stage<BotContext>([bookingScene]);
+
+// Язык пользователя — первым делом, до остальных обработчиков: при самом
+// первом обращении определяется по языку Telegram и сохраняется в базе, дальше
+// только читается оттуда (а не определяется заново на каждом сообщении/шаге)
+bot.use(async (ctx, next) => {
+  ctx.lang = ctx.from ? await resolveLanguage(ctx.from.id, ctx.from.language_code) : DEFAULT_LANG;
+  return next();
+});
 bot.use(session());
 bot.use(stage.middleware());
 
@@ -89,24 +99,51 @@ bot.start(async (ctx) => {
 
   // .persistent() — иначе Telegram на телефоне сворачивает эту кнопку в
   // маленькую иконку клавиатуры после первого нажатия, и кажется, что она пропала
+  const lang = ctx.lang;
   await ctx.reply(
-    `Привет! Я помогу записаться в салон красоты.\n\nДля быстрой записи прямо здесь, в чате, нажмите кнопку «${BOOK_BUTTON_TEXT}» внизу — она всегда под рукой.`,
-    Markup.keyboard([[BOOK_BUTTON_TEXT]]).resize().persistent()
+    t(lang, "bot.welcome", { button: bookButtonText(lang) }),
+    Markup.keyboard([[bookButtonText(lang)]]).resize().persistent()
   );
 
   if (webAppUrl) {
     await ctx.reply(
-      "А в приложении можно подробнее посмотреть всех мастеров и услуги — с фото и описанием.",
-      Markup.inlineKeyboard([Markup.button.webApp("Открыть приложение", webAppUrl)])
+      t(lang, "bot.welcomeApp"),
+      Markup.inlineKeyboard([Markup.button.webApp(t(lang, "buttons.openApp"), webAppUrl)])
     );
     // На случай, если у этого чата раньше стояла кнопка "Панель" (роль сменилась
     // с персонала на клиента, например, при тестировании) — возвращаем клиентский текст
-    await setPersonalMenuButton(ctx.chat.id, "Записаться", webAppUrl);
+    await setPersonalMenuButton(ctx.chat.id, t(lang, "bot.menuBook"), webAppUrl);
   }
 });
 
 bot.command("book", (ctx) => ctx.scene.enter("booking"));
-bot.hears(BOOK_BUTTON_TEXT, (ctx) => ctx.scene.enter("booking"));
+// Кнопка внизу чата называется по-разному на разных языках — узнаём любую
+bot.hears(allLangs("bot.bookButton"), (ctx) => ctx.scene.enter("booking"));
+
+// ВРЕМЕННЫЙ переключатель языка — только чтобы проверять мультиязычность руками
+// (не финальный интерфейс; убрать/заменить настоящим выбором языка). /lang
+// показывает кнопки выбора, выбор сохраняется в базе и действует и для бота,
+// и для TWA (общая запись на пользователя)
+bot.command("lang", async (ctx) => {
+  await ctx.reply(t(ctx.lang, "dev.langPrompt", { lang: ctx.lang }), {
+    reply_markup: {
+      inline_keyboard: [SUPPORTED_LANGS.map((l) => ({ text: l.toUpperCase(), callback_data: `setlang:${l}` }))],
+    },
+  });
+});
+
+bot.action(/^setlang:(\w+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const chosen = ctx.match[1];
+  if (!isSupportedLang(chosen)) return;
+  await saveLanguage(ctx.from.id, chosen);
+  ctx.lang = chosen;
+  await ctx.editMessageText(t(chosen, "dev.langPrompt", { lang: chosen }), {
+    reply_markup: {
+      inline_keyboard: [SUPPORTED_LANGS.map((l) => ({ text: l.toUpperCase(), callback_data: `setlang:${l}` }))],
+    },
+  });
+});
 
 // Кнопка "🔄 Перенести" под сообщением о записи — работает вне зависимости от
 // того, идёт ли сейчас какой-то диалог, поэтому обработчик общий, не внутри
@@ -114,7 +151,9 @@ bot.hears(BOOK_BUTTON_TEXT, (ctx) => ctx.scene.enter("booking"));
 bot.action(/^resched:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const bookingId = Number(ctx.match[1]);
-  const res = await fetch(`${API_BASE}/bookings?client_telegram_id=${ctx.from.id}`, { headers: internalHeaders() });
+  const res = await fetch(`${API_BASE}/bookings?client_telegram_id=${ctx.from.id}`, {
+    headers: internalHeaders({ "X-Lang": ctx.lang }),
+  });
   const bookings = (await res.json()) as {
     id: number;
     master_id: number;
@@ -126,7 +165,7 @@ bot.action(/^resched:(\d+)$/, async (ctx) => {
   }[];
   const booking = bookings.find((b) => b.id === bookingId);
   if (!booking) {
-    await ctx.reply("Эту запись уже нельзя перенести — она прошла или отменена.");
+    await ctx.reply(t(ctx.lang, "bot.reschedUnavailable"));
     return;
   }
   const entryState: RescheduleEntryState = {
@@ -150,8 +189,8 @@ bot.action(/^cancelbk:(\d+)$/, async (ctx) => {
   const id = ctx.match[1];
   await ctx.editMessageReplyMarkup({
     inline_keyboard: [
-      [{ text: "Да, отменить", callback_data: `cancelbk_yes:${id}` }],
-      [{ text: "Нет, оставить", callback_data: `cancelbk_no:${id}` }],
+      [{ text: t(ctx.lang, "buttons.yesCancel"), callback_data: `cancelbk_yes:${id}` }],
+      [{ text: t(ctx.lang, "buttons.noKeep"), callback_data: `cancelbk_no:${id}` }],
     ],
   });
 });
@@ -161,20 +200,20 @@ bot.action(/^cancelbk_yes:(\d+)$/, async (ctx) => {
   const id = ctx.match[1];
   const res = await fetch(`${API_BASE}/bookings/${id}?client_telegram_id=${ctx.from.id}`, {
     method: "DELETE",
-    headers: internalHeaders(),
+    headers: internalHeaders({ "X-Lang": ctx.lang }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    await ctx.reply(`Не получилось отменить: ${data.error ?? "неизвестная ошибка"}`);
+    await ctx.reply(t(ctx.lang, "bot.cancelFailed", { error: data.error ?? t(ctx.lang, "common.unknownError") }));
     return;
   }
-  await ctx.editMessageText("❌ Запись отменена.");
+  await ctx.editMessageText(t(ctx.lang, "bot.cancelled"));
 });
 
 bot.action(/^cancelbk_no:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const id = Number(ctx.match[1]);
-  await ctx.editMessageReplyMarkup({ inline_keyboard: bookingActionButtons(id) });
+  await ctx.editMessageReplyMarkup({ inline_keyboard: bookingActionButtons(id, ctx.lang) });
 });
 
 // "⏳ Я опаздываю" (кнопка есть только под напоминанием) — на сколько минут,
@@ -185,12 +224,12 @@ bot.action(/^late:(\d+)$/, async (ctx) => {
   await ctx.editMessageReplyMarkup({
     inline_keyboard: [
       [
-        { text: "10 мин", callback_data: `late_ok:${id}:10` },
-        { text: "15 мин", callback_data: `late_ok:${id}:15` },
-        { text: "20 мин", callback_data: `late_ok:${id}:20` },
-        { text: "30 мин", callback_data: `late_ok:${id}:30` },
+        ...[10, 15, 20, 30].map((n) => ({
+          text: t(ctx.lang, "buttons.minutes", { n }),
+          callback_data: `late_ok:${id}:${n}`,
+        })),
       ],
-      [{ text: "Назад", callback_data: `late_cancel:${id}` }],
+      [{ text: t(ctx.lang, "common.back"), callback_data: `late_cancel:${id}` }],
     ],
   });
 });
@@ -198,7 +237,7 @@ bot.action(/^late:(\d+)$/, async (ctx) => {
 bot.action(/^late_cancel:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const id = Number(ctx.match[1]);
-  await ctx.editMessageReplyMarkup({ inline_keyboard: reminderActionButtons(id) });
+  await ctx.editMessageReplyMarkup({ inline_keyboard: reminderActionButtons(id, ctx.lang) });
 });
 
 bot.action(/^late_ok:(\d+):(\d+)$/, async (ctx) => {
@@ -207,15 +246,15 @@ bot.action(/^late_ok:(\d+):(\d+)$/, async (ctx) => {
   const minutes = ctx.match[2];
   const res = await fetch(`${API_BASE}/bookings/${id}/late`, {
     method: "POST",
-    headers: internalHeaders({ "Content-Type": "application/json" }),
+    headers: internalHeaders({ "Content-Type": "application/json", "X-Lang": ctx.lang }),
     body: JSON.stringify({ client_telegram_id: ctx.from.id, minutes: Number(minutes) }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    await ctx.reply(`Не получилось предупредить мастера: ${data.error ?? "неизвестная ошибка"}`);
+    await ctx.reply(t(ctx.lang, "bot.lateFailed", { error: data.error ?? t(ctx.lang, "common.unknownError") }));
     return;
   }
-  await ctx.editMessageText(`⏳ Мастер предупреждён, что вы опаздываете на ${minutes} мин.`);
+  await ctx.editMessageText(t(ctx.lang, "bot.lateDone", { minutes }));
 });
 
 // Оценка визита звёздами — под сообщением "услуга завершена" (см. api.ts,
@@ -226,17 +265,17 @@ bot.action(/^rate:(\d+):([1-5])$/, async (ctx) => {
   const rating = Number(ctx.match[2]);
   const res = await fetch(`${API_BASE}/bookings/${id}/rating`, {
     method: "POST",
-    headers: internalHeaders({ "Content-Type": "application/json" }),
+    headers: internalHeaders({ "Content-Type": "application/json", "X-Lang": ctx.lang }),
     body: JSON.stringify({ client_telegram_id: ctx.from.id, rating }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    await ctx.reply(`Не получилось сохранить оценку: ${data.error ?? "неизвестная ошибка"}`);
+    await ctx.reply(t(ctx.lang, "bot.rateFailed", { error: data.error ?? t(ctx.lang, "common.unknownError") }));
     return;
   }
-  await ctx.editMessageText(`Спасибо за оценку! ${"⭐".repeat(rating)}`, {
+  await ctx.editMessageText(t(ctx.lang, "bot.rateThanks", { stars: "⭐".repeat(rating) }), {
     reply_markup: {
-      inline_keyboard: [[{ text: "💬 Добавить комментарий", callback_data: `ratecomment:${id}:${rating}` }]],
+      inline_keyboard: [[{ text: t(ctx.lang, "buttons.addComment"), callback_data: `ratecomment:${id}:${rating}` }]],
     },
   });
 });
@@ -252,7 +291,7 @@ bot.action(/^ratecomment:(\d+):([1-5])$/, async (ctx) => {
   const bookingId = Number(ctx.match[1]);
   const rating = Number(ctx.match[2]);
   awaitingRatingComment.set(ctx.from.id, { bookingId, rating });
-  await ctx.editMessageText(`Спасибо за оценку! ${"⭐".repeat(rating)}\n\nНапишите комментарий одним сообщением.`);
+  await ctx.editMessageText(t(ctx.lang, "bot.rateAskComment", { stars: "⭐".repeat(rating) }));
 });
 
 // Свободный текст ловим, только пока реально ждём комментарий — иначе
@@ -268,38 +307,39 @@ bot.on("text", async (ctx, next) => {
   const comment = ctx.message.text.trim();
   const res = await fetch(`${API_BASE}/bookings/${pending.bookingId}/rating`, {
     method: "POST",
-    headers: internalHeaders({ "Content-Type": "application/json" }),
+    headers: internalHeaders({ "Content-Type": "application/json", "X-Lang": ctx.lang }),
     body: JSON.stringify({ client_telegram_id: ctx.from.id, rating: pending.rating, comment }),
   });
   if (!res.ok) {
-    await ctx.reply("Не получилось сохранить комментарий, но оценка уже сохранена — спасибо!");
+    await ctx.reply(t(ctx.lang, "bot.commentFailed"));
     return;
   }
-  await ctx.reply("Спасибо, комментарий сохранён!");
+  await ctx.reply(t(ctx.lang, "bot.commentSaved"));
 });
 
 bot.command("masters", async (ctx) => {
   const { rows: masters } = await db.query<{ name: string }>("SELECT name FROM masters");
   if (masters.length === 0) {
-    ctx.reply("Мастеров пока нет.");
+    ctx.reply(t(ctx.lang, "bot.noMasters"));
     return;
   }
   const list = masters.map((m, i) => `${i + 1}. ${m.name}`).join("\n");
-  ctx.reply(`Наши мастера:\n${list}`);
+  ctx.reply(t(ctx.lang, "bot.mastersList", { list }));
 });
 
 bot.command("services", async (ctx) => {
+  const lang = ctx.lang;
   const { rows: services } = await db.query<{ name: string; duration_minutes: number; price: number }>(
-    "SELECT name, duration_minutes, price FROM services"
+    `SELECT ${localizedSql(lang, "s", "name")} AS name, duration_minutes, price FROM services s ORDER BY s.id`
   );
   if (services.length === 0) {
-    ctx.reply("Услуг пока нет.");
+    ctx.reply(t(lang, "bot.noServices"));
     return;
   }
   const list = services
-    .map((s, i) => `${i + 1}. ${s.name} — ${s.duration_minutes} мин, ${s.price} €`)
+    .map((s, i) => t(lang, "bot.serviceLine", { n: i + 1, name: s.name, minutes: s.duration_minutes, price: s.price }))
     .join("\n");
-  ctx.reply(`Наши услуги:\n${list}`);
+  ctx.reply(t(lang, "bot.servicesList", { list }));
 });
 
 // Мастер отмечает визит выполненным или неявкой прямо под уведомлением о

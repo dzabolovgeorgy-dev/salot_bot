@@ -33,10 +33,14 @@ import type {
   MasterReview,
   LoyaltyHistoryEntry,
 } from './types'
-import { getTelegramUserId, getTelegramUserName, getTelegramUsername } from './telegram'
-import { apiFetch } from './apiFetch'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import { getTelegramUserId, getTelegramUserName, getTelegramUsername, getTelegramLanguageCode } from './telegram'
+import { apiFetch, setApiLang } from './apiFetch'
+import i18n, { SUPPORTED_LANGS, dateLocale, isSupportedLang, normalizeLang } from './i18n'
+import type { Lang } from './i18n'
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
-import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
+import { WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
 
 // Нижняя навигация: 3 раздела. "Главная" — карточка клиента (имя, контакт),
 // карта лояльности, "Сохранённое" и статус ближайшей записи — как было
@@ -51,28 +55,17 @@ type BookingsSubTab = 'upcoming' | 'history'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
 type FlowStep = 'service' | 'master' | 'time' | 'confirm'
 
-const TABS: { key: Tab; label: string; Icon: LucideIcon }[] = [
-  { key: 'home', label: 'Главная', Icon: Home },
-  { key: 'book', label: 'Записаться', Icon: Sparkles },
-  { key: 'bookings', label: 'Мои записи', Icon: CalendarDays },
+// Подписи вкладок — в словарях (tabs.*, bookSub.*, bookingsSub.*, steps.*),
+// здесь только ключи и значки
+const TABS: { key: Tab; Icon: LucideIcon }[] = [
+  { key: 'home', Icon: Home },
+  { key: 'book', Icon: Sparkles },
+  { key: 'bookings', Icon: CalendarDays },
 ]
 
-const TAB_TITLES: Record<Tab, string> = {
-  home: 'Главная',
-  book: 'Записаться',
-  bookings: 'Мои записи',
-}
+const BOOK_SUB_TABS: BookSubTab[] = ['services', 'masters', 'inspiration']
 
-const BOOK_SUB_TABS: { key: BookSubTab; label: string }[] = [
-  { key: 'services', label: 'Услуги' },
-  { key: 'masters', label: 'Мастера' },
-  { key: 'inspiration', label: 'Вдохновение' },
-]
-
-const BOOKINGS_SUB_TABS: { key: BookingsSubTab; label: string }[] = [
-  { key: 'upcoming', label: 'Предстоящие' },
-  { key: 'history', label: 'История' },
-]
+const BOOKINGS_SUB_TABS: BookingsSubTab[] = ['upcoming', 'history']
 
 // Какие шаги остаются пройти в зависимости от того, откуда начали запись
 // (если зашли через конкретную услугу/мастера — этот выбор уже сделано)
@@ -82,28 +75,23 @@ const FLOW_STEPS: Record<FlowOrigin, FlowStep[]> = {
   bookings: ['service', 'master', 'time', 'confirm'],
 }
 
-const STEP_TITLES: Record<FlowStep, string> = {
-  service: 'Выберите услугу',
-  master: 'Выберите мастера',
-  time: 'Дата и время',
-  confirm: 'Подтвердите запись',
-}
-
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 // Пороги (в € потраченного) и цвета уровней — для подписи и прогресс-бара на
 // карточке лояльности. Пороги должны совпадать с LOYALTY_TIERS на сервере
 // (server/src/loyalty.ts) — там источник истины для самого начисления,
 // здесь только чтобы нарисовать прогресс, держать значения в синхроне
+// name — название уровня так, как оно хранится в базе (по-русски), по нему
+// ищется уровень клиента; key — для показа: подпись берётся из словаря (tier.*)
 const TIER_META = [
-  { name: 'Новичок', min: 0, color: '#9c8b7d', bg: '#efe9e1' },
-  { name: 'Серебро', min: 150, color: '#8f8478', bg: '#efe9e2' },
-  { name: 'Золото', min: 450, color: '#ad7f1f', bg: '#f4e8d0' },
-  { name: 'Платина', min: 900, color: '#8c6a63', bg: '#f1e6e2' },
+  { name: 'Новичок', key: 'novice', min: 0, color: '#9c8b7d', bg: '#efe9e1' },
+  { name: 'Серебро', key: 'silver', min: 150, color: '#8f8478', bg: '#efe9e2' },
+  { name: 'Золото', key: 'gold', min: 450, color: '#ad7f1f', bg: '#f4e8d0' },
+  { name: 'Платина', key: 'platinum', min: 900, color: '#8c6a63', bg: '#f1e6e2' },
 ] as const
 
 function tierProgress(status: LoyaltyStatus) {
-  const idx = TIER_META.findIndex((t) => t.name === status.tier_name)
+  const idx = TIER_META.findIndex((tier) => tier.name === status.tier_name)
   const current = TIER_META[idx] ?? TIER_META[0]
   const next = TIER_META[idx + 1] ?? null
   const span = next ? next.min - current.min : 0
@@ -121,10 +109,11 @@ const TIER_CARD_META: Record<string, { bg: string; text: string; sub: string; ac
   Платина: { bg: '#3D3D42', text: '#F5F1EA', sub: 'rgba(245, 241, 234, 0.62)', accent: '#D4AF6A' },
 }
 
-function loyaltyHistoryLabel(h: LoyaltyHistoryEntry): string {
-  if (h.reason === 'начисление за визит') return h.service_name ?? 'Начисление за визит'
-  if (h.reason === 'списание при оплате') return 'Списание при оплате'
-  if (h.reason === 'сгорание') return 'Сгорание баллов'
+// h.reason в базе — русская фраза-метка, по ней выбираем подпись из словаря
+function loyaltyHistoryLabel(h: LoyaltyHistoryEntry, t: TFunction): string {
+  if (h.reason === 'начисление за визит') return h.service_name ?? t('loyalty.historyEarn')
+  if (h.reason === 'списание при оплате') return t('loyalty.historyRedeem')
+  if (h.reason === 'сгорание') return t('loyalty.historyBurn')
   return h.reason
 }
 
@@ -145,8 +134,8 @@ function matchServiceByCategory(category: string, services: Service[]): Service 
   const norm = (s: string) => s.trim().toLowerCase()
   const target = norm(category)
   return (
-    services.find((s) => norm(s.name) === target) ??
-    services.find((s) => norm(s.name).includes(target) || target.includes(norm(s.name))) ??
+    services.find((s) => norm(s.name_ru) === target) ??
+    services.find((s) => norm(s.name_ru).includes(target) || target.includes(norm(s.name_ru))) ??
     null
   )
 }
@@ -161,20 +150,12 @@ function initials(name: string): string {
 }
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
+  return new Date(iso).toLocaleString(dateLocale(i18n.language), {
     day: 'numeric',
     month: 'long',
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-
-function pluralizeYears(n: number): string {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return `${n} год`
-  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return `${n} года`
-  return `${n} лет`
 }
 
 function startOfDay(d: Date): Date {
@@ -205,16 +186,17 @@ function isSlotFree(
 }
 
 function ServiceRow({ service, onClick }: { service: Service; onClick: () => void }) {
+  const { t } = useTranslation()
   return (
     <button className="service-row" onClick={onClick}>
       <span className="service-row-icon">
-        <ServiceIcon name={service.name} size={22} />
+        <ServiceIcon name={service.name_ru ?? service.name} size={22} />
       </span>
       <span className="service-row-body">
         <span className="service-row-name">{service.name}</span>
         <span className="service-row-duration">
           <Clock3 size={13} />
-          {service.duration_minutes} мин
+          {t('common.minutes', { n: service.duration_minutes })}
         </span>
       </span>
       <span className="service-row-price">{service.price} €</span>
@@ -248,14 +230,15 @@ function DateTimePicker({
   availableTimeSlots: string[]
   isCurrentMonth: boolean
   onPickDate: (key: string) => void
-  onPickTime: (t: string) => void
+  onPickTime: (slot: string) => void
   onPrevMonth: () => void
   onNextMonth: () => void
 }) {
+  const { t } = useTranslation()
   const monthCells = buildMonthCells(calendarMonth)
   return (
     <>
-      <p className="eyebrow-label">Ваш специалист</p>
+      <p className="eyebrow-label">{t('picker.yourSpecialist')}</p>
       <div className="specialist-card">
         {master.photo_url ? (
           <img className="specialist-photo" src={master.photo_url} alt={master.name} />
@@ -265,13 +248,13 @@ function DateTimePicker({
         <div className="specialist-body">
           <div className="specialist-name">{master.name}</div>
           <div className="specialist-service">
-            {service.name} · {service.duration_minutes} мин
+            {service.name} · {t('common.minutes', { n: service.duration_minutes })}
           </div>
         </div>
         <Check size={18} className="specialist-check" />
       </div>
 
-      <div className="section-title">Выберите дату</div>
+      <div className="section-title">{t('picker.pickDate')}</div>
       <div className="calendar">
         <div className="calendar-header">
           <button
@@ -279,21 +262,21 @@ function DateTimePicker({
             className="calendar-nav-btn"
             disabled={isCurrentMonth}
             onClick={onPrevMonth}
-            aria-label="Предыдущий месяц"
+            aria-label={t('calendar.prevMonth')}
           >
             <ChevronLeft size={18} />
           </button>
           <span className="calendar-month-label">
-            {MONTH_NAMES[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+            {t(`calendar.month_${calendarMonth.getMonth()}`)} {calendarMonth.getFullYear()}
           </span>
-          <button type="button" className="calendar-nav-btn" onClick={onNextMonth} aria-label="Следующий месяц">
+          <button type="button" className="calendar-nav-btn" onClick={onNextMonth} aria-label={t('calendar.nextMonth')}>
             <ChevronRight size={18} />
           </button>
         </div>
         <div className="calendar-weekdays">
-          {WEEKDAY_LABELS.map((w) => (
+          {WEEKDAY_LABELS.map((w, i) => (
             <span key={w} className="calendar-weekday">
-              {w}
+              {t(`calendar.wd_${i}`)}
             </span>
           ))}
         </div>
@@ -308,7 +291,7 @@ function DateTimePicker({
                 type="button"
                 className={`calendar-day${dateKey === key ? ' active' : ''}${key === todayKey ? ' today' : ''}${dayOff ? ' day-off' : ''}`}
                 disabled={d < today || dayOff}
-                title={dayOff ? 'У мастера выходной' : undefined}
+                title={dayOff ? t('calendar.masterDayOff') : undefined}
                 onClick={() => onPickDate(key)}
               >
                 {d.getDate()}
@@ -318,31 +301,57 @@ function DateTimePicker({
         </div>
       </div>
 
-      <div className="section-title">Свободное время</div>
+      <div className="section-title">{t('picker.freeTime')}</div>
       {dateKey ? (
         availableTimeSlots.length > 0 ? (
           <div className="time-grid">
-            {availableTimeSlots.map((t) => (
+            {availableTimeSlots.map((slot) => (
               <button
-                key={t}
-                className={`time-slot${timeSlot === t ? ' active' : ''}`}
-                onClick={() => onPickTime(t)}
+                key={slot}
+                className={`time-slot${timeSlot === slot ? ' active' : ''}`}
+                onClick={() => onPickTime(slot)}
               >
-                {t}
+                {slot}
               </button>
             ))}
           </div>
         ) : (
-          <p className="hub-greeting">На эту дату свободного времени не осталось — выберите другой день.</p>
+          <p className="hub-greeting">{t('picker.noFreeTime')}</p>
         )
       ) : (
-        <p className="hub-greeting">Сначала выберите дату.</p>
+        <p className="hub-greeting">{t('picker.pickDateFirst')}</p>
       )}
     </>
   )
 }
 
+// Язык при первом входе определяется по языку Telegram и сохраняется на сервере
+// (общий для бота и приложения); при следующих входах просто читается оттуда —
+// заново по Telegram не определяется. Нет связи с сервером — используем
+// подсказку Telegram, а если и её нет — русский
+async function resolveInitialLanguage(): Promise<Lang> {
+  const hint = getTelegramLanguageCode()
+  try {
+    const res = await apiFetch(`${API_URL}/api/me/language${hint ? `?hint=${encodeURIComponent(hint)}` : ''}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (isSupportedLang(data.language)) return data.language
+    }
+  } catch {
+    // не критично — ниже запасной вариант
+  }
+  return normalizeLang(hint)
+}
+
+function applyLanguage(lang: Lang) {
+  setApiLang(lang)
+  document.documentElement.lang = lang
+  return i18n.changeLanguage(lang)
+}
+
 function App() {
+  const { t } = useTranslation()
+  const lang = normalizeLang(i18n.language)
   const [activeTab, setActiveTab] = useState<Tab>('home')
   const [activeBookSubTab, setActiveBookSubTab] = useState<BookSubTab>('services')
   const [flowOrigin, setFlowOrigin] = useState<FlowOrigin | null>(null)
@@ -440,17 +449,37 @@ function App() {
       .then(setProfileLoyalty)
       .catch(() => setProfileLoyalty(null))
 
-  useEffect(() => {
+  // Услуги/мастера/записи приходят от сервера уже на нужном языке (заголовок
+  // X-Lang, см. apiFetch.ts), поэтому при смене языка их надо запросить заново
+  const loadContent = () =>
     Promise.all([
       apiFetch(`${API_URL}/api/services`).then((r) => r.json()),
       apiFetch(`${API_URL}/api/masters`).then((r) => r.json()),
       fetchBookings(),
-    ])
-      .then(([servicesData, mastersData]) => {
-        setServices(servicesData)
-        setMasters(mastersData)
-      })
-      .catch(() => setError('Не удалось загрузить данные с сервера'))
+    ]).then(([servicesData, mastersData]) => {
+      setServices(servicesData)
+      setMasters(mastersData)
+    })
+
+  // ВРЕМЕННЫЙ переключатель языка для проверки (см. блок "dev-lang-switcher"
+  // на главной): запоминает выбор на сервере и перечитывает данные
+  const switchLanguage = async (next: Lang) => {
+    if (next === lang) return
+    await applyLanguage(next)
+    apiFetch(`${API_URL}/api/me/language`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: next }),
+    }).catch(() => {})
+    setHistoryLoaded(false)
+    loadContent().catch(() => setError(t('errors.loadFailed')))
+  }
+
+  useEffect(() => {
+    resolveInitialLanguage()
+      .then(applyLanguage)
+      .then(loadContent)
+      .catch(() => setError(i18n.t('errors.loadFailed')))
       .finally(() => setLoading(false))
     fetchProfileLoyalty()
     // Отдельно и молча — раздел "Вдохновение" необязателен для остального
@@ -527,7 +556,7 @@ function App() {
     const master = masters.find((m) => m.id === b.master_id)
     const service = services.find((s) => s.id === b.service_id)
     if (!master || !service) {
-      setError('Эта услуга или мастер больше недоступны — выберите другую запись вручную')
+      setError(t('booking.repeatError'))
       return
     }
     setOpenHistoryBooking(null)
@@ -726,20 +755,20 @@ function App() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error ?? 'Не удалось перенести запись')
+        setError(data.error ?? t('errors.rescheduleFailed'))
         return
       }
       await fetchBookings()
       exitReschedule()
     } catch {
-      setError('Не удалось связаться с сервером')
+      setError(t('errors.serverUnreachable'))
     } finally {
       setRescheduling(false)
     }
   }
 
   const cancelBooking = async (id: number) => {
-    if (!window.confirm('Отменить эту запись?')) return
+    if (!window.confirm(t('booking.confirmCancel'))) return
     setCancellingId(id)
     try {
       const res = await apiFetch(
@@ -747,12 +776,12 @@ function App() {
         { method: 'DELETE' }
       )
       if (!res.ok) {
-        setError('Не удалось отменить запись')
+        setError(t('errors.cancelFailed'))
         return
       }
       setBookings((prev) => prev.filter((b) => b.id !== id))
     } catch {
-      setError('Не удалось отменить запись')
+      setError(t('errors.cancelFailed'))
     } finally {
       setCancellingId(null)
     }
@@ -779,21 +808,21 @@ function App() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error ?? 'Не удалось создать запись')
+        setError(data.error ?? t('errors.createFailed'))
         return
       }
       await fetchBookings()
       await fetchProfileLoyalty()
       setIsDone(true)
     } catch {
-      setError('Не удалось связаться с сервером')
+      setError(t('errors.serverUnreachable'))
     } finally {
       setSubmitting(false)
     }
   }
 
   if (loading) {
-    return <div className="loading-screen">Загрузка…</div>
+    return <div className="loading-screen">{t('common.loading')}</div>
   }
 
   if (masterProfile && reviewsOpen) {
@@ -805,10 +834,10 @@ function App() {
         transition={{ duration: 0.25, ease: 'easeOut' }}
       >
         <div className="topbar">
-          <button className="icon-back" onClick={goBack} aria-label="Назад">
+          <button className="icon-back" onClick={goBack} aria-label={t('common.back')}>
             <ArrowLeft size={18} />
           </button>
-          <div className="topbar-title">Отзывы</div>
+          <div className="topbar-title">{t('master.reviews')}</div>
         </div>
         <div className="content">
           <div className="review-list">
@@ -841,10 +870,10 @@ function App() {
         transition={{ duration: 0.25, ease: 'easeOut' }}
       >
         <div className="topbar">
-          <button className="icon-back" onClick={goBack} aria-label="Назад">
+          <button className="icon-back" onClick={goBack} aria-label={t('common.back')}>
             <ArrowLeft size={18} />
           </button>
-          <div className="topbar-title">Моя карта лояльности</div>
+          <div className="topbar-title">{t('loyalty.cardTitle')}</div>
         </div>
         <div className="content">
           <article
@@ -853,11 +882,11 @@ function App() {
           >
             <span className="tier-hero-name">
               <Award size={16} />
-              {current.name}
+              {t(`tier.${current.key}`)}
             </span>
             <div className="tier-hero-balance">
               <span className="tier-hero-balance-value">{profileLoyalty.points_balance}</span>
-              <span className="tier-hero-balance-label">баллов</span>
+              <span className="tier-hero-balance-label">{t('loyalty.points')}</span>
             </div>
           </article>
 
@@ -868,30 +897,30 @@ function App() {
                   <div className="loyalty-card-track-fill" style={{ width: `${pct}%`, background: card.accent }} />
                 </div>
                 <p className="loyalty-info-hint">
-                  Осталось потратить {profileLoyalty.amount_to_next_tier} € до уровня «{next.name}»
+                  {t('loyalty.remainingToTier', { amount: profileLoyalty.amount_to_next_tier, tier: t(`tier.${next.key}`) })}
                 </p>
               </>
             ) : (
               <div className="tier-maxed">
                 <Check size={16} />
-                Вы достигли максимального уровня
+                {t('loyalty.maxed')}
               </div>
             )}
             <div className="loyalty-cashback-row">
-              <span>Кэшбэк на этом уровне</span>
+              <span>{t('loyalty.cashbackLevel')}</span>
               <strong>{Math.round(profileLoyalty.cashback_rate * 100)}%</strong>
             </div>
           </article>
 
-          <div className="section-title">История начислений</div>
+          <div className="section-title">{t('loyalty.historyTitle')}</div>
           {loyaltyHistory.length === 0 ? (
-            <p className="loyalty-history-empty">Пока ничего не начислялось и не списывалось.</p>
+            <p className="loyalty-history-empty">{t('loyalty.historyEmpty')}</p>
           ) : (
             <div className="loyalty-history-list">
               {loyaltyHistory.map((h) => (
                 <div key={h.id} className={`loyalty-history-row${h.reason === 'сгорание' ? ' is-burned' : ''}`}>
                   <div className="loyalty-history-meta">
-                    <span className="loyalty-history-label">{loyaltyHistoryLabel(h)}</span>
+                    <span className="loyalty-history-label">{loyaltyHistoryLabel(h, t)}</span>
                     <span className="loyalty-history-date">{formatDateTime(h.created_at)}</span>
                   </div>
                   <span className={`loyalty-history-amount${h.amount < 0 ? ' is-negative' : ''}`}>
@@ -918,10 +947,10 @@ function App() {
         transition={{ duration: 0.25, ease: 'easeOut' }}
       >
         <div className="topbar">
-          <button className="icon-back" onClick={goBack} aria-label="Назад">
+          <button className="icon-back" onClick={goBack} aria-label={t('common.back')}>
             <ArrowLeft size={18} />
           </button>
-          <div className="topbar-title">Визит</div>
+          <div className="topbar-title">{t('booking.visit')}</div>
         </div>
         <div className="content">
           <article className="confirm-card confirm-card-tall">
@@ -931,7 +960,7 @@ function App() {
               <div className="confirm-card-photo confirm-card-photo-fallback">{initials(b.master_name)}</div>
             )}
             <div className="confirm-card-tall-body">
-              <p className="confirm-eyebrow">{b.status === 'no_show' ? 'Не пришли' : 'Выполнена'}</p>
+              <p className="confirm-eyebrow">{b.status === 'no_show' ? t('booking.noShow') : t('booking.completed')}</p>
               <h2 className="confirm-title">{b.service_name}</h2>
               <div className="confirm-master-row">
                 {historyMaster?.photo_url ? (
@@ -943,16 +972,16 @@ function App() {
               </div>
               <div className="summary-list">
                 <div className="summary-row">
-                  <span className="summary-label">Дата и время</span>
+                  <span className="summary-label">{t('booking.dateTime')}</span>
                   <span className="summary-value">{formatDateTime(b.starts_at)}</span>
                 </div>
                 <div className="summary-row">
-                  <span className="summary-label">Длительность</span>
-                  <span className="summary-value">{b.duration_minutes} мин</span>
+                  <span className="summary-label">{t('booking.duration')}</span>
+                  <span className="summary-value">{t('common.minutes', { n: b.duration_minutes })}</span>
                 </div>
                 {b.price != null && (
                   <div className="summary-row">
-                    <span className="summary-label">Стоимость</span>
+                    <span className="summary-label">{t('booking.cost')}</span>
                     <span className="summary-value">{b.price} €</span>
                   </div>
                 )}
@@ -960,7 +989,7 @@ function App() {
             </div>
           </article>
 
-          <div className="section-title">Ваша оценка</div>
+          <div className="section-title">{t('booking.yourRating')}</div>
           {b.rating ? (
             <article className="review-card">
               <div className="review-card-top">
@@ -972,17 +1001,14 @@ function App() {
               {b.comment && <p className="review-comment">{b.comment}</p>}
             </article>
           ) : (
-            <p className="hub-greeting">
-              Вы ещё не оценили этот визит — оценка запрашивается ботом в чате после того, как мастер отметит
-              запись выполненной.
-            </p>
+            <p className="hub-greeting">{t('booking.notRated')}</p>
           )}
         </div>
         <div className="footer">
           <button className="primary" disabled={!canRepeat} onClick={() => repeatBooking(b)}>
-            Повторить запись
+            {t('booking.repeat')}
           </button>
-          {!canRepeat && <p className="footer-hint">Эта услуга или мастер больше недоступны</p>}
+          {!canRepeat && <p className="footer-hint">{t('booking.repeatUnavailable')}</p>}
         </div>
       </motion.div>
     )
@@ -997,10 +1023,10 @@ function App() {
         transition={{ duration: 0.25, ease: 'easeOut' }}
       >
         <div className="topbar">
-          <button className="icon-back" onClick={goBack} aria-label="Назад">
+          <button className="icon-back" onClick={goBack} aria-label={t('common.back')}>
             <ArrowLeft size={18} />
           </button>
-          <div className="topbar-title">Сохранённое</div>
+          <div className="topbar-title">{t('saved.title')}</div>
         </div>
         <div className="content">
           {savedPhotos.length === 0 ? (
@@ -1008,8 +1034,8 @@ function App() {
               <div className="empty-icon">
                 <Heart size={26} />
               </div>
-              <h2>Пока пусто</h2>
-              <p>Сохраняйте понравившиеся фото в разделе «Вдохновение» — они появятся здесь.</p>
+              <h2>{t('saved.emptyTitle')}</h2>
+              <p>{t('saved.emptyText')}</p>
             </div>
           ) : (
             <div className="inspiration-grid">
@@ -1021,7 +1047,7 @@ function App() {
                     className="inspiration-card-remove"
                     disabled={savingPhotoId === p.photo_id}
                     onClick={() => removeSavedPhoto(p.photo_id)}
-                    aria-label="Убрать из сохранённого"
+                    aria-label={t('saved.remove')}
                   >
                     ✕
                   </button>
@@ -1066,14 +1092,16 @@ function App() {
             <div className="hero-photo hero-photo-fallback">{initials(masterProfile.name)}</div>
           )}
           <div className="hero-scrim" />
-          <button className="hero-back" onClick={goBack} aria-label="Назад">
+          <button className="hero-back" onClick={goBack} aria-label={t('common.back')}>
             <ArrowLeft size={18} />
           </button>
-          {isTestUser && <div className="hero-badge">тест</div>}
+          {isTestUser && <div className="hero-badge">{t('common.test')}</div>}
           <div className="hero-text">
             <p className="hero-eyebrow">
               {[
-                masterProfile.experience_years != null ? `${pluralizeYears(masterProfile.experience_years)} опыта` : null,
+                masterProfile.experience_years != null
+                  ? t('master.experienceYears', { count: masterProfile.experience_years })
+                  : null,
                 masterProfile.ratings_count > 0 ? `${masterProfile.avg_rating} ⭐ (${masterProfile.ratings_count})` : null,
               ]
                 .filter(Boolean)
@@ -1087,7 +1115,7 @@ function App() {
           {masterProfile.bio && <p className="profile-bio">{masterProfile.bio}</p>}
           {masterProfilePhotos.length > 0 && (
             <>
-              <div className="section-title">Фото работ</div>
+              <div className="section-title">{t('master.works')}</div>
               {masterPhotoFolders.length > 0 && (
                 <div className="profile-folder-chips">
                   <button
@@ -1095,7 +1123,7 @@ function App() {
                     className={`profile-folder-chip${activeProfileFolder === 'all' ? ' active' : ''}`}
                     onClick={() => setActiveProfileFolder('all')}
                   >
-                    Все
+                    {t('common.all')}
                   </button>
                   {masterPhotoFolders.map((f) => (
                     <button
@@ -1117,7 +1145,7 @@ function App() {
                     className="profile-portfolio-thumb"
                     onClick={() => setOpenPhoto(p)}
                   >
-                    <img src={p.url} alt={p.caption ?? 'Фото работы'} />
+                    <img src={p.url} alt={p.caption ?? t('master.workPhoto')} />
                   </button>
                 ))}
               </div>
@@ -1125,7 +1153,7 @@ function App() {
           )}
           {masterReviews.length > 0 && (
             <>
-              <div className="section-title">Отзывы</div>
+              <div className="section-title">{t('master.reviews')}</div>
               <div className="review-list">
                 {masterReviews.slice(0, 3).map((r) => (
                   <article key={r.id} className="review-card">
@@ -1142,12 +1170,12 @@ function App() {
               </div>
               {masterReviews.length > 3 && (
                 <button type="button" className="link-button" onClick={() => setReviewsOpen(true)}>
-                  Показать все отзывы ({masterReviews.length})
+                  {t('master.showAllReviews', { count: masterReviews.length })}
                 </button>
               )}
             </>
           )}
-          <div className="section-title">Услуги мастера</div>
+          <div className="section-title">{t('master.services')}</div>
           <div className="list">
             {masterServices.map((s) => (
               <ServiceRow key={s.id} service={s} onClick={() => bookFromProfile(masterProfile, s)} />
@@ -1164,11 +1192,11 @@ function App() {
                   e.stopPropagation()
                   setOpenPhoto(null)
                 }}
-                aria-label="Закрыть"
+                aria-label={t('common.close')}
               >
                 ✕
               </button>
-              <img src={openPhoto.url} alt={openPhoto.caption ?? 'Фото работы'} />
+              <img src={openPhoto.url} alt={openPhoto.caption ?? t('master.workPhoto')} />
               {openPhoto.caption && <p className="profile-photo-lightbox-caption">{openPhoto.caption}</p>}
             </div>,
             document.body
@@ -1189,12 +1217,12 @@ function App() {
           <div className="done-icon">
             <Check size={32} />
           </div>
-          <h1>Готово!</h1>
-          <p>Вы записаны. Ждём вас в салоне.</p>
+          <h1>{t('done.title')}</h1>
+          <p>{t('done.text')}</p>
         </div>
         <div className="footer">
           <button className="primary" onClick={goToBookings}>
-            К моим записям
+            {t('done.toBookings')}
           </button>
         </div>
       </motion.div>
@@ -1226,9 +1254,9 @@ function App() {
       )
     : []
   const availableTimeSlots = (
-    dateKey === todayKey ? masterTimeSlots.filter((t) => t > nowHHMM) : masterTimeSlots
-  ).filter((t) =>
-    isSlotFree(t, selectedService?.duration_minutes ?? 30, busySlots, timeSlotMaster?.buffer_minutes ?? DEFAULT_BUFFER_MINUTES)
+    dateKey === todayKey ? masterTimeSlots.filter((slot) => slot > nowHHMM) : masterTimeSlots
+  ).filter((slot) =>
+    isSlotFree(slot, selectedService?.duration_minutes ?? 30, busySlots, timeSlotMaster?.buffer_minutes ?? DEFAULT_BUFFER_MINUTES)
   )
   const isCurrentMonth =
     calendarMonth.getFullYear() === today.getFullYear() && calendarMonth.getMonth() === today.getMonth()
@@ -1273,28 +1301,28 @@ function App() {
           <div className="hero-compact-media">
             <img className="hero-photo" src={heroPhotoSrc} alt="" />
             <div className="hero-scrim" />
-            {isTestUser && <div className="hero-badge">тест</div>}
+            {isTestUser && <div className="hero-badge">{t('common.test')}</div>}
             <div className="hero-text">
-              <p className="hero-eyebrow">{heroBooking ? 'ВАША ЗАПИСЬ' : 'САЛОН КРАСОТЫ'}</p>
-              <div className="hero-name">{heroBooking ? heroBooking.service_name : 'Добро пожаловать'}</div>
+              <p className="hero-eyebrow">{heroBooking ? t('home.yourBookingEyebrow') : t('home.salonEyebrow')}</p>
+              <div className="hero-name">{heroBooking ? heroBooking.service_name : t('home.welcome')}</div>
             </div>
           </div>
         </div>
       ) : (
         <div className="topbar">
           {(inFlow || reschedule) && (
-            <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label="Назад">
+            <button className="icon-back" onClick={reschedule ? exitReschedule : goBack} aria-label={t('common.back')}>
               <ArrowLeft size={18} />
             </button>
           )}
           <div className="topbar-title">
             {reschedule
-              ? 'Дата и время'
+              ? t('steps.time')
               : inFlow && flowStep
-                ? STEP_TITLES[flowStep]
-                : TAB_TITLES[activeTab]}
+                ? t(`steps.${flowStep}`)
+                : t(`tabs.${activeTab}`)}
           </div>
-          {isTestUser && <div className="test-badge">тест</div>}
+          {isTestUser && <div className="test-badge">{t('common.test')}</div>}
         </div>
       )}
 
@@ -1321,10 +1349,33 @@ function App() {
             <div className="profile-user-body">
               <div className="profile-user-name">{getTelegramUserName()}</div>
               <div className="profile-user-contact">
-                {getTelegramUsername() ? `@${getTelegramUsername()}` : `Telegram ID: ${clientTelegramId}`}
+                {getTelegramUsername() ? `@${getTelegramUsername()}` : t('home.telegramId', { id: clientTelegramId })}
               </div>
             </div>
           </article>
+        )}
+
+        {/* ВРЕМЕННЫЙ переключатель языка — только для проверки мультиязычности,
+            не финальный интерфейс. Строка dev.fallbackProbe есть лишь в русском
+            словаре: на другом языке она должна показаться по-русски (запасной
+            вариант), а не пропасть и не превратиться в имя ключа */}
+        {isHomeHero && (
+          <div className="dev-lang-switcher">
+            <div className="dev-lang-switcher-label">{t('dev.switcherLabel')}</div>
+            <div className="dev-lang-switcher-buttons">
+              {SUPPORTED_LANGS.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  className={`dev-lang-btn${lang === l ? ' active' : ''}`}
+                  onClick={() => switchLanguage(l)}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div className="dev-lang-switcher-probe">{t('dev.fallbackProbe')}</div>
+          </div>
         )}
 
         {isHomeHero &&
@@ -1341,28 +1392,30 @@ function App() {
                 <div className="loyalty-card-top">
                   <span className="loyalty-card-tier">
                     <Award size={15} />
-                    {current.name}
+                    {t(`tier.${current.key}`)}
                   </span>
-                  <span className="loyalty-card-cashback">Кэшбэк {Math.round(profileLoyalty.cashback_rate * 100)}%</span>
+                  <span className="loyalty-card-cashback">
+                    {t('loyalty.cashbackShort', { percent: Math.round(profileLoyalty.cashback_rate * 100) })}
+                  </span>
                 </div>
 
                 <div className="loyalty-card-balance">
                   <span className="loyalty-card-balance-value">{profileLoyalty.points_balance}</span>
-                  <span className="loyalty-card-balance-label">баллов на счету</span>
+                  <span className="loyalty-card-balance-label">{t('loyalty.pointsOnAccount')}</span>
                 </div>
 
                 <div className="loyalty-card-track">
                   <div className="loyalty-card-track-fill" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="loyalty-card-track-labels">
-                  <span>{current.name}</span>
-                  <span>{next ? next.name : 'максимум'}</span>
+                  <span>{t(`tier.${current.key}`)}</span>
+                  <span>{next ? t(`tier.${next.key}`) : t('tier.max')}</span>
                 </div>
 
                 <p className="loyalty-card-hint">
                   {next && profileLoyalty.amount_to_next_tier != null
-                    ? `До уровня «${next.name}» осталось потратить ${profileLoyalty.amount_to_next_tier} €`
-                    : 'Вы на максимальном уровне — выше кэшбэка не бывает'}
+                    ? t('loyalty.toTier', { tier: t(`tier.${next.key}`), amount: profileLoyalty.amount_to_next_tier })
+                    : t('loyalty.maxedShort')}
                 </p>
               </button>
             )
@@ -1374,9 +1427,9 @@ function App() {
               <Heart size={16} />
             </span>
             <span className="home-saved-row-body">
-              <span className="home-saved-row-name">Сохранённое</span>
+              <span className="home-saved-row-name">{t('saved.title')}</span>
               <span className="home-saved-row-count">
-                {savedPhotos.length > 0 ? `${savedPhotos.length} фото` : 'Пока пусто'}
+                {savedPhotos.length > 0 ? t('saved.count', { count: savedPhotos.length }) : t('common.empty')}
               </span>
             </span>
             <ChevronRight size={14} className="home-saved-row-arrow" />
@@ -1388,11 +1441,11 @@ function App() {
             <>
               <article className="confirm-card">
                 <div className="confirm-card-media">
-                  <ServiceIcon name={heroBooking.service_name} size={26} />
+                  <ServiceIcon name={heroBooking.service_name_ru ?? heroBooking.service_name} size={26} />
                 </div>
                 <div className="confirm-card-body">
                   <div>
-                    <p className="confirm-eyebrow">Подтверждено</p>
+                    <p className="confirm-eyebrow">{t('booking.confirmed')}</p>
                     <h2 className="confirm-title">{heroBooking.service_name}</h2>
                   </div>
                   <div className="confirm-master-row">
@@ -1408,7 +1461,7 @@ function App() {
 
               <div className="details-grid">
                 <div className="details-col">
-                  <p className="eyebrow-label">Быстрые действия</p>
+                  <p className="eyebrow-label">{t('home.quickActions')}</p>
                   <button
                     className="text-link"
                     onClick={() => {
@@ -1416,23 +1469,23 @@ function App() {
                       setActiveTab('book')
                     }}
                   >
-                    Все услуги
+                    {t('home.allServices')}
                   </button>
                   <button className="text-link" onClick={() => setSavedPhotosOpen(true)}>
-                    Сохранённое
+                    {t('saved.title')}
                   </button>
                 </div>
                 <div className="details-col">
-                  <p className="eyebrow-label">Дата и время</p>
+                  <p className="eyebrow-label">{t('booking.dateTime')}</p>
                   <div className="detail-row">
-                    <span>Дата</span>
+                    <span>{t('home.date')}</span>
                     <strong>{formatDateTime(heroBooking.starts_at)}</strong>
                   </div>
                 </div>
               </div>
 
               <button className="primary" onClick={() => setActiveTab('bookings')}>
-                Мои записи
+                {t('home.myBookings')}
               </button>
               <button
                 className="link-button"
@@ -1441,7 +1494,7 @@ function App() {
                   setActiveTab('book')
                 }}
               >
-                Смотреть все услуги <Sparkles size={14} />
+                {t('home.seeAllServices')} <Sparkles size={14} />
               </button>
             </>
           ) : (
@@ -1450,7 +1503,7 @@ function App() {
                 <div className="empty-icon">
                   <CalendarDays size={26} />
                 </div>
-                <p>У вас пока нет записи</p>
+                <p>{t('home.noBooking')}</p>
               </div>
               <button
                 className="primary"
@@ -1459,21 +1512,21 @@ function App() {
                   setActiveTab('book')
                 }}
               >
-                Записаться
+                {t('home.book')}
               </button>
             </>
           ))}
 
         {!inFlow && !reschedule && activeTab === 'book' && (
           <div className="book-subtabs">
-            {BOOK_SUB_TABS.map((t) => (
+            {BOOK_SUB_TABS.map((key) => (
               <button
-                key={t.key}
+                key={key}
                 type="button"
-                className={`book-subtab${activeBookSubTab === t.key ? ' active' : ''}`}
-                onClick={() => setActiveBookSubTab(t.key)}
+                className={`book-subtab${activeBookSubTab === key ? ' active' : ''}`}
+                onClick={() => setActiveBookSubTab(key)}
               >
-                {t.label}
+                {t(`bookSub.${key}`)}
               </button>
             ))}
           </div>
@@ -1515,7 +1568,7 @@ function App() {
                   <div className="master-tile-name">{m.name}</div>
                   {(m.experience_years != null || m.ratings_count > 0) && (
                     <div className="master-tile-sub">
-                      {m.experience_years != null ? `${pluralizeYears(m.experience_years)} опыта` : ''}
+                      {m.experience_years != null ? t('master.experienceYears', { count: m.experience_years }) : ''}
                       {m.experience_years != null && m.ratings_count > 0 ? ' · ' : ''}
                       {m.ratings_count > 0 ? `${m.avg_rating} ⭐` : ''}
                     </div>
@@ -1535,7 +1588,7 @@ function App() {
                   className={`inspiration-chip${activeInspirationCategory === 'all' ? ' active' : ''}`}
                   onClick={() => setActiveInspirationCategory('all')}
                 >
-                  Все
+                  {t('common.all')}
                 </button>
                 {inspirationCategories.map((c) => (
                   <button
@@ -1556,16 +1609,16 @@ function App() {
                   className={`inspiration-chip inspiration-chip--tag${activeInspirationTag === 'all' ? ' active' : ''}`}
                   onClick={() => setActiveInspirationTag('all')}
                 >
-                  Любой стиль
+                  {t('inspiration.anyStyle')}
                 </button>
-                {inspirationTags.map((t) => (
+                {inspirationTags.map((tag) => (
                   <button
-                    key={t}
+                    key={tag}
                     type="button"
-                    className={`inspiration-chip inspiration-chip--tag${activeInspirationTag === t ? ' active' : ''}`}
-                    onClick={() => setActiveInspirationTag(t)}
+                    className={`inspiration-chip inspiration-chip--tag${activeInspirationTag === tag ? ' active' : ''}`}
+                    onClick={() => setActiveInspirationTag(tag)}
                   >
-                    {t}
+                    {tag}
                   </button>
                 ))}
               </div>
@@ -1576,12 +1629,8 @@ function App() {
                 <div className="empty-icon">
                   <Images size={26} />
                 </div>
-                <h2>{inspirationPhotos.length === 0 ? 'Пока пусто' : 'Ничего не нашлось'}</h2>
-                <p>
-                  {inspirationPhotos.length === 0
-                    ? 'Здесь появятся примеры причёсок, ногтей и других работ для вдохновения.'
-                    : 'Попробуйте выбрать другую категорию или стиль.'}
-                </p>
+                <h2>{inspirationPhotos.length === 0 ? t('common.empty') : t('inspiration.nothingFound')}</h2>
+                <p>{inspirationPhotos.length === 0 ? t('inspiration.emptyText') : t('inspiration.tryOther')}</p>
               </div>
             ) : (
               <div className="inspiration-grid">
@@ -1627,7 +1676,7 @@ function App() {
                   e.stopPropagation()
                   setOpenInspirationPhoto(null)
                 }}
-                aria-label="Закрыть"
+                aria-label={t('common.close')}
               >
                 ✕
               </button>
@@ -1636,9 +1685,9 @@ function App() {
                 <div className="inspiration-lightbox-info">
                   <div className="inspiration-lightbox-tags">
                     <span className="inspiration-chip inspiration-chip--tag active">{openInspirationPhoto.category}</span>
-                    {openInspirationPhoto.tags.map((t) => (
-                      <span key={t} className="inspiration-chip inspiration-chip--tag">
-                        {t}
+                    {openInspirationPhoto.tags.map((tag) => (
+                      <span key={tag} className="inspiration-chip inspiration-chip--tag">
+                        {tag}
                       </span>
                     ))}
                   </div>
@@ -1651,7 +1700,7 @@ function App() {
                           {initials(openInspirationPhoto.master_name)}
                         </div>
                       )}
-                      <span>Работа мастера {openInspirationPhoto.master_name}</span>
+                      <span>{t('inspiration.workBy', { name: openInspirationPhoto.master_name })}</span>
                     </div>
                   )}
                 </div>
@@ -1663,10 +1712,10 @@ function App() {
                     onClick={() => toggleSavedPhoto(openInspirationPhoto)}
                   >
                     <Heart size={18} fill={savedPhotoIds.has(openInspirationPhoto.id) ? 'currentColor' : 'none'} />
-                    {savedPhotoIds.has(openInspirationPhoto.id) ? 'Сохранено' : 'Сохранить'}
+                    {savedPhotoIds.has(openInspirationPhoto.id) ? t('inspiration.saved') : t('inspiration.save')}
                   </button>
                   <button type="button" className="primary" onClick={() => bookFromInspiration(openInspirationPhoto)}>
-                    {openInspirationPhoto.master_id ? 'Записаться на такое' : 'Записаться'}
+                    {openInspirationPhoto.master_id ? t('inspiration.bookLike') : t('inspiration.book')}
                   </button>
                 </div>
               </div>
@@ -1676,14 +1725,14 @@ function App() {
 
         {!inFlow && !reschedule && activeTab === 'bookings' && (
           <div className="book-subtabs">
-            {BOOKINGS_SUB_TABS.map((t) => (
+            {BOOKINGS_SUB_TABS.map((key) => (
               <button
-                key={t.key}
+                key={key}
                 type="button"
-                className={`book-subtab${activeBookingsSubTab === t.key ? ' active' : ''}`}
-                onClick={() => setActiveBookingsSubTab(t.key)}
+                className={`book-subtab${activeBookingsSubTab === key ? ' active' : ''}`}
+                onClick={() => setActiveBookingsSubTab(key)}
               >
-                {t.label}
+                {t(`bookingsSub.${key}`)}
               </button>
             ))}
           </div>
@@ -1698,8 +1747,8 @@ function App() {
               <div className="empty-icon">
                 <CalendarDays size={26} />
               </div>
-              <h2>Записей пока нет</h2>
-              <p>Выберите услугу и найдите удобное время для визита.</p>
+              <h2>{t('booking.emptyTitle')}</h2>
+              <p>{t('booking.emptyText')}</p>
               <button
                 className="primary"
                 onClick={() => {
@@ -1707,7 +1756,7 @@ function App() {
                   setActiveTab('book')
                 }}
               >
-                Выбрать услугу
+                {t('booking.pickService')}
               </button>
             </div>
           ) : (
@@ -1720,12 +1769,12 @@ function App() {
                       <img className="booking-tile-photo" src={master.photo_url} alt={master.name} />
                     ) : (
                       <div className="booking-tile-photo booking-tile-photo-fallback">
-                        <ServiceIcon name={b.service_name} size={24} />
+                        <ServiceIcon name={b.service_name_ru ?? b.service_name} size={24} />
                       </div>
                     )}
                     <div className="booking-tile-body">
                       <div>
-                        <p className="confirm-eyebrow">Предстоящая</p>
+                        <p className="confirm-eyebrow">{t('booking.upcoming')}</p>
                         <h2 className="confirm-title">{b.service_name}</h2>
                         <p className="booking-tile-master">{b.master_name}</p>
                       </div>
@@ -1733,14 +1782,14 @@ function App() {
                         <span className="booking-tile-time">{formatDateTime(b.starts_at)}</span>
                         <div className="booking-tile-actions">
                           <button className="text-link-inline" onClick={() => startReschedule(b)}>
-                            Изменить
+                            {t('booking.edit')}
                           </button>
                           <button
                             className="cancel-link"
                             disabled={cancellingId === b.id}
                             onClick={() => cancelBooking(b.id)}
                           >
-                            {cancellingId === b.id ? 'Отменяем…' : 'Отменить'}
+                            {cancellingId === b.id ? t('booking.cancelling') : t('booking.cancel')}
                           </button>
                         </div>
                       </div>
@@ -1760,8 +1809,8 @@ function App() {
               <div className="empty-icon">
                 <CalendarDays size={26} />
               </div>
-              <h2>{historyLoaded ? 'История пока пуста' : 'Загрузка…'}</h2>
-              {historyLoaded && <p>Здесь появятся визиты, которые уже прошли.</p>}
+              <h2>{historyLoaded ? t('booking.historyEmptyTitle') : t('common.loading')}</h2>
+              {historyLoaded && <p>{t('booking.historyEmptyText')}</p>}
             </div>
           ) : (
             <div className="list">
@@ -1782,13 +1831,13 @@ function App() {
                       <img className="booking-tile-photo" src={master.photo_url} alt={master.name} />
                     ) : (
                       <div className="booking-tile-photo booking-tile-photo-fallback">
-                        <ServiceIcon name={b.service_name} size={24} />
+                        <ServiceIcon name={b.service_name_ru ?? b.service_name} size={24} />
                       </div>
                     )}
                     <div className="booking-tile-body">
                       <div>
                         <p className="confirm-eyebrow">
-                          {b.status === 'no_show' ? 'Не пришли' : 'Выполнена'}
+                          {b.status === 'no_show' ? t('booking.noShow') : t('booking.completed')}
                         </p>
                         <h2 className="confirm-title">{b.service_name}</h2>
                         <p className="booking-tile-master">{b.master_name}</p>
@@ -1810,7 +1859,7 @@ function App() {
                             repeatBooking(b)
                           }}
                         >
-                          Повторить запись
+                          {t('booking.repeat')}
                         </button>
                       </div>
                     </div>
@@ -1856,7 +1905,7 @@ function App() {
                   <div className="master-tile-name">{m.name}</div>
                   {(m.experience_years != null || m.ratings_count > 0) && (
                     <div className="master-tile-sub">
-                      {m.experience_years != null ? `${pluralizeYears(m.experience_years)} опыта` : ''}
+                      {m.experience_years != null ? t('master.experienceYears', { count: m.experience_years }) : ''}
                       {m.experience_years != null && m.ratings_count > 0 ? ' · ' : ''}
                       {m.ratings_count > 0 ? `${m.avg_rating} ⭐` : ''}
                     </div>
@@ -1911,7 +1960,7 @@ function App() {
               <div className="confirm-card-photo confirm-card-photo-fallback">{initials(selectedMaster.name)}</div>
             )}
             <div className="confirm-card-tall-body">
-              <p className="confirm-eyebrow">Ваша запись</p>
+              <p className="confirm-eyebrow">{t('booking.yourBooking')}</p>
               <h2 className="confirm-title">{selectedService.name}</h2>
               <div className="confirm-master-row">
                 {selectedMaster.photo_url ? (
@@ -1923,16 +1972,16 @@ function App() {
               </div>
               <div className="summary-list">
                 <div className="summary-row">
-                  <span className="summary-label">Дата и время</span>
+                  <span className="summary-label">{t('booking.dateTime')}</span>
                   <span className="summary-value">{formatDateTime(startsAt)}</span>
                 </div>
                 <div className="summary-row">
-                  <span className="summary-label">Стоимость</span>
+                  <span className="summary-label">{t('booking.cost')}</span>
                   <span className="summary-value">{selectedService.price} €</span>
                 </div>
                 {useLoyaltyPoints && loyaltyStatus?.max_redeemable ? (
                   <div className="summary-row">
-                    <span className="summary-label">Баллами</span>
+                    <span className="summary-label">{t('booking.byPoints')}</span>
                     <span className="summary-value">−{loyaltyStatus.max_redeemable} €</span>
                   </div>
                 ) : null}
@@ -1943,12 +1992,12 @@ function App() {
 
         {inFlow && flowStep === 'confirm' && (
           <div className="reference-photo-section">
-            <p className="section-title">Фото-референс (необязательно)</p>
+            <p className="section-title">{t('confirm.referenceTitle')}</p>
             {referencePhoto ? (
               <div className="reference-photo-picked">
-                <img src={referencePhoto.image_url} alt="Референс" />
+                <img src={referencePhoto.image_url} alt={t('confirm.referenceAlt')} />
                 <button type="button" className="reference-photo-remove" onClick={() => setReferencePhoto(null)}>
-                  Убрать
+                  {t('confirm.referenceRemove')}
                 </button>
               </div>
             ) : savedPhotos.length > 0 ? (
@@ -1965,9 +2014,7 @@ function App() {
                 ))}
               </div>
             ) : (
-              <p className="reference-photo-hint">
-                Сохраняйте фото в «Вдохновении» — сможете прикрепить их к записи, чтобы мастер точно знал, чего вы хотите.
-              </p>
+              <p className="reference-photo-hint">{t('confirm.referenceHint')}</p>
             )}
           </div>
         )}
@@ -1975,10 +2022,10 @@ function App() {
         {inFlow && flowStep === 'confirm' && loyaltyStatus && loyaltyStatus.points_balance > 0 && (
           <div className="allergy-check">
             <p className="allergy-check-text">
-              Баллов на счету: {loyaltyStatus.points_balance}.{' '}
+              {t('confirm.pointsBalance', { balance: loyaltyStatus.points_balance })}{' '}
               {loyaltyStatus.max_redeemable
-                ? `Можно списать до ${loyaltyStatus.max_redeemable} € на эту запись (не больше 30% от стоимости услуги).`
-                : 'На эту услугу баллами оплатить нельзя.'}
+                ? t('confirm.pointsCanRedeem', { amount: loyaltyStatus.max_redeemable })
+                : t('confirm.pointsCannotRedeem')}
             </p>
             {loyaltyStatus.max_redeemable ? (
               <label className="loyalty-check-toggle">
@@ -1987,7 +2034,7 @@ function App() {
                   checked={useLoyaltyPoints}
                   onChange={(e) => setUseLoyaltyPoints(e.target.checked)}
                 />
-                Списать {loyaltyStatus.max_redeemable} баллов
+                {t('confirm.redeem', { amount: loyaltyStatus.max_redeemable })}
               </label>
             ) : null}
           </div>
@@ -2003,7 +2050,7 @@ function App() {
         bookings.length > 0 && (
         <div className="footer">
           <button className="primary" onClick={() => startFlow('bookings')}>
-            Записаться
+            {t('booking.book')}
           </button>
         </div>
       )}
@@ -2015,7 +2062,7 @@ function App() {
             disabled={!startsAt}
             onClick={() => setFlowIndex((i) => i + 1)}
           >
-            Продолжить
+            {t('booking.continue')}
           </button>
         </div>
       )}
@@ -2023,7 +2070,7 @@ function App() {
       {reschedule && (
         <div className="footer">
           <button className="primary" disabled={!startsAt || rescheduling} onClick={submitReschedule}>
-            {rescheduling ? 'Переносим…' : 'Перенести'}
+            {rescheduling ? t('booking.rescheduling') : t('booking.reschedule')}
           </button>
         </div>
       )}
@@ -2036,26 +2083,26 @@ function App() {
               disabled={submitting}
               onClick={submitBooking}
             >
-              {submitting ? 'Записываем…' : 'Записаться'}
+              {submitting ? t('booking.submitting') : t('booking.submit')}
             </button>
-            <p className="footer-hint">Оплата производится в салоне после визита.</p>
+            <p className="footer-hint">{t('booking.payAtSalon')}</p>
           </div>
         </>
       )}
 
       {showChrome && (
         <div className="tabbar">
-          {TABS.map((t) => (
+          {TABS.map((tab) => (
             <button
-              key={t.key}
-              className={`tab-item${activeTab === t.key ? ' active' : ''}`}
+              key={tab.key}
+              className={`tab-item${activeTab === tab.key ? ' active' : ''}`}
               onClick={() => {
                 setError(null)
-                setActiveTab(t.key)
+                setActiveTab(tab.key)
               }}
             >
-              <t.Icon className="tab-icon" size={20} strokeWidth={1.75} />
-              <span>{t.label}</span>
+              <tab.Icon className="tab-icon" size={20} strokeWidth={1.75} />
+              <span>{t(`tabs.${tab.key}`)}</span>
             </button>
           ))}
         </div>

@@ -8,7 +8,9 @@ import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
 import { bookingActionButtons, ratingButtons, masterBookingActionButtons } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
-import { toIso, formatRuDateTime } from "./format.js";
+import { toIso, formatRuDateTime, formatDateTime } from "./format.js";
+import { t, localized, localizedSql, isSupportedLang, type Lang } from "./i18n.js";
+import { getUserLanguage, saveLanguage, resolveLanguage } from "./userLanguage.js";
 import { accrueForCompletedVisit, getLoyaltyStatus, maxRedeemable, commitRedeem, getLoyaltyHistory } from "./loyalty.js";
 import {
   assignAccessCode,
@@ -70,9 +72,17 @@ function clientContactLine(telegramId?: number | null, username?: string | null,
 // тестовый client_telegram_id и т.п.), это не должно ломать сам запрос.
 // bookingId — если указан, под сообщением появляются кнопки "Перенести"/"Отменить"
 // (их нажатия обрабатывает bot.ts — телефон клиента не открывает Mini App)
-function notifyClient(clientTelegramId: number, text: string, bookingId?: number) {
+// Текст собирается на языке клиента (сохранён в базе, см. userLanguage.ts), а не
+// на языке того, кто вызвал запрос — иначе, например, админ по-русски создал бы
+// запись, а клиент получил бы русское сообщение, хотя у него включён английский
+async function notifyClient(clientTelegramId: number, build: (lang: Lang) => string, bookingId?: number) {
+  const lang = await getUserLanguage(clientTelegramId);
   bot.telegram
-    .sendMessage(clientTelegramId, text, bookingId ? { reply_markup: { inline_keyboard: bookingActionButtons(bookingId) } } : undefined)
+    .sendMessage(
+      clientTelegramId,
+      build(lang),
+      bookingId ? { reply_markup: { inline_keyboard: bookingActionButtons(bookingId, lang) } } : undefined
+    )
     .catch((err) => {
       console.warn("Не удалось отправить уведомление клиенту:", err instanceof Error ? err.message : err);
     });
@@ -125,7 +135,7 @@ function isVerifiedTelegramId(req: Request, claimedId: number): boolean {
 
 function rejectIfNotVerified(req: Request, res: Response, claimedId: number): boolean {
   if (isVerifiedTelegramId(req, claimedId)) return false;
-  res.status(403).json({ error: "Не удалось подтвердить личность в Telegram" });
+  res.status(403).json({ error: t(req.lang, "errors.notVerified") });
   return true;
 }
 
@@ -158,9 +168,9 @@ async function hasConflict(
   return rows.length > 0;
 }
 
-api.get("/masters", async (_req, res) => {
+api.get("/masters", async (req, res) => {
   const { rows: masters } = await db.query(
-    `SELECT m.id, m.name, m.bio, m.experience_years, m.photo_url, m.schedule_type, m.schedule_anchor,
+    `SELECT m.id, m.name, ${localizedSql(req.lang, "m", "bio")} AS bio, m.experience_years, m.photo_url, m.schedule_type, m.schedule_anchor,
             m.work_days, m.off_days, m.work_weekdays, m.schedule_month, m.schedule_month_off_days,
             m.buffer_minutes, m.work_start_time, m.work_end_time,
             r.avg_rating, COALESCE(r.ratings_count, 0)::int AS ratings_count
@@ -181,9 +191,40 @@ api.get("/masters", async (_req, res) => {
   res.json(result);
 });
 
-api.get("/services", async (_req, res) => {
-  const { rows } = await db.query("SELECT id, name, duration_minutes, price FROM services");
+// name — уже на языке клиента (или русский, если перевода нет); name_ru — всегда
+// русское название: приложение опирается на него для иконок и группировки услуг
+// по категориям, которые сопоставляются по русским словам
+api.get("/services", async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT id, ${localizedSql(req.lang, "services", "name")} AS name, name AS name_ru, duration_minutes, price FROM services ORDER BY id`
+  );
   res.json(rows);
+});
+
+// Язык пользователя (общий для бота и приложения): приложение при старте
+// узнаёт сохранённый язык, а если его ещё нет — определяет по языку Telegram
+// и сохраняет (тот же механизм, что и в боте — userLanguage.ts)
+api.get("/me/language", async (req, res) => {
+  if (req.verifiedTelegramId == null) {
+    res.status(403).json({ error: t(req.lang, "errors.notVerified") });
+    return;
+  }
+  const hint = typeof req.query.hint === "string" ? req.query.hint : undefined;
+  res.json({ language: await resolveLanguage(req.verifiedTelegramId, hint) });
+});
+
+api.put("/me/language", async (req, res) => {
+  if (req.verifiedTelegramId == null) {
+    res.status(403).json({ error: t(req.lang, "errors.notVerified") });
+    return;
+  }
+  const language = (req.body as { language?: string }).language;
+  if (!language || !isSupportedLang(language)) {
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
+    return;
+  }
+  await saveLanguage(req.verifiedTelegramId, language);
+  res.json({ language });
 });
 
 // "Вдохновение" — общая галерея примеров для клиента, доступна без входа,
@@ -216,7 +257,7 @@ api.post("/inspiration-photos/:id/click", async (req, res) => {
 api.get("/saved-photos/:client_telegram_id", async (req, res) => {
   const clientTelegramId = Number(req.params.client_telegram_id);
   if (!clientTelegramId) {
-    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, clientTelegramId)) return;
@@ -238,7 +279,7 @@ api.post("/saved-photos", async (req, res) => {
   const clientTelegramId = Number(req.body.client_telegram_id);
   const photoId = Number(req.body.photo_id);
   if (!clientTelegramId || !photoId) {
-    res.status(400).json({ error: "Не хватает параметров" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, clientTelegramId)) return;
@@ -299,14 +340,15 @@ api.get("/masters/:id/bookings", async (req, res) => {
 api.get("/bookings", async (req, res) => {
   const clientTelegramId = Number(req.query.client_telegram_id);
   if (!clientTelegramId) {
-    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, clientTelegramId)) return;
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
-            b.service_id, s.name AS service_name, s.duration_minutes, s.price
+            b.service_id, ${localizedSql(req.lang, "s", "name")} AS service_name, s.name AS service_name_ru,
+            s.duration_minutes, s.price
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -327,14 +369,15 @@ api.get("/bookings", async (req, res) => {
 api.get("/bookings/history", async (req, res) => {
   const clientTelegramId = Number(req.query.client_telegram_id);
   if (!clientTelegramId) {
-    res.status(400).json({ error: "Не хватает client_telegram_id" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, clientTelegramId)) return;
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name,
-            b.service_id, s.name AS service_name, s.duration_minutes, s.price, b.status,
+            b.service_id, ${localizedSql(req.lang, "s", "name")} AS service_name, s.name AS service_name_ru,
+            s.duration_minutes, s.price, b.status,
             r.rating, r.comment
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
@@ -387,13 +430,13 @@ api.delete("/bookings/:id", async (req, res) => {
   const id = Number(req.params.id);
   const clientTelegramId = Number(req.query.client_telegram_id);
   if (!id || !clientTelegramId) {
-    res.status(400).json({ error: "Не хватает параметров" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, clientTelegramId)) return;
 
   const { rows } = await db.query(
-    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name, s.name AS service_name
+    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name, s.name AS service_name, s.name_en AS service_name_en
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -401,18 +444,28 @@ api.delete("/bookings/:id", async (req, res) => {
     [id, clientTelegramId]
   );
   const booking = rows[0] as
-    | { id: number; starts_at: string; master_id: number; master_name: string; service_name: string }
+    | {
+        id: number;
+        starts_at: string;
+        master_id: number;
+        master_name: string;
+        service_name: string;
+        service_name_en: string | null;
+      }
     | undefined;
   if (!booking) {
-    res.status(404).json({ error: "Запись не найдена" });
+    res.status(404).json({ error: t(req.lang, "errors.bookingNotFound") });
     return;
   }
 
   await db.query("DELETE FROM bookings WHERE id = $1", [id]);
 
-  notifyClient(
-    clientTelegramId,
-    `❌ Запись отменена\n\n${booking.service_name} — ${booking.master_name}\n${formatRuDateTime(booking.starts_at)}`
+  notifyClient(clientTelegramId, (lang) =>
+    t(lang, "notify.cancelled", {
+      service: localized(lang, booking.service_name, { en: booking.service_name_en }),
+      master: booking.master_name,
+      date: formatDateTime(booking.starts_at, lang),
+    })
   );
   notifyMaster(
     booking.master_id,
@@ -446,7 +499,7 @@ api.post("/bookings", async (req, res) => {
   } = req.body as Partial<CreateBookingBody>;
 
   if (!client_telegram_id || !master_id || !service_id || !starts_at) {
-    res.status(400).json({ error: "Не хватает полей запроса" });
+    res.status(400).json({ error: t(req.lang, "errors.missingFields") });
     return;
   }
   if (rejectIfNotVerified(req, res, client_telegram_id)) return;
@@ -470,49 +523,49 @@ api.post("/bookings", async (req, res) => {
       }
     | undefined;
   if (!master) {
-    res.status(400).json({ error: "Мастер не найден" });
+    res.status(400).json({ error: t(req.lang, "errors.masterNotFound") });
     return;
   }
 
   const { rows: serviceRows } = await db.query(
-    "SELECT id, name, duration_minutes, price FROM services WHERE id = $1",
+    "SELECT id, name, name_en, duration_minutes, price FROM services WHERE id = $1",
     [service_id]
   );
   const service = serviceRows[0] as
-    | { id: number; name: string; duration_minutes: number; price: number }
+    | { id: number; name: string; name_en: string | null; duration_minutes: number; price: number }
     | undefined;
   if (!service) {
-    res.status(400).json({ error: "Услуга не найдена" });
+    res.status(400).json({ error: t(req.lang, "errors.serviceNotFound") });
     return;
   }
 
   const pointsToRedeem = redeem_points ?? 0;
   if (pointsToRedeem) {
     if (!Number.isInteger(pointsToRedeem) || pointsToRedeem < 0) {
-      res.status(400).json({ error: "Некорректное количество баллов" });
+      res.status(400).json({ error: t(req.lang, "errors.badPoints") });
       return;
     }
     const status = await getLoyaltyStatus(client_telegram_id);
     const allowed = maxRedeemable(status.pointsBalance, service.price);
     if (pointsToRedeem > allowed) {
-      res.status(400).json({ error: `Баллами можно оплатить не больше ${allowed} (30% от суммы и доступный баланс)` });
+      res.status(400).json({ error: t(req.lang, "errors.pointsLimit", { allowed }) });
       return;
     }
   }
 
   const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
   if (pastRows[0].value) {
-    res.status(400).json({ error: "Нельзя записаться на прошедшее время" });
+    res.status(400).json({ error: t(req.lang, "errors.pastTime") });
     return;
   }
 
   if (!isWorkDay(starts_at.slice(0, 10), master)) {
-    res.status(400).json({ error: "У мастера выходной в этот день" });
+    res.status(400).json({ error: t(req.lang, "errors.dayOff") });
     return;
   }
 
   if (await hasConflict(master_id, starts_at, service.duration_minutes, master.buffer_minutes)) {
-    res.status(409).json({ error: "Это время уже занято, выберите другое" });
+    res.status(409).json({ error: t(req.lang, "errors.slotTaken") });
     return;
   }
 
@@ -539,7 +592,14 @@ api.post("/bookings", async (req, res) => {
 
   notifyClient(
     client_telegram_id,
-    `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\nЦена: ${service.price} €${redeemedOk ? `\nСписано баллов: ${pointsToRedeem}` : ""}\n\nЖдём вас в салоне!`,
+    (lang) =>
+      t(lang, "notify.booked", {
+        service: localized(lang, service.name, { en: service.name_en }),
+        master: master.name,
+        date: formatDateTime(starts_at, lang),
+        price: service.price,
+        redeemed: redeemedOk ? t(lang, "notify.bookedRedeemed", { points: pointsToRedeem }) : "",
+      }),
     inserted[0].id
   );
 
@@ -636,10 +696,12 @@ api.post("/staff/bookings", async (req, res) => {
   }
 
   const { rows: serviceRows } = await db.query(
-    "SELECT id, name, duration_minutes, price FROM services WHERE id = $1",
+    "SELECT id, name, name_en, duration_minutes, price FROM services WHERE id = $1",
     [service_id]
   );
-  const service = serviceRows[0] as { id: number; name: string; duration_minutes: number; price: number } | undefined;
+  const service = serviceRows[0] as
+    | { id: number; name: string; name_en: string | null; duration_minutes: number; price: number }
+    | undefined;
   if (!service) {
     res.status(400).json({ error: "Услуга не найдена" });
     return;
@@ -666,7 +728,12 @@ api.post("/staff/bookings", async (req, res) => {
   if (client_telegram_id) {
     notifyClient(
       client_telegram_id,
-      `✅ Вы записаны!\n\n${service.name}\nМастер: ${master.name}\n${formatRuDateTime(starts_at)}\n\nЖдём вас в салоне!`,
+      (lang) =>
+        t(lang, "notify.bookedByStaff", {
+          service: localized(lang, service.name, { en: service.name_en }),
+          master: master.name,
+          date: formatDateTime(starts_at, lang),
+        }),
       inserted[0].id
     );
   }
@@ -706,14 +773,14 @@ api.patch("/bookings/:id", async (req, res) => {
   const { client_telegram_id, starts_at } = req.body as Partial<RescheduleBody>;
 
   if (!id || !client_telegram_id || !starts_at) {
-    res.status(400).json({ error: "Не хватает параметров" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, client_telegram_id)) return;
 
   const { rows } = await db.query(
     `SELECT b.id, b.starts_at AS old_starts_at, b.master_id, m.name AS master_name,
-            s.name AS service_name, s.duration_minutes,
+            s.name AS service_name, s.name_en AS service_name_en, s.duration_minutes,
             m.schedule_type, m.schedule_anchor, m.work_days, m.off_days, m.work_weekdays,
             m.schedule_month, m.schedule_month_off_days, m.buffer_minutes
      FROM bookings b
@@ -729,6 +796,7 @@ api.patch("/bookings/:id", async (req, res) => {
         master_id: number;
         master_name: string;
         service_name: string;
+        service_name_en: string | null;
         duration_minutes: number;
         schedule_type: "cycle" | "weekdays" | "month" | null;
         schedule_anchor: string | null;
@@ -742,23 +810,23 @@ api.patch("/bookings/:id", async (req, res) => {
     | undefined;
 
   if (!booking) {
-    res.status(404).json({ error: "Запись не найдена" });
+    res.status(404).json({ error: t(req.lang, "errors.bookingNotFound") });
     return;
   }
 
   const { rows: pastRows } = await db.query("SELECT ($1::timestamp < now()) AS value", [starts_at]);
   if (pastRows[0].value) {
-    res.status(400).json({ error: "Нельзя перенести на прошедшее время" });
+    res.status(400).json({ error: t(req.lang, "errors.pastTimeReschedule") });
     return;
   }
 
   if (!isWorkDay(starts_at.slice(0, 10), booking)) {
-    res.status(400).json({ error: "У мастера выходной в этот день" });
+    res.status(400).json({ error: t(req.lang, "errors.dayOff") });
     return;
   }
 
   if (await hasConflict(booking.master_id, starts_at, booking.duration_minutes, booking.buffer_minutes, booking.id)) {
-    res.status(409).json({ error: "Это время уже занято, выберите другое" });
+    res.status(409).json({ error: t(req.lang, "errors.slotTaken") });
     return;
   }
 
@@ -771,7 +839,13 @@ api.patch("/bookings/:id", async (req, res) => {
 
   notifyClient(
     client_telegram_id,
-    `🔄 Запись перенесена\n\n${booking.service_name} — ${booking.master_name}\nБыло: ${formatRuDateTime(booking.old_starts_at)}\nСтало: ${formatRuDateTime(starts_at)}`,
+    (lang) =>
+      t(lang, "notify.moved", {
+        service: localized(lang, booking.service_name, { en: booking.service_name_en }),
+        master: booking.master_name,
+        oldDate: formatDateTime(booking.old_starts_at, lang),
+        newDate: formatDateTime(starts_at, lang),
+      }),
     id
   );
   notifyMaster(
@@ -794,7 +868,7 @@ api.post("/bookings/:id/late", async (req, res) => {
   const id = Number(req.params.id);
   const { client_telegram_id, minutes } = req.body as Partial<LateBody>;
   if (!id || !client_telegram_id || !minutes) {
-    res.status(400).json({ error: "Не хватает параметров" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (rejectIfNotVerified(req, res, client_telegram_id)) return;
@@ -808,7 +882,7 @@ api.post("/bookings/:id/late", async (req, res) => {
   );
   const booking = rows[0] as { master_id: number; starts_at: string; service_name: string } | undefined;
   if (!booking) {
-    res.status(404).json({ error: "Запись не найдена" });
+    res.status(404).json({ error: t(req.lang, "errors.bookingNotFound") });
     return;
   }
 
@@ -833,11 +907,11 @@ api.post("/bookings/:id/rating", async (req, res) => {
   const id = Number(req.params.id);
   const { client_telegram_id, rating, comment } = req.body as Partial<RatingBody>;
   if (!id || !client_telegram_id || !rating) {
-    res.status(400).json({ error: "Не хватает параметров" });
+    res.status(400).json({ error: t(req.lang, "errors.missingParams") });
     return;
   }
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    res.status(400).json({ error: "Оценка должна быть от 1 до 5" });
+    res.status(400).json({ error: t(req.lang, "errors.ratingRange") });
     return;
   }
   if (rejectIfNotVerified(req, res, client_telegram_id)) return;
@@ -848,7 +922,7 @@ api.post("/bookings/:id/rating", async (req, res) => {
   );
   const booking = rows[0] as { master_id: number } | undefined;
   if (!booking) {
-    res.status(404).json({ error: "Запись не найдена" });
+    res.status(404).json({ error: t(req.lang, "errors.bookingNotFound") });
     return;
   }
 
@@ -1145,7 +1219,7 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.master_id, b.service_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, m.name AS master_name
+    `SELECT b.master_id, b.service_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, s.name_en AS service_name_en, m.name AS master_name
      FROM bookings b JOIN services s ON s.id = b.service_id JOIN masters m ON m.id = b.master_id
      WHERE b.id = $1`,
     [id]
@@ -1158,6 +1232,7 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
         client_phone: string | null;
         price: number;
         service_name: string;
+        service_name_en: string | null;
         master_name: string;
       }
     | undefined;
@@ -1186,15 +1261,19 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     if (booking.client_telegram_id) {
       const clientTelegramId = Number(booking.client_telegram_id);
       const { cashback, newBalance } = await accrueForCompletedVisit(clientTelegramId, booking.price, booking.service_name);
+      const clientLang = await getUserLanguage(clientTelegramId);
       bot.telegram
-        .sendMessage(clientTelegramId, `Начислено +${cashback} баллов 🎉\nВаш баланс: ${newBalance}`)
+        .sendMessage(clientTelegramId, t(clientLang, "notify.pointsAccrued", { cashback, balance: newBalance }))
         .catch((err) => {
           console.warn("Не удалось отправить уведомление о начислении баллов:", err instanceof Error ? err.message : err);
         });
       bot.telegram
         .sendMessage(
           clientTelegramId,
-          `✅ Услуга завершена\n\n${booking.service_name}\nМастер: ${booking.master_name}\n\nКак вам? Оцените визит:`,
+          t(clientLang, "notify.completed", {
+            service: localized(clientLang, booking.service_name, { en: booking.service_name_en }),
+            master: booking.master_name,
+          }),
           { reply_markup: { inline_keyboard: ratingButtons(id) } }
         )
         .catch((err) => {

@@ -1,0 +1,183 @@
+{
+  "common": {
+    "loading": "[EN] Загрузка…",
+    "back": "[EN] Назад",
+    "close": "[EN] Закрыть",
+    "all": "[EN] Все",
+    "minutes": "[EN] {{n}} мин",
+    "test": "[EN] тест",
+    "empty": "[EN] Пока пусто"
+  },
+  "tabs": {
+    "home": "[EN] Главная",
+    "book": "[EN] Записаться",
+    "bookings": "[EN] Мои записи"
+  },
+  "bookSub": {
+    "services": "[EN] Услуги",
+    "masters": "[EN] Мастера",
+    "inspiration": "[EN] Вдохновение"
+  },
+  "bookingsSub": {
+    "upcoming": "[EN] Предстоящие",
+    "history": "[EN] История"
+  },
+  "steps": {
+    "service": "[EN] Выберите услугу",
+    "master": "[EN] Выберите мастера",
+    "time": "[EN] Дата и время",
+    "confirm": "[EN] Подтвердите запись"
+  },
+  "calendar": {
+    "month_0": "[EN] Январь",
+    "month_1": "[EN] Февраль",
+    "month_2": "[EN] Март",
+    "month_3": "[EN] Апрель",
+    "month_4": "[EN] Май",
+    "month_5": "[EN] Июнь",
+    "month_6": "[EN] Июль",
+    "month_7": "[EN] Август",
+    "month_8": "[EN] Сентябрь",
+    "month_9": "[EN] Октябрь",
+    "month_10": "[EN] Ноябрь",
+    "month_11": "[EN] Декабрь",
+    "wd_0": "[EN] Пн",
+    "wd_1": "[EN] Вт",
+    "wd_2": "[EN] Ср",
+    "wd_3": "[EN] Чт",
+    "wd_4": "[EN] Пт",
+    "wd_5": "[EN] Сб",
+    "wd_6": "[EN] Вс",
+    "prevMonth": "[EN] Предыдущий месяц",
+    "nextMonth": "[EN] Следующий месяц",
+    "masterDayOff": "[EN] У мастера выходной"
+  },
+  "tier": {
+    "novice": "[EN] Новичок",
+    "silver": "[EN] Серебро",
+    "gold": "[EN] Золото",
+    "platinum": "[EN] Платина",
+    "max": "[EN] максимум"
+  },
+  "loyalty": {
+    "cardTitle": "[EN] Моя карта лояльности",
+    "points": "[EN] баллов",
+    "pointsOnAccount": "[EN] баллов на счету",
+    "cashbackShort": "[EN] Кэшбэк {{percent}}%",
+    "cashbackLevel": "[EN] Кэшбэк на этом уровне",
+    "remainingToTier": "[EN] Осталось потратить {{amount}} € до уровня «{{tier}}»",
+    "toTier": "[EN] До уровня «{{tier}}» осталось потратить {{amount}} €",
+    "maxed": "[EN] Вы достигли максимального уровня",
+    "maxedShort": "[EN] Вы на максимальном уровне — выше кэшбэка не бывает",
+    "historyTitle": "[EN] История начислений",
+    "historyEmpty": "[EN] Пока ничего не начислялось и не списывалось.",
+    "historyEarn": "[EN] Начисление за визит",
+    "historyRedeem": "[EN] Списание при оплате",
+    "historyBurn": "[EN] Сгорание баллов"
+  },
+  "home": {
+    "yourBookingEyebrow": "[EN] ВАША ЗАПИСЬ",
+    "salonEyebrow": "[EN] САЛОН КРАСОТЫ",
+    "welcome": "[EN] Добро пожаловать",
+    "quickActions": "[EN] Быстрые действия",
+    "allServices": "[EN] Все услуги",
+    "date": "[EN] Дата",
+    "myBookings": "[EN] Мои записи",
+    "seeAllServices": "[EN] Смотреть все услуги",
+    "noBooking": "[EN] У вас пока нет записи",
+    "book": "[EN] Записаться",
+    "telegramId": "[EN] Telegram ID: {{id}}"
+  },
+  "saved": {
+    "title": "[EN] Сохранённое",
+    "count": "[EN] {{count}} фото",
+    "emptyTitle": "[EN] Пока пусто",
+    "emptyText": "[EN] Сохраняйте понравившиеся фото в разделе «Вдохновение» — они появятся здесь.",
+    "remove": "[EN] Убрать из сохранённого"
+  },
+  "booking": {
+    "upcoming": "[EN] Предстоящая",
+    "confirmed": "[EN] Подтверждено",
+    "completed": "[EN] Выполнена",
+    "noShow": "[EN] Не пришли",
+    "edit": "[EN] Изменить",
+    "cancel": "[EN] Отменить",
+    "cancelling": "[EN] Отменяем…",
+    "repeat": "[EN] Повторить запись",
+    "repeatUnavailable": "[EN] Эта услуга или мастер больше недоступны",
+    "repeatError": "[EN] Эта услуга или мастер больше недоступны — выберите другую запись вручную",
+    "visit": "[EN] Визит",
+    "dateTime": "[EN] Дата и время",
+    "duration": "[EN] Длительность",
+    "cost": "[EN] Стоимость",
+    "yourRating": "[EN] Ваша оценка",
+    "notRated": "[EN] Вы ещё не оценили этот визит — оценка запрашивается ботом в чате после того, как мастер отметит запись выполненной.",
+    "confirmCancel": "[EN] Отменить эту запись?",
+    "yourBooking": "[EN] Ваша запись",
+    "byPoints": "[EN] Баллами",
+    "emptyTitle": "[EN] Записей пока нет",
+    "emptyText": "[EN] Выберите услугу и найдите удобное время для визита.",
+    "pickService": "[EN] Выбрать услугу",
+    "book": "[EN] Записаться",
+    "historyEmptyTitle": "[EN] История пока пуста",
+    "historyEmptyText": "[EN] Здесь появятся визиты, которые уже прошли.",
+    "continue": "[EN] Продолжить",
+    "reschedule": "[EN] Перенести",
+    "rescheduling": "[EN] Переносим…",
+    "submit": "[EN] Записаться",
+    "submitting": "[EN] Записываем…",
+    "payAtSalon": "[EN] Оплата производится в салоне после визита."
+  },
+  "picker": {
+    "yourSpecialist": "[EN] Ваш специалист",
+    "pickDate": "[EN] Выберите дату",
+    "freeTime": "[EN] Свободное время",
+    "noFreeTime": "[EN] На эту дату свободного времени не осталось — выберите другой день.",
+    "pickDateFirst": "[EN] Сначала выберите дату."
+  },
+  "master": {
+    "experienceYears_one": "[EN] {{count}} год опыта",
+    "experienceYears_other": "[EN] {{count}} лет опыта",
+    "works": "[EN] Фото работ",
+    "workPhoto": "[EN] Фото работы",
+    "reviews": "[EN] Отзывы",
+    "showAllReviews": "[EN] Показать все отзывы ({{count}})",
+    "services": "[EN] Услуги мастера"
+  },
+  "inspiration": {
+    "anyStyle": "[EN] Любой стиль",
+    "nothingFound": "[EN] Ничего не нашлось",
+    "emptyText": "[EN] Здесь появятся примеры причёсок, ногтей и других работ для вдохновения.",
+    "tryOther": "[EN] Попробуйте выбрать другую категорию или стиль.",
+    "workBy": "[EN] Работа мастера {{name}}",
+    "saved": "[EN] Сохранено",
+    "save": "[EN] Сохранить",
+    "bookLike": "[EN] Записаться на такое",
+    "book": "[EN] Записаться"
+  },
+  "confirm": {
+    "referenceTitle": "[EN] Фото-референс (необязательно)",
+    "referenceAlt": "[EN] Референс",
+    "referenceRemove": "[EN] Убрать",
+    "referenceHint": "[EN] Сохраняйте фото в «Вдохновении» — сможете прикрепить их к записи, чтобы мастер точно знал, чего вы хотите.",
+    "pointsBalance": "[EN] Баллов на счету: {{balance}}.",
+    "pointsCanRedeem": "[EN] Можно списать до {{amount}} € на эту запись (не больше 30% от стоимости услуги).",
+    "pointsCannotRedeem": "[EN] На эту услугу баллами оплатить нельзя.",
+    "redeem": "[EN] Списать {{amount}} баллов"
+  },
+  "done": {
+    "title": "[EN] Готово!",
+    "text": "[EN] Вы записаны. Ждём вас в салоне.",
+    "toBookings": "[EN] К моим записям"
+  },
+  "errors": {
+    "loadFailed": "[EN] Не удалось загрузить данные с сервера",
+    "rescheduleFailed": "[EN] Не удалось перенести запись",
+    "serverUnreachable": "[EN] Не удалось связаться с сервером",
+    "cancelFailed": "[EN] Не удалось отменить запись",
+    "createFailed": "[EN] Не удалось создать запись"
+  },
+  "dev": {
+    "switcherLabel": "[EN] Язык (временный переключатель для проверки)"
+  }
+}

@@ -2301,3 +2301,44 @@
   font-size: 17px;
   line-height: 1;
 }
+
+/* ВРЕМЕННЫЙ переключатель языка — только для проверки мультиязычности.
+   Пунктирная рамка нарочно выделяет его как "не настоящий" элемент;
+   при переходе на финальный выбор языка блок и эти стили удаляются */
+.dev-lang-switcher {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--accent-dark);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  color: var(--text);
+}
+.dev-lang-switcher-label {
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+.dev-lang-switcher-buttons {
+  display: flex;
+  gap: 8px;
+}
+.dev-lang-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+}
+.dev-lang-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.dev-lang-switcher-probe {
+  margin-top: 8px;
+  font-style: italic;
+}

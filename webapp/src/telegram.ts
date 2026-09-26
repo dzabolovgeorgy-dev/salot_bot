@@ -47,3 +47,10 @@ export function openPwaExternally(): void {
     window.open(pwaUrl, '_blank')
   }
 }
+
+// Язык интерфейса Telegram у пользователя ('ru', 'en', 'de-DE'…) — подсказка для
+// первого выбора языка приложения (дальше язык хранится на сервере, см. App.tsx)
+export function getTelegramLanguageCode(): string | null {
+  const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user
+  return tgUser?.language_code ?? null
+}
