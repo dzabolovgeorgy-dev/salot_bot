@@ -1315,24 +1315,29 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
               Статус: {selectedBooking.status === 'completed' ? 'Выполнено' : 'Клиент не пришёл'}
             </p>
           )}
-          <div className="staff-card-actions">
-            <button
-              type="button"
-              className="staff-card-done"
-              disabled={statusSaving}
-              onClick={() => setBookingStatus(selectedBooking.id, 'completed')}
-            >
-              Отметить выполненной
-            </button>
-            <button
-              type="button"
-              className="staff-card-no-show"
-              disabled={statusSaving}
-              onClick={() => setBookingStatus(selectedBooking.id, 'no_show')}
-            >
-              Клиент не пришёл
-            </button>
-          </div>
+          {/* Кнопки нужны только пока визит не отмечен: после "Выполнена" или
+              "Не пришёл" повторное нажатие бессмысленно (а раньше ещё и заново
+              начисляло бы баллы) — остаётся только строка "Статус" выше */}
+          {selectedBooking.status === 'upcoming' && (
+            <div className="staff-card-actions">
+              <button
+                type="button"
+                className="staff-card-done"
+                disabled={statusSaving}
+                onClick={() => setBookingStatus(selectedBooking.id, 'completed')}
+              >
+                Отметить выполненной
+              </button>
+              <button
+                type="button"
+                className="staff-card-no-show"
+                disabled={statusSaving}
+                onClick={() => setBookingStatus(selectedBooking.id, 'no_show')}
+              >
+                Клиент не пришёл
+              </button>
+            </div>
+          )}
         </section>
       )}
 

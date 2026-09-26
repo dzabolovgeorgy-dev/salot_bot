@@ -1245,7 +1245,15 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     return;
   }
 
-  await db.query("UPDATE bookings SET status = $1 WHERE id = $2", [status, id]);
+  // Статус можно выставить только запись, которая ещё не отмечена. Условие
+  // внутри самого UPDATE (а не отдельной проверкой заранее) — чтобы два
+  // одновременных нажатия не прошли оба: иначе баллы, списание материалов и
+  // запрос оценки сработали бы дважды
+  const { rowCount } = await db.query("UPDATE bookings SET status = $1 WHERE id = $2 AND status = 'upcoming'", [status, id]);
+  if (!rowCount) {
+    res.status(409).json({ error: "Эта запись уже отмечена" });
+    return;
+  }
 
   if (status === "completed") {
     try {
