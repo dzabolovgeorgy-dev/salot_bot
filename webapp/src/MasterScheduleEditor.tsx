@@ -111,7 +111,12 @@ export default function MasterScheduleEditor({ master, onSave }: Props) {
   }
 
   return (
-    <div>
+    // staff-admin-form — тот же класс, что несёт стили самой формы "Мой график"
+    // у мастера (оформление полей, заголовка, отступов). Класс нужен именно
+    // здесь, на своей же обёртке компонента, а не полагаться на то, что его
+    // добавит вызывающий экран — иначе без него подписи полей и кнопка
+    // остаются неоформленными браузером по умолчанию
+    <div className="staff-admin-form">
       <div className="staff-shift-row">
         <span className={`staff-shift-chip${todayIsWorkDay ? '' : ' staff-shift-chip--off'}`}>
           Сегодня
@@ -275,9 +280,11 @@ export default function MasterScheduleEditor({ master, onSave }: Props) {
 
         {scheduleMode === 'month' && <p className="staff-form-hint">Отметьте выходные дни в календаре выше.</p>}
 
-        <button type="submit" disabled={saving}>
-          {saving ? 'Сохранение…' : 'Сохранить график'}
-        </button>
+        <div className="staff-form-actions">
+          <button type="submit" disabled={saving}>
+            {saving ? 'Сохранение…' : 'Сохранить график'}
+          </button>
+        </div>
       </form>
       {saved && <p className="staff-form-hint">Сохранено ✓ — видно клиентам сразу</p>}
       {error && <p className="staff-form-hint staff-form-hint--error">{error}</p>}

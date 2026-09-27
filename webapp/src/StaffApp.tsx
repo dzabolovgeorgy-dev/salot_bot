@@ -2249,9 +2249,11 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
               <p className="staff-form-hint">Отметьте выходные дни в календаре выше.</p>
             )}
 
-            <button type="submit" disabled={scheduleSaving}>
-              {scheduleSaving ? 'Сохранение…' : 'Сохранить график'}
-            </button>
+            <div className="staff-form-actions">
+              <button type="submit" disabled={scheduleSaving}>
+                {scheduleSaving ? 'Сохранение…' : 'Сохранить график'}
+              </button>
+            </div>
           </form>
           {scheduleSaved && <p className="staff-form-hint">Сохранено ✓ — видно клиентам и в вашем расписании сразу</p>}
         </section>
