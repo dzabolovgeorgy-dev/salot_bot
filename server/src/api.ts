@@ -1386,19 +1386,17 @@ const ALLOWED_BUFFER_MINUTES = [0, 10, 15, 20, 30];
 // "мастер настраивает себя" (/staff/my-schedule) и "админ настраивает любого
 // мастера" (/staff/masters/:id/schedule), чтобы правила не разошлись между
 // двумя местами. Возвращает либо { error }, либо готовые значения для UPDATE
-function validateScheduleUpdate(
-  body: Partial<MyScheduleBody>
-):
-  | { error: string }
-  | {
-      schedule_type: "weekdays" | "month" | null;
-      work_weekdays: number[] | null;
-      schedule_month: string | null;
-      schedule_month_off_days: number[] | null;
-      work_start_time: string;
-      work_end_time: string;
-      buffer_minutes: number;
-    } {
+interface ScheduleUpdateValues {
+  schedule_type: "weekdays" | "month" | null;
+  work_weekdays: number[] | null;
+  schedule_month: string | null;
+  schedule_month_off_days: number[] | null;
+  work_start_time: string;
+  work_end_time: string;
+  buffer_minutes: number;
+}
+
+function validateScheduleUpdate(body: Partial<MyScheduleBody>): { error: string } | ScheduleUpdateValues {
   const { schedule_type, work_weekdays, schedule_month, schedule_month_off_days, work_start_time, work_end_time, buffer_minutes } =
     body;
 
@@ -1435,6 +1433,28 @@ function validateScheduleUpdate(
     work_end_time,
     buffer_minutes,
   };
+}
+
+const RU_WEEKDAY_NAMES = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
+const RU_MONTH_GENITIVE = [
+  "январь", "февраль", "март", "апрель", "май", "июнь",
+  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
+];
+
+// Текст для уведомления мастеру, человеческим языком — те же данные, что
+// сохранились в базе (см. validateScheduleUpdate), но в виде, который можно
+// сразу прочитать в чате, не разбирая коды режимов
+function describeSchedule(s: ScheduleUpdateValues): string {
+  const days =
+    s.schedule_type === "weekdays"
+      ? `по дням недели: ${(s.work_weekdays ?? []).map((d) => RU_WEEKDAY_NAMES[d]).join(", ")}`
+      : s.schedule_type === "month"
+        ? `по месяцу (${RU_MONTH_GENITIVE[Number(s.schedule_month!.slice(5, 7)) - 1]}), выходные: ${
+            (s.schedule_month_off_days ?? []).join(", ") || "нет"
+          }`
+        : "всегда";
+  const buffer = s.buffer_minutes === 0 ? "без перерыва" : `${s.buffer_minutes} мин`;
+  return `Рабочие дни: ${days}\nЧасы работы: ${s.work_start_time}–${s.work_end_time}\nПерерыв между записями: ${buffer}`;
 }
 
 // Мастер сам настраивает свой график и часы работы в течение дня. Раньше это
@@ -1532,6 +1552,11 @@ api.patch("/staff/masters/:id/schedule", async (req, res) => {
     res.status(404).json({ error: "Мастер не найден" });
     return;
   }
+
+  // Мастер узнаёт об изменении сразу в чате — иначе он мог бы прийти на смену
+  // по старому графику, не заходя специально проверять "Мой график"
+  notifyMaster(masterId, `⚙️ Администратор изменил ваш график работы\n\n${describeSchedule(parsed)}`);
+
   res.json(rows[0]);
 });
 
