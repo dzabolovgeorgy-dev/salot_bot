@@ -5,6 +5,8 @@ import type { Master, Service, Booking, BlockedSlot, MasterPhoto, PhotoFolder } 
 import { isWorkDay, generateTimeSlots, slotStep, DEFAULT_BUFFER_MINUTES } from './schedule'
 import { apiFetch } from './apiFetch'
 import { MONTH_NAMES, WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './calendar'
+import MasterScheduleEditor from './MasterScheduleEditor'
+import { requestMasterScheduleUpdate } from './masterScheduleApi'
 import AdminManage from './AdminManage'
 import Warehouse from './Warehouse'
 import ClientsPanel from './ClientsPanel'
@@ -149,6 +151,19 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
   const [scheduleMonth, setScheduleMonth] = useState(() => startOfMonth(new Date()))
   const [monthCounts, setMonthCounts] = useState<Record<string, number>>({})
   const [, setMonthLoading] = useState(true)
+
+  // Сабкнопки в "Расписании" у админа: обычный календарь записей или настройка
+  // рабочих часов мастеров — тот же экран, что и в "Управление" → карточка
+  // мастера, просто более короткий путь для повседневной задачи
+  const [scheduleAdminView, setScheduleAdminView] = useState<'calendar' | 'hours'>('calendar')
+  const [hoursTargetMasterId, setHoursTargetMasterId] = useState<number | null>(null)
+
+  async function saveMasterScheduleAsAdmin(masterId: number, payload: Parameters<typeof requestMasterScheduleUpdate>[2]): Promise<string | null> {
+    const result = await requestMasterScheduleUpdate(telegramId, masterId, payload)
+    if ('error' in result) return result.error
+    setMasters((prev) => prev.map((m) => (m.id === masterId ? { ...m, ...result.master } : m)))
+    return null
+  }
 
   const [blockMasterId, setBlockMasterId] = useState<number | ''>(role === 'master' ? masterId ?? '' : '')
   const [blockStart, setBlockStart] = useState('')
@@ -1389,6 +1404,64 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
 
       {activeTab === 'schedule' && (
         <section className="staff-schedule">
+          {role === 'admin' && (
+            <div className="staff-mode-toggle staff-schedule-toggle">
+              <button
+                type="button"
+                className={scheduleAdminView === 'calendar' ? 'active' : ''}
+                onClick={() => setScheduleAdminView('calendar')}
+              >
+                Календарь
+              </button>
+              <button
+                type="button"
+                className={scheduleAdminView === 'hours' ? 'active' : ''}
+                onClick={() => {
+                  setScheduleAdminView('hours')
+                  setHoursTargetMasterId(null)
+                }}
+              >
+                🗓 График работы
+              </button>
+            </div>
+          )}
+
+          {scheduleAdminView === 'hours' && role === 'admin' ? (
+            hoursTargetMasterId == null ? (
+              <>
+                <p className="staff-form-hint">Выберите мастера, чтобы настроить его рабочие дни и часы.</p>
+                <ul className="staff-list">
+                  {masters.map((m) => (
+                    <li
+                      key={m.id}
+                      className="staff-list-item staff-list-item--clickable"
+                      onClick={() => setHoursTargetMasterId(m.id)}
+                    >
+                      <span className="staff-list-body">{m.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              (() => {
+                const target = masters.find((m) => m.id === hoursTargetMasterId)
+                if (!target) return null
+                return (
+                  <>
+                    <button type="button" className="staff-back-btn" onClick={() => setHoursTargetMasterId(null)}>
+                      ← Мастера
+                    </button>
+                    <h3>График работы: {target.name}</h3>
+                    <MasterScheduleEditor
+                      master={target}
+                      onSave={(payload) => saveMasterScheduleAsAdmin(target.id, payload)}
+                    />
+                  </>
+                )
+              })()
+            )
+          ) : (
+          <>
           <div className="staff-month-calendar">
             <div className="staff-month-nav">
               <button
@@ -1644,6 +1717,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
                 </button>
               </div>
             </div>
+          )}
+          </>
           )}
         </section>
       )}

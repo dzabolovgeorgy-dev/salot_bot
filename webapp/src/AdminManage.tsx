@@ -4,6 +4,7 @@ import type { Master, Service, InspirationPhoto, InventoryItem } from './types'
 import { apiFetch } from './apiFetch'
 import MasterScheduleEditor from './MasterScheduleEditor'
 import type { ScheduleFormPayload } from './MasterScheduleEditor'
+import { requestMasterScheduleUpdate } from './masterScheduleApi'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -177,19 +178,10 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   // сам мастер в своей панели (MasterScheduleEditor)
   async function saveMasterSchedule(payload: ScheduleFormPayload): Promise<string | null> {
     if (!editingMasterId) return 'Не выбран мастер'
-    try {
-      const res = await apiFetch(`${API_URL}/api/staff/masters/${editingMasterId}/schedule`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: telegramId, ...payload }),
-      })
-      const data = await res.json()
-      if (!res.ok) return data.error ?? 'Не удалось сохранить'
-      setMasters((prev) => prev.map((m) => (m.id === editingMasterId ? { ...m, ...data } : m)))
-      return null
-    } catch {
-      return 'Не удалось связаться с сервером'
-    }
+    const result = await requestMasterScheduleUpdate(telegramId, editingMasterId, payload)
+    if ('error' in result) return result.error
+    setMasters((prev) => prev.map((m) => (m.id === editingMasterId ? { ...m, ...result.master } : m)))
+    return null
   }
 
   async function deleteMaster(id: number) {
