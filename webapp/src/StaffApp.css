@@ -847,6 +847,11 @@
   margin: 0 0 4px;
 }
 
+.staff-form-hint--error {
+  color: var(--danger);
+  opacity: 1;
+}
+
 .staff-time-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));

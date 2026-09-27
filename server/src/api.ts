@@ -1382,6 +1382,61 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 // а не вводил число вручную
 const ALLOWED_BUFFER_MINUTES = [0, 10, 15, 20, 30];
 
+// Проверка и приведение тела запроса на смену графика — общая часть для
+// "мастер настраивает себя" (/staff/my-schedule) и "админ настраивает любого
+// мастера" (/staff/masters/:id/schedule), чтобы правила не разошлись между
+// двумя местами. Возвращает либо { error }, либо готовые значения для UPDATE
+function validateScheduleUpdate(
+  body: Partial<MyScheduleBody>
+):
+  | { error: string }
+  | {
+      schedule_type: "weekdays" | "month" | null;
+      work_weekdays: number[] | null;
+      schedule_month: string | null;
+      schedule_month_off_days: number[] | null;
+      work_start_time: string;
+      work_end_time: string;
+      buffer_minutes: number;
+    } {
+  const { schedule_type, work_weekdays, schedule_month, schedule_month_off_days, work_start_time, work_end_time, buffer_minutes } =
+    body;
+
+  if (!schedule_type || !["none", "weekdays", "month"].includes(schedule_type)) {
+    return { error: "Не хватает параметров" };
+  }
+  if (schedule_type === "weekdays" && (!work_weekdays || work_weekdays.length === 0)) {
+    return { error: "Отметьте хотя бы один день недели" };
+  }
+  if (schedule_type === "month") {
+    if (!schedule_month || !MONTH_RE.test(schedule_month)) {
+      return { error: "Не указан месяц" };
+    }
+    if (!Array.isArray(schedule_month_off_days) || schedule_month_off_days.some((d) => d < 1 || d > 31)) {
+      return { error: "Некорректные выходные дни" };
+    }
+  }
+  if (!work_start_time || !work_end_time || !TIME_RE.test(work_start_time) || !TIME_RE.test(work_end_time)) {
+    return { error: "Укажите часы работы в формате ЧЧ:ММ" };
+  }
+  if (work_start_time >= work_end_time) {
+    return { error: "Время начала должно быть раньше времени окончания" };
+  }
+  if (buffer_minutes === undefined || !ALLOWED_BUFFER_MINUTES.includes(buffer_minutes)) {
+    return { error: "Некорректный перерыв между записями" };
+  }
+
+  return {
+    schedule_type: schedule_type === "none" ? null : schedule_type,
+    work_weekdays: schedule_type === "weekdays" ? work_weekdays! : null,
+    schedule_month: schedule_type === "month" ? schedule_month! : null,
+    schedule_month_off_days: schedule_type === "month" ? schedule_month_off_days! : null,
+    work_start_time,
+    work_end_time,
+    buffer_minutes,
+  };
+}
+
 // Мастер сам настраивает свой график и часы работы в течение дня. Раньше это
 // можно было поменять только напрямую в базе данных. Два вида графика на
 // выбор: фиксированные дни недели (проще для большинства) или отметить
@@ -1389,16 +1444,7 @@ const ALLOWED_BUFFER_MINUTES = [0, 10, 15, 20, 30];
 // настраивается заново каждый месяц). Старый режим 'cycle' (скользящий
 // N-через-N) в интерфейсе больше не выбирается — см. isWorkDay()
 api.patch("/staff/my-schedule", async (req, res) => {
-  const {
-    telegram_id,
-    schedule_type,
-    work_weekdays,
-    schedule_month,
-    schedule_month_off_days,
-    work_start_time,
-    work_end_time,
-    buffer_minutes,
-  } = req.body as Partial<MyScheduleBody>;
+  const { telegram_id } = req.body as Partial<MyScheduleBody>;
   if (!telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -1411,40 +1457,11 @@ api.patch("/staff/my-schedule", async (req, res) => {
     return;
   }
 
-  if (!schedule_type || !["none", "weekdays", "month"].includes(schedule_type)) {
-    res.status(400).json({ error: "Не хватает параметров" });
+  const parsed = validateScheduleUpdate(req.body as Partial<MyScheduleBody>);
+  if ("error" in parsed) {
+    res.status(400).json({ error: parsed.error });
     return;
   }
-  if (schedule_type === "weekdays" && (!work_weekdays || work_weekdays.length === 0)) {
-    res.status(400).json({ error: "Отметьте хотя бы один день недели" });
-    return;
-  }
-  if (schedule_type === "month") {
-    if (!schedule_month || !MONTH_RE.test(schedule_month)) {
-      res.status(400).json({ error: "Не указан месяц" });
-      return;
-    }
-    if (!Array.isArray(schedule_month_off_days) || schedule_month_off_days.some((d) => d < 1 || d > 31)) {
-      res.status(400).json({ error: "Некорректные выходные дни" });
-      return;
-    }
-  }
-
-  if (!work_start_time || !work_end_time || !TIME_RE.test(work_start_time) || !TIME_RE.test(work_end_time)) {
-    res.status(400).json({ error: "Укажите часы работы в формате ЧЧ:ММ" });
-    return;
-  }
-  if (work_start_time >= work_end_time) {
-    res.status(400).json({ error: "Время начала должно быть раньше времени окончания" });
-    return;
-  }
-  if (buffer_minutes === undefined || !ALLOWED_BUFFER_MINUTES.includes(buffer_minutes)) {
-    res.status(400).json({ error: "Некорректный перерыв между записями" });
-    return;
-  }
-
-  const isWeekdays = schedule_type === "weekdays";
-  const isMonth = schedule_type === "month";
 
   const { rows } = await db.query(
     `UPDATE masters SET
@@ -1455,16 +1472,66 @@ api.patch("/staff/my-schedule", async (req, res) => {
      RETURNING id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays,
                schedule_month, schedule_month_off_days, work_start_time, work_end_time, buffer_minutes`,
     [
-      schedule_type === "none" ? null : schedule_type,
-      isWeekdays ? work_weekdays : null,
-      isMonth ? schedule_month : null,
-      isMonth ? schedule_month_off_days : null,
-      work_start_time,
-      work_end_time,
-      buffer_minutes,
+      parsed.schedule_type,
+      parsed.work_weekdays,
+      parsed.schedule_month,
+      parsed.schedule_month_off_days,
+      parsed.work_start_time,
+      parsed.work_end_time,
+      parsed.buffer_minutes,
       role.master_id,
     ]
   );
+  res.json(rows[0]);
+});
+
+// То же самое, что /staff/my-schedule, но для админа, настраивающего график
+// ЛЮБОГО мастера из своей панели (карточка мастера в "Управление" → раздел
+// "График") — раньше это можно было поменять только напрямую в базе
+api.patch("/staff/masters/:id/schedule", async (req, res) => {
+  const masterId = Number(req.params.id);
+  const { telegram_id } = req.body as Partial<MyScheduleBody>;
+  if (!masterId || !telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+
+  const role = await getRole(telegram_id);
+  if (role.role !== "admin") {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const parsed = validateScheduleUpdate(req.body as Partial<MyScheduleBody>);
+  if ("error" in parsed) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `UPDATE masters SET
+       schedule_type = $1, schedule_anchor = NULL, work_days = NULL, off_days = NULL, work_weekdays = $2,
+       schedule_month = $3, schedule_month_off_days = $4,
+       work_start_time = $5, work_end_time = $6, buffer_minutes = $7
+     WHERE id = $8
+     RETURNING id, name, schedule_type, schedule_anchor, work_days, off_days, work_weekdays,
+               schedule_month, schedule_month_off_days, work_start_time, work_end_time, buffer_minutes`,
+    [
+      parsed.schedule_type,
+      parsed.work_weekdays,
+      parsed.schedule_month,
+      parsed.schedule_month_off_days,
+      parsed.work_start_time,
+      parsed.work_end_time,
+      parsed.buffer_minutes,
+      masterId,
+    ]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Мастер не найден" });
+    return;
+  }
   res.json(rows[0]);
 });
 

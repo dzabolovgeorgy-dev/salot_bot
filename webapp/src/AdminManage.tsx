@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Master, Service, InspirationPhoto, InventoryItem } from './types'
 import { apiFetch } from './apiFetch'
+import MasterScheduleEditor from './MasterScheduleEditor'
+import type { ScheduleFormPayload } from './MasterScheduleEditor'
 import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 type Section = 'menu' | 'masters' | 'services' | 'staff' | 'inspiration'
-type MasterView = 'list' | 'quick' | 'edit'
+type MasterView = 'list' | 'quick' | 'edit' | 'schedule'
 
 interface StaffMember {
   id: number
@@ -167,6 +169,26 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить')
     } finally {
       setMasterSaving(false)
+    }
+  }
+
+  // Раньше график мастера можно было поменять только напрямую в базе данных —
+  // теперь админ настраивает его прямо здесь, тем же экраном, что видит
+  // сам мастер в своей панели (MasterScheduleEditor)
+  async function saveMasterSchedule(payload: ScheduleFormPayload): Promise<string | null> {
+    if (!editingMasterId) return 'Не выбран мастер'
+    try {
+      const res = await apiFetch(`${API_URL}/api/staff/masters/${editingMasterId}/schedule`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: telegramId, ...payload }),
+      })
+      const data = await res.json()
+      if (!res.ok) return data.error ?? 'Не удалось сохранить'
+      setMasters((prev) => prev.map((m) => (m.id === editingMasterId ? { ...m, ...data } : m)))
+      return null
+    } catch {
+      return 'Не удалось связаться с сервером'
     }
   }
 
@@ -555,11 +577,28 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
               <button type="submit" disabled={masterSaving}>
                 {masterSaving ? 'Сохранение…' : 'Сохранить'}
               </button>
+              <button type="button" onClick={() => setMasterView('schedule')}>
+                🗓 График работы
+              </button>
               <button type="button" className="staff-cancel-btn" onClick={() => deleteMaster(editingMasterId)}>
                 Удалить мастера
               </button>
             </div>
           </form>
+        </section>
+      )}
+
+      {section === 'masters' && masterView === 'schedule' && editingMasterId && (
+        <section>
+          <button type="button" className="staff-back-btn" onClick={() => setMasterView('edit')}>
+            ← {masterForm.name}
+          </button>
+          <h3>График работы: {masterForm.name}</h3>
+          {(() => {
+            const editingMaster = masters.find((m) => m.id === editingMasterId)
+            if (!editingMaster) return null
+            return <MasterScheduleEditor master={editingMaster} onSave={saveMasterSchedule} />
+          })()}
         </section>
       )}
 
