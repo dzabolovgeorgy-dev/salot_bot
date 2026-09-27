@@ -859,6 +859,15 @@
   margin-top: 6px;
 }
 
+/* Выбор дней недели (ровно 7 штук, всегда) — фиксированные 7 колонок вместо
+   auto-fill: auto-fill сам считает, сколько колонок влезает по ширине, и на
+   некоторых экранах может ошибиться в подсчёте (последний день недели тогда
+   съезжает и наезжает на кнопку "Сохранить график" под ним). Тот же приём
+   (repeat(7, 1fr)), что уже используется в .staff-month-weekdays */
+.staff-time-grid--weekdays {
+  grid-template-columns: repeat(7, 1fr);
+}
+
 .staff-time-slot {
   padding: 10px 4px;
   border: 1px solid var(--border);

@@ -263,7 +263,7 @@ export default function MasterScheduleEditor({ master, onSave }: Props) {
         {scheduleMode === 'weekdays' && (
           <div>
             <span className="staff-checkbox-label">Рабочие дни</span>
-            <div className="staff-time-grid">
+            <div className="staff-time-grid staff-time-grid--weekdays">
               {WEEKDAY_LABELS.map((label, i) => (
                 <button
                   key={label}
