@@ -6,9 +6,10 @@ import { localized, t, type Lang } from "./i18n.js";
 import { getUserLanguage } from "./userLanguage.js";
 
 // Как часто проверять, кому пора отправить напоминание. Не обязательно бить
-// ровно в 24:00:00 или 2:00:00 до записи — раз в несколько минут достаточно,
+// ровно в 24:00:00 или 2:00:00 до записи — раз в минуту достаточно (раньше было
+// раз в 5 минут, и напоминание мастеру могло прийти с опозданием почти на 5 минут),
 // отметка reminder_*_sent не даёт отправить дважды
-const CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const CHECK_INTERVAL_MS = 60 * 1000;
 
 interface DueBooking {
   id: number;
@@ -133,7 +134,7 @@ export async function checkAndSendMasterReminders(): Promise<void> {
       // Бот заблокирован мастером и т.п. — не должно ломать остальные записи
       console.warn("Не удалось отправить напоминание мастеру:", err instanceof Error ? err.message : err);
     }
-    // Отмечаем в любом случае — иначе при недоступном чате пытались бы каждые 5 минут
+    // Отмечаем в любом случае — иначе при недоступном чате пытались бы каждую минуту
     await db.query("UPDATE bookings SET reminder_master_sent = true WHERE id = $1", [row.id]);
   }
 }
@@ -147,7 +148,7 @@ export function startReminderScheduler(): void {
       await checkAndSend("reminder_2h_sent", 2, "reminder.soon");
       await checkAndSendMasterReminders();
     } catch (err) {
-      console.error("Ошибка при проверке напоминаний (пробуем снова через 5 минут):", err);
+      console.error("Ошибка при проверке напоминаний (пробуем снова через минуту):", err);
     }
   };
   run();
