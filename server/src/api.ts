@@ -175,6 +175,9 @@ function rejectIfNotVerified(req: Request, res: Response, claimedId: number): bo
 // мастера свой, masters.buffer_minutes): соседние записи должны быть разнесены
 // минимум на этот перерыв, впритык друг к другу нельзя.
 // excludeBookingId — чтобы при переносе запись не конфликтовала сама с собой
+// Занимают время только ещё не отмеченные записи (status = 'upcoming'): уже
+// "Выполнена"/"Не пришёл" время не держат — визит состоялся или не состоится,
+// так что оставшееся до конца записи время снова свободно
 async function hasConflict(
   masterId: number,
   startsAt: string,
@@ -186,6 +189,7 @@ async function hasConflict(
     `SELECT b.id FROM bookings b
      JOIN services s ON s.id = b.service_id
      WHERE b.master_id = $1
+       AND b.status = 'upcoming'
        AND ($4::int IS NULL OR b.id != $4)
        AND (b.starts_at - ($5 * interval '1 minute')) < ($2::timestamp + ($3 * interval '1 minute'))
        AND $2::timestamp < (b.starts_at + (s.duration_minutes * interval '1 minute') + ($5 * interval '1 minute'))
@@ -355,6 +359,7 @@ api.get("/masters/:id/bookings", async (req, res) => {
      FROM bookings b
      JOIN services s ON s.id = b.service_id
      WHERE b.master_id = $1
+       AND b.status = 'upcoming'
        AND b.starts_at::date = $2::date
        AND ($3::int IS NULL OR b.id != $3)
      UNION ALL

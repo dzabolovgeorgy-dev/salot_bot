@@ -201,6 +201,8 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     const bufferMs = (newBookingMaster?.buffer_minutes ?? DEFAULT_BUFFER_MINUTES) * 60000
     const bookingHit = bookings.some((b) => {
       if (b.master_id !== newBookingMasterId) return false
+      // отмеченные ("Выполнена"/"Не пришёл") время не занимают — как и на сервере
+      if (b.status && b.status !== 'upcoming') return false
       const bStart = new Date(b.starts_at).getTime() - bufferMs
       const bEnd = bStart + b.duration_minutes * 60000 + 2 * bufferMs
       return start < bEnd && bStart < end
