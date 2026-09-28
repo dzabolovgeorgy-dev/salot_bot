@@ -833,7 +833,7 @@ api.patch("/bookings/:id", async (req, res) => {
   // Сбрасываем отметки об отправленных напоминаниях — время другое, значит и
   // напоминания должны прийти заново, ближе к новому времени
   await db.query(
-    "UPDATE bookings SET starts_at = $1, reminder_24h_sent = false, reminder_2h_sent = false WHERE id = $2",
+    "UPDATE bookings SET starts_at = $1, reminder_24h_sent = false, reminder_2h_sent = false, reminder_master_sent = false WHERE id = $2",
     [starts_at, id]
   );
 

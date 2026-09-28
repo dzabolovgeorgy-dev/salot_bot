@@ -106,6 +106,8 @@ export async function initDb(): Promise<void> {
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS client_phone TEXT;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_2h_sent BOOLEAN NOT NULL DEFAULT false;
+    -- Отметка, что напоминание МАСТЕРУ о предстоящей записи уже отправлено
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_master_sent BOOLEAN NOT NULL DEFAULT false;
     -- Записи, которые администратор создаёт вручную (звонок/WhatsApp), могут
     -- быть без Telegram ID — тогда обязателен client_phone
     ALTER TABLE bookings ALTER COLUMN client_telegram_id DROP NOT NULL;
