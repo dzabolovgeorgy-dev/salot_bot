@@ -69,6 +69,15 @@ export function masterBookingActionButtons(bookingId: number): InlineButton[][] 
   ];
 }
 
+// Строка-итог, которую дописываем под сообщением мастеру вместо кнопок, когда
+// запись уже отмечена (или отменена) — одинаково и когда отметили кнопкой в
+// чате, и когда в панели (api.ts, syncMasterMessage)
+export function masterStatusLine(status: "completed" | "no_show" | "cancelled"): string {
+  if (status === "completed") return "✅ Выполнена";
+  if (status === "no_show") return "🚫 Клиент не пришёл";
+  return "❌ Запись отменена клиентом";
+}
+
 // Данные записи копятся в сессии сцены по ходу диалога — на каждом шаге
 // заполняется одно новое поле, следующий шаг определяем по тому, что уже есть
 interface BookingSceneState {

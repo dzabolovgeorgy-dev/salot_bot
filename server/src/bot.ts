@@ -6,6 +6,7 @@ import {
   API_BASE,
   bookingActionButtons,
   reminderActionButtons,
+  masterStatusLine,
   type BotContext,
   type RescheduleEntryState,
 } from "./bookingScene.js";
@@ -348,20 +349,32 @@ bot.command("services", async (ctx) => {
 bot.action(/^mstatus:(\d+):(completed|no_show)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const id = ctx.match[1];
-  const status = ctx.match[2];
+  const status = ctx.match[2] as "completed" | "no_show";
   const res = await fetch(`${API_BASE}/staff/bookings/${id}/status`, {
     method: "PATCH",
     headers: internalHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ telegram_id: ctx.from.id, status }),
   });
   if (!res.ok) {
+    // Запись уже отмечена в панели (а это сообщение старое, без сохранённой
+    // привязки) — просто убираем кнопки, чтобы не висели
+    if (res.status === 409) {
+      await ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
+    }
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     await ctx.reply(`Не получилось изменить статус: ${data.error ?? "неизвестная ошибка"}`);
     return;
   }
-  await ctx.editMessageText(
-    status === "completed" ? "✅ Запись отмечена как выполненная." : "🚫 Запись отмечена: клиент не пришёл."
-  );
+  // Сохраняем текст записи и дописываем итог вместо кнопок — так же делает
+  // сервер, когда статус меняют в панели (api.ts, syncMasterMessage). Если
+  // сервер уже успел обновить это же сообщение — Telegram скажет "не изменено",
+  // это не ошибка
+  const original = (ctx.callbackQuery.message as { text?: string } | undefined)?.text;
+  await ctx
+    .editMessageText(original ? `${original}\n\n${masterStatusLine(status)}` : masterStatusLine(status), {
+      reply_markup: { inline_keyboard: [] },
+    })
+    .catch(() => {});
 });
 
 // ВРЕМЕННЫЙ переключатель роли для тестов — работает только для одного

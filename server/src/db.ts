@@ -108,6 +108,12 @@ export async function initDb(): Promise<void> {
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_2h_sent BOOLEAN NOT NULL DEFAULT false;
     -- Отметка, что напоминание МАСТЕРУ о предстоящей записи уже отправлено
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_master_sent BOOLEAN NOT NULL DEFAULT false;
+    -- Сообщение мастеру о новой записи (с кнопками "Выполнена"/"Не пришёл"):
+    -- запоминаем, где оно лежит и что в нём написано, чтобы обновить его, когда
+    -- статус поменяли в панели, а не в самом чате
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS master_msg_chat_id BIGINT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS master_msg_id BIGINT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS master_msg_text TEXT;
     -- Записи, которые администратор создаёт вручную (звонок/WhatsApp), могут
     -- быть без Telegram ID — тогда обязателен client_phone
     ALTER TABLE bookings ALTER COLUMN client_telegram_id DROP NOT NULL;

@@ -6,7 +6,7 @@ import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientComment, syncInventoryItem } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
 import { isWorkDay } from "./schedule.js";
-import { bookingActionButtons, ratingButtons, masterBookingActionButtons } from "./bookingScene.js";
+import { bookingActionButtons, ratingButtons, masterBookingActionButtons, masterStatusLine } from "./bookingScene.js";
 import { getRole, requireAdmin } from "./roles.js";
 import { toIso, formatRuDateTime, formatDateTime } from "./format.js";
 import { t, localized, localizedSql, isSupportedLang, type Lang } from "./i18n.js";
@@ -104,8 +104,39 @@ async function notifyMaster(masterId: number, text: string, bookingId?: number) 
       text,
       bookingId ? { reply_markup: { inline_keyboard: masterBookingActionButtons(bookingId) } } : undefined
     )
+    .then((sent) => {
+      // Запоминаем сообщение с кнопками — когда запись отметят в панели или
+      // клиент её отменит, syncMasterMessage уберёт кнопки и допишет итог
+      if (!bookingId) return;
+      return db.query(
+        "UPDATE bookings SET master_msg_chat_id = $1, master_msg_id = $2, master_msg_text = $3 WHERE id = $4",
+        [sent.chat.id, sent.message_id, text, bookingId]
+      );
+    })
     .catch((err) => {
       console.warn("Не удалось отправить уведомление мастеру:", err instanceof Error ? err.message : err);
+    });
+}
+
+interface MasterMessageRef {
+  master_msg_chat_id: string | null;
+  master_msg_id: string | null;
+  master_msg_text: string | null;
+}
+
+// Обновляет сообщение мастеру о записи, если статус поменяли не кнопкой в чате
+// (например, "Выполнена" в панели/PWA или клиент отменил запись): убирает
+// кнопки и дописывает итог. Иначе кнопки остались бы висеть и вели бы к ошибке
+// "запись уже отмечена". Не получилось (сообщение старое/удалено, ничего не
+// изменилось) — молча пропускаем, на саму запись это не влияет
+function syncMasterMessage(ref: MasterMessageRef, status: "completed" | "no_show" | "cancelled") {
+  if (!ref.master_msg_chat_id || !ref.master_msg_id || !ref.master_msg_text) return;
+  bot.telegram
+    .editMessageText(ref.master_msg_chat_id, Number(ref.master_msg_id), undefined, `${ref.master_msg_text}\n\n${masterStatusLine(status)}`, {
+      reply_markup: { inline_keyboard: [] },
+    })
+    .catch((err) => {
+      console.warn("Не удалось обновить сообщение мастеру:", err instanceof Error ? err.message : err);
     });
 }
 
@@ -436,7 +467,8 @@ api.delete("/bookings/:id", async (req, res) => {
   if (rejectIfNotVerified(req, res, clientTelegramId)) return;
 
   const { rows } = await db.query(
-    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name, s.name AS service_name, s.name_en AS service_name_en
+    `SELECT b.id, b.starts_at, b.master_id, m.name AS master_name, s.name AS service_name, s.name_en AS service_name_en,
+            b.master_msg_chat_id, b.master_msg_id, b.master_msg_text
      FROM bookings b
      JOIN masters m ON m.id = b.master_id
      JOIN services s ON s.id = b.service_id
@@ -451,7 +483,7 @@ api.delete("/bookings/:id", async (req, res) => {
         master_name: string;
         service_name: string;
         service_name_en: string | null;
-      }
+      } & MasterMessageRef
     | undefined;
   if (!booking) {
     res.status(404).json({ error: t(req.lang, "errors.bookingNotFound") });
@@ -459,6 +491,7 @@ api.delete("/bookings/:id", async (req, res) => {
   }
 
   await db.query("DELETE FROM bookings WHERE id = $1", [id]);
+  syncMasterMessage(booking, "cancelled");
 
   notifyClient(clientTelegramId, (lang) =>
     t(lang, "notify.cancelled", {
@@ -1219,7 +1252,8 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.master_id, b.service_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, s.name_en AS service_name_en, m.name AS master_name
+    `SELECT b.master_id, b.service_id, b.client_telegram_id, b.client_phone, s.price, s.name AS service_name, s.name_en AS service_name_en, m.name AS master_name,
+            b.master_msg_chat_id, b.master_msg_id, b.master_msg_text
      FROM bookings b JOIN services s ON s.id = b.service_id JOIN masters m ON m.id = b.master_id
      WHERE b.id = $1`,
     [id]
@@ -1234,7 +1268,7 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
         service_name: string;
         service_name_en: string | null;
         master_name: string;
-      }
+      } & MasterMessageRef
     | undefined;
   if (!booking) {
     res.status(404).json({ error: "Запись не найдена" });
@@ -1254,6 +1288,8 @@ api.patch("/staff/bookings/:id/status", async (req, res) => {
     res.status(409).json({ error: "Эта запись уже отмечена" });
     return;
   }
+
+  if (status === "completed" || status === "no_show") syncMasterMessage(booking, status);
 
   if (status === "completed") {
     try {
