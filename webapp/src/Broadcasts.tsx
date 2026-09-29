@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Broadcast, BroadcastStatus, SegmentFilter } from './types'
+import type { Broadcast, BroadcastStatus, Master, SegmentFilter, Service } from './types'
+import BroadcastForm from './BroadcastForm'
 import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
@@ -45,6 +46,8 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
+  const [services, setServices] = useState<Service[]>([])
+  const [masters, setMasters] = useState<Master[]>([])
 
   async function loadBroadcasts() {
     setLoading(true)
@@ -61,10 +64,31 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
     }
   }
 
+  // Услуги и мастера — для выбора сегмента в форме и для подписи
+  // "Услуга: Маникюр" в списке вместо голого номера
+  async function loadCatalog() {
+    try {
+      const [servicesRes, mastersRes] = await Promise.all([
+        apiFetch(`${API_URL}/api/services`),
+        apiFetch(`${API_URL}/api/masters`),
+      ])
+      if (servicesRes.ok) setServices(await servicesRes.json())
+      if (mastersRes.ok) setMasters(await mastersRes.json())
+    } catch {
+      // тихо — в списке останутся номера, форма покажет пустые списки
+    }
+  }
+
   useEffect(() => {
     loadBroadcasts()
+    loadCatalog()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const names = {
+    services: new Map(services.map((s) => [s.id, s.name])),
+    masters: new Map(masters.map((m) => [m.id, m.name])),
+  }
 
   return (
     <section className="staff-admin-form">
@@ -80,7 +104,16 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
           + Новая рассылка
         </button>
       ) : (
-        <p className="staff-empty staff-empty--compact">Форма создания рассылки появится на следующем шаге</p>
+        <BroadcastForm
+          telegramId={telegramId}
+          services={services}
+          masters={masters}
+          onCreated={(created) => {
+            setBroadcasts((prev) => [created, ...prev])
+            setCreating(false)
+          }}
+          onCancel={() => setCreating(false)}
+        />
       )}
 
       {loading ? (
@@ -106,7 +139,7 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
                   {b.text}
                 </p>
                 <div className="broadcast-meta">
-                  <span>{describeSegment(b.segment_filter)}</span>
+                  <span>{describeSegment(b.segment_filter, names)}</span>
                   {b.total > 0 && (
                     <span className="broadcast-stats">
                       дошло {b.sent}

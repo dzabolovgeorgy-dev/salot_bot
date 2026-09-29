@@ -20,6 +20,14 @@ import {
   deletePwaSession,
   PWA_SESSION_HEADER,
 } from "./pwaAuth.js";
+import {
+  parseSegmentFilter,
+  selectRecipients,
+  personalize,
+  sendBroadcastMessage,
+  MAX_TEXT_LENGTH,
+  MAX_CAPTION_LENGTH,
+} from "./broadcasts.js";
 import { secondsUntilUnblocked, recordFailure, recordSuccess } from "./loginRateLimit.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
@@ -2765,4 +2773,163 @@ api.get("/staff/broadcasts", async (req, res) => {
       created_at: toIso(r.created_at),
     }))
   );
+});
+
+// Фото для рассылки загружается сразу при выборе файла — дальше форма
+// работает уже со ссылкой (и для теста себе, и для самой рассылки)
+api.post("/staff/broadcasts/image", upload.single("photo"), async (req, res) => {
+  const telegram_id = Number(req.body.telegram_id);
+  if (!telegram_id || !req.file) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (!req.file.mimetype.startsWith("image/")) {
+    res.status(400).json({ error: "Файл должен быть изображением" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const path = `broadcasts/${Date.now()}.${extFromMimeType(req.file.mimetype)}`;
+  const image_url = await uploadPhoto(path, req.file.buffer, req.file.mimetype);
+  res.json({ image_url });
+});
+
+// Общая проверка текста/фото рассылки — возвращает текст ошибки или null
+function broadcastContentError(text: unknown, imageUrl: unknown): string | null {
+  if (typeof text !== "string" || !text.trim()) return "Введите текст рассылки";
+  if (imageUrl != null && (typeof imageUrl !== "string" || !/^https?:\/\//.test(imageUrl))) return "Неверная ссылка на фото";
+  const limit = imageUrl ? MAX_CAPTION_LENGTH : MAX_TEXT_LENGTH;
+  if (text.trim().length > limit) {
+    return imageUrl
+      ? `С фото текст может быть не длиннее ${limit} символов (ограничение Telegram)`
+      : `Текст может быть не длиннее ${limit} символов`;
+  }
+  return null;
+}
+
+// Сколько клиентов получит рассылку при выбранном сегменте — показывается
+// в форме до отправки
+api.post("/staff/broadcasts/audience", async (req, res) => {
+  const { telegram_id, segment_filter } = req.body as { telegram_id?: number; segment_filter?: unknown };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const filter = parseSegmentFilter(segment_filter);
+  if (typeof filter === "string") {
+    res.status(400).json({ error: filter });
+    return;
+  }
+  const recipients = await selectRecipients(filter);
+  res.json({ count: recipients.length });
+});
+
+// "Отправить тест себе" — то же сообщение, что увидят клиенты, но только
+// самому администратору. {name} заменяется его именем из Telegram
+api.post("/staff/broadcasts/test", async (req, res) => {
+  const { telegram_id, text, image_url } = req.body as { telegram_id?: number; text?: string; image_url?: string | null };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const contentError = broadcastContentError(text, image_url ?? null);
+  if (contentError) {
+    res.status(400).json({ error: contentError });
+    return;
+  }
+
+  let firstName: string | null = null;
+  try {
+    const chat = await bot.telegram.getChat(telegram_id);
+    firstName = "first_name" in chat ? chat.first_name : null;
+  } catch {
+    // имя не узнали — {name} просто уберётся из текста
+  }
+  try {
+    await sendBroadcastMessage(telegram_id, personalize(text!.trim(), firstName), image_url ?? null);
+  } catch {
+    res.status(502).json({ error: "Не удалось отправить — проверьте, что вы писали боту и не блокировали его" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Создание рассылки. Со scheduled_at — ждёт своего времени (статус
+// "Запланирована"), без него — сразу уходит в отправку
+api.post("/staff/broadcasts", async (req, res) => {
+  const { telegram_id, text, image_url, segment_filter, scheduled_at } = req.body as {
+    telegram_id?: number;
+    text?: string;
+    image_url?: string | null;
+    segment_filter?: unknown;
+    scheduled_at?: string | null;
+  };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const contentError = broadcastContentError(text, image_url ?? null);
+  if (contentError) {
+    res.status(400).json({ error: contentError });
+    return;
+  }
+  const filter = parseSegmentFilter(segment_filter);
+  if (typeof filter === "string") {
+    res.status(400).json({ error: filter });
+    return;
+  }
+
+  // Время приходит как местное время салона ("2026-10-02T12:00") — так же,
+  // как хранится время записей (без часового пояса)
+  let scheduledAt: string | null = null;
+  if (scheduled_at) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(scheduled_at)) {
+      res.status(400).json({ error: "Неверная дата отправки" });
+      return;
+    }
+    const { rows } = await db.query<{ future: boolean }>("SELECT $1::timestamp > now() AS future", [scheduled_at]);
+    if (!rows[0].future) {
+      res.status(400).json({ error: "Время отправки уже прошло" });
+      return;
+    }
+    scheduledAt = scheduled_at;
+  }
+
+  const { rows } = await db.query(
+    `INSERT INTO broadcasts (text, image_url, segment_filter, scheduled_at, status)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, text, image_url, segment_filter, scheduled_at, status, created_at`,
+    [text!.trim(), image_url ?? null, filter, scheduledAt, scheduledAt ? "scheduled" : "sending"]
+  );
+  const created = rows[0];
+  // Сама массовая отправка подключается на следующем шаге (очередь с паузами)
+
+  res.status(201).json({
+    ...created,
+    scheduled_at: created.scheduled_at ? toIso(created.scheduled_at) : null,
+    created_at: toIso(created.created_at),
+    total: 0,
+    sent: 0,
+    errors: 0,
+    blocked: 0,
+  });
 });
