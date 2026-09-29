@@ -109,11 +109,140 @@ export function personalize(text: string, name: string | null): string {
 
 // Отправляет одно сообщение рассылки. Без parse_mode — текст уходит ровно
 // так, как его набрал администратор, без риска, что символы вроде * или _
-// сломают отправку
-export async function sendBroadcastMessage(chatId: number, text: string, imageUrl: string | null): Promise<void> {
-  if (imageUrl) {
-    await bot.telegram.sendPhoto(chatId, imageUrl, { caption: text });
-  } else {
-    await bot.telegram.sendMessage(chatId, text);
+// сломают отправку. Фото можно передать ссылкой или кодом файла, который
+// Telegram вернул после первой отправки (возвращаем его) — тогда Telegram
+// не скачивает одну и ту же картинку заново для каждого получателя
+export async function sendBroadcastMessage(chatId: number, text: string, photo: string | null): Promise<string | null> {
+  if (photo) {
+    const msg = await bot.telegram.sendPhoto(chatId, photo, { caption: text });
+    return msg.photo.at(-1)?.file_id ?? null;
   }
+  await bot.telegram.sendMessage(chatId, text);
+  return null;
+}
+
+// ── Массовая отправка ────────────────────────────────────────────────────
+
+// Telegram разрешает боту около 30 сообщений в секунду разным людям. Берём
+// с запасом — 20 в секунду (пауза 50 мс): бот в это же время может слать
+// напоминания и подтверждения записей, им тоже нужно место в этом лимите
+const SEND_DELAY_MS = 50;
+// Если Telegram всё же попросил притормозить (ошибка 429), ждём, сколько он
+// сказал, и пробуем того же получателя ещё раз — но не бесконечно
+const MAX_RETRIES = 3;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface TelegramErrorLike {
+  response?: { error_code?: number; parameters?: { retry_after?: number } };
+}
+
+type RecipientStatus = "sent" | "error" | "blocked";
+
+// Отправка одному получателю с повтором при "слишком часто". 403 — человек
+// заблокировал бота или удалил аккаунт, это отдельный статус "заблокировал
+// бота"; всё остальное — "ошибка"
+async function sendToRecipient(
+  recipient: Recipient,
+  text: string,
+  photo: string | null
+): Promise<{ status: RecipientStatus; fileId: string | null }> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const fileId = await sendBroadcastMessage(recipient.telegram_id, personalize(text, recipient.name), photo);
+      return { status: "sent", fileId };
+    } catch (err) {
+      const code = (err as TelegramErrorLike).response?.error_code;
+      const retryAfter = (err as TelegramErrorLike).response?.parameters?.retry_after;
+      if (code === 429 && attempt < MAX_RETRIES) {
+        await sleep(((retryAfter ?? 1) + 1) * 1000);
+        continue;
+      }
+      if (code === 403) return { status: "blocked", fileId: null };
+      console.warn(`Рассылка: не удалось отправить ${recipient.telegram_id}:`, err);
+      return { status: "error", fileId: null };
+    }
+  }
+}
+
+// Какая рассылка отправляется прямо сейчас. Одновременно — только одна:
+// две параллельные вместе превысили бы лимит Telegram. Если в это время
+// пришла ещё одна, она остаётся "отправляется" и начнётся при следующей
+// проверке (раз в минуту) после окончания текущей
+let runningId: number | null = null;
+
+// Отправляет рассылку всем получателям по очереди. Кто уже есть в
+// broadcast_recipients (отправка прервалась перезапуском сервера и теперь
+// продолжается) — пропускаются. Ошибка у одного получателя не останавливает
+// рассылку для остальных
+export async function runBroadcast(broadcastId: number): Promise<void> {
+  if (runningId !== null) return;
+  runningId = broadcastId;
+  try {
+    const { rows } = await db.query<{ text: string; image_url: string | null; segment_filter: SegmentFilter | null }>(
+      "SELECT text, image_url, segment_filter FROM broadcasts WHERE id = $1 AND status = 'sending'",
+      [broadcastId]
+    );
+    if (!rows[0]) return;
+    const { text, image_url, segment_filter } = rows[0];
+
+    const recipients = await selectRecipients(segment_filter);
+    const { rows: done } = await db.query<{ client_telegram_id: string }>(
+      "SELECT client_telegram_id FROM broadcast_recipients WHERE broadcast_id = $1",
+      [broadcastId]
+    );
+    const alreadyDone = new Set(done.map((r) => Number(r.client_telegram_id)));
+
+    let photo = image_url;
+    for (const recipient of recipients) {
+      if (alreadyDone.has(recipient.telegram_id)) continue;
+      const { status, fileId } = await sendToRecipient(recipient, text, photo);
+      if (fileId) photo = fileId;
+      await db.query(
+        `INSERT INTO broadcast_recipients (broadcast_id, client_telegram_id, status)
+         VALUES ($1, $2, $3) ON CONFLICT (broadcast_id, client_telegram_id) DO NOTHING`,
+        [broadcastId, recipient.telegram_id, status]
+      );
+      await sleep(SEND_DELAY_MS);
+    }
+
+    await db.query("UPDATE broadcasts SET status = 'completed' WHERE id = $1", [broadcastId]);
+    console.log(`Рассылка ${broadcastId} завершена`);
+  } catch (err) {
+    // Статус остаётся "sending" — следующая проверка (раз в минуту) подхватит
+    // рассылку и продолжит с того места, где остановились
+    console.error(`Рассылка ${broadcastId} прервалась, продолжим при следующей проверке:`, err);
+  } finally {
+    runningId = null;
+  }
+}
+
+const CHECK_INTERVAL_MS = 60 * 1000;
+
+// Раз в минуту: запланированные рассылки, время которых наступило, переводим
+// в "отправляется" и запускаем; заодно подхватываем "отправляется", которые
+// оборвал перезапуск сервера (на Render это бывает при каждой выкладке).
+// Перевод статуса с условием status = 'scheduled' — даже если проверка
+// сработает дважды, рассылка запустится один раз
+async function checkBroadcasts(): Promise<void> {
+  await db.query(
+    "UPDATE broadcasts SET status = 'sending' WHERE status = 'scheduled' AND scheduled_at <= now()"
+  );
+  const { rows } = await db.query<{ id: number }>("SELECT id FROM broadcasts WHERE status = 'sending' ORDER BY id");
+  // Берём самую раннюю; не ждём окончания — длинная рассылка не должна
+  // задерживать следующую проверку
+  if (rows[0]) runBroadcast(rows[0].id);
+}
+
+// Вызывать один раз при старте сервера
+export function startBroadcastScheduler(): void {
+  const run = async () => {
+    try {
+      await checkBroadcasts();
+    } catch (err) {
+      console.error("Ошибка при проверке рассылок (пробуем снова через минуту):", err);
+    }
+  };
+  run();
+  setInterval(run, CHECK_INTERVAL_MS);
 }

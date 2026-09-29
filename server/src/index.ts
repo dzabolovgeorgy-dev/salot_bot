@@ -10,6 +10,7 @@ import { bot, setupMenuButton } from "./bot.js";
 import { api } from "./api.js";
 import { attachTelegramIdentity } from "./telegramAuthMiddleware.js";
 import { startReminderScheduler } from "./reminders.js";
+import { startBroadcastScheduler } from "./broadcasts.js";
 import { normalizeLang, type Lang } from "./i18n.js";
 
 declare global {
@@ -123,6 +124,7 @@ async function startBot(attemptsLeft = 8) {
 startBot();
 setupMenuButton();
 startReminderScheduler();
+startBroadcastScheduler();
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

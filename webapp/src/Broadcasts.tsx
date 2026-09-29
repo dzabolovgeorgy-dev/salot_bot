@@ -85,6 +85,22 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Пока какая-то рассылка отправляется — тихо обновляем список раз в
+  // 5 секунд, чтобы было видно, как растёт число отправленных
+  const hasSending = broadcasts.some((b) => b.status === 'sending')
+  useEffect(() => {
+    if (!hasSending) return
+    const timer = setInterval(async () => {
+      try {
+        const res = await apiFetch(`${API_URL}/api/staff/broadcasts?telegram_id=${telegramId}`)
+        if (res.ok) setBroadcasts(await res.json())
+      } catch {
+        // тихо — попробуем в следующий раз
+      }
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [hasSending, telegramId])
+
   const names = {
     services: new Map(services.map((s) => [s.id, s.name])),
     masters: new Map(masters.map((m) => [m.id, m.name])),

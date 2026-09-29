@@ -25,6 +25,7 @@ import {
   selectRecipients,
   personalize,
   sendBroadcastMessage,
+  runBroadcast,
   MAX_TEXT_LENGTH,
   MAX_CAPTION_LENGTH,
 } from "./broadcasts.js";
@@ -2921,7 +2922,9 @@ api.post("/staff/broadcasts", async (req, res) => {
     [text!.trim(), image_url ?? null, filter, scheduledAt, scheduledAt ? "scheduled" : "sending"]
   );
   const created = rows[0];
-  // Сама массовая отправка подключается на следующем шаге (очередь с паузами)
+  // "Отправить сейчас" — запускаем отправку, не дожидаясь её конца: админ
+  // сразу видит рассылку в списке, а сообщения уходят очередью в фоне
+  if (!scheduledAt) runBroadcast(created.id);
 
   res.status(201).json({
     ...created,
