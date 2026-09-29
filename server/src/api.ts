@@ -2730,3 +2730,39 @@ api.post("/staff/inventory-items/:id/transactions", async (req, res) => {
 
   res.status(201).json({ ...updated[0], updated_at: toIso(updated[0].updated_at) });
 });
+
+// ── Рассылки ──────────────────────────────────────────────────────────────
+
+// Список рассылок для раздела "Рассылки" (новые сверху) — сразу со
+// статистикой: сколько получателей, сколько дошло, сколько не дошло
+api.get("/staff/broadcasts", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT b.id, b.text, b.image_url, b.segment_filter, b.scheduled_at, b.status, b.created_at,
+            COUNT(r.id)::int AS total,
+            COUNT(r.id) FILTER (WHERE r.status = 'sent')::int AS sent,
+            COUNT(r.id) FILTER (WHERE r.status = 'error')::int AS errors,
+            COUNT(r.id) FILTER (WHERE r.status = 'blocked')::int AS blocked
+     FROM broadcasts b
+     LEFT JOIN broadcast_recipients r ON r.broadcast_id = b.id
+     GROUP BY b.id
+     ORDER BY b.created_at DESC`
+  );
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      scheduled_at: r.scheduled_at ? toIso(r.scheduled_at) : null,
+      created_at: toIso(r.created_at),
+    }))
+  );
+});

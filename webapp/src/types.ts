@@ -117,6 +117,32 @@ export interface InventoryTransaction {
   created_at: string
 }
 
+// Условия отбора получателей рассылки. Пустой объект/null — все клиенты
+// (но в любом случае только те, кто согласился получать рекламу)
+export interface SegmentFilter {
+  service_id?: number
+  master_id?: number
+  loyalty_tier?: string
+  min_days_since_visit?: number
+}
+
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'completed'
+
+// Рассылка в списке раздела "Рассылки" — вместе со статистикой отправки
+export interface Broadcast {
+  id: number
+  text: string
+  image_url: string | null
+  segment_filter: SegmentFilter | null
+  scheduled_at: string | null
+  status: BroadcastStatus
+  created_at: string
+  total: number
+  sent: number
+  errors: number
+  blocked: number
+}
+
 export interface ClientSummary {
   client_telegram_id: string | number | null
   client_phone: string | null
