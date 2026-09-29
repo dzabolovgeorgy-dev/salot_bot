@@ -3018,3 +3018,55 @@ api.post("/staff/birthday-campaign/test", async (req, res) => {
   }
   res.json({ ok: true });
 });
+
+// Карточка одной рассылки со статистикой. "Записались" — получатели, до
+// которых сообщение дошло и которые создали новую запись в течение 7 дней
+// после того, как получили его (считается от момента отправки каждому)
+api.get("/staff/broadcasts/:id", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  const broadcastId = Number(req.params.id);
+  if (!telegramId || !broadcastId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+
+  const { rows } = await db.query(
+    `SELECT b.id, b.text, b.image_url, b.segment_filter, b.scheduled_at, b.status, b.created_at,
+            COUNT(r.id)::int AS total,
+            COUNT(r.id) FILTER (WHERE r.status = 'sent')::int AS sent,
+            COUNT(r.id) FILTER (WHERE r.status = 'error')::int AS errors,
+            COUNT(r.id) FILTER (WHERE r.status = 'blocked')::int AS blocked,
+            COUNT(r.id) FILTER (
+              WHERE r.status = 'sent' AND EXISTS (
+                SELECT 1 FROM bookings bk
+                WHERE bk.client_telegram_id = r.client_telegram_id
+                  AND bk.created_at >= r.sent_at
+                  AND bk.created_at < r.sent_at + interval '7 days'
+              )
+            )::int AS booked_within_7d,
+            MIN(r.sent_at) AS first_sent_at,
+            MAX(r.sent_at) + interval '7 days' AS conversion_window_end
+     FROM broadcasts b
+     LEFT JOIN broadcast_recipients r ON r.broadcast_id = b.id
+     WHERE b.id = $1
+     GROUP BY b.id`,
+    [broadcastId]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Рассылка не найдена" });
+    return;
+  }
+  const b = rows[0];
+  res.json({
+    ...b,
+    scheduled_at: b.scheduled_at ? toIso(b.scheduled_at) : null,
+    created_at: toIso(b.created_at),
+    first_sent_at: b.first_sent_at ? toIso(b.first_sent_at) : null,
+    conversion_window_end: b.conversion_window_end ? toIso(b.conversion_window_end) : null,
+  });
+});

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Broadcast, BroadcastStatus, Master, SegmentFilter, Service } from './types'
 import BroadcastForm from './BroadcastForm'
+import BroadcastCard from './BroadcastCard'
 import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
@@ -46,6 +47,7 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
+  const [openedId, setOpenedId] = useState<number | null>(null)
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
 
@@ -106,6 +108,23 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
     masters: new Map(masters.map((m) => [m.id, m.name])),
   }
 
+  if (openedId !== null) {
+    return (
+      <section className="staff-admin-form">
+        <BroadcastCard
+          telegramId={telegramId}
+          broadcastId={openedId}
+          statusLabels={STATUS_LABELS}
+          describeSegment={(b) => describeSegment(b.segment_filter, names)}
+          onBack={() => {
+            setOpenedId(null)
+            loadBroadcasts()
+          }}
+        />
+      </section>
+    )
+  }
+
   return (
     <section className="staff-admin-form">
       <button type="button" className="staff-back-btn" onClick={onBack}>
@@ -141,7 +160,11 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
           {broadcasts.map((b) => {
             const failed = b.errors + b.blocked
             return (
-              <li key={b.id} className="staff-list-item broadcast-item">
+              <li
+                key={b.id}
+                className="staff-list-item staff-list-item--clickable broadcast-item"
+                onClick={() => setOpenedId(b.id)}
+              >
                 <div className="broadcast-item-head">
                   <span className={`broadcast-status broadcast-status--${b.status}`}>{STATUS_LABELS[b.status]}</span>
                   <span className="broadcast-date">

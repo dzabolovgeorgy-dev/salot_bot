@@ -143,6 +143,14 @@ export interface Broadcast {
   blocked: number
 }
 
+// Карточка одной рассылки — то же, что в списке, плюс сколько получателей
+// записались в течение 7 дней после неё
+export interface BroadcastDetails extends Broadcast {
+  booked_within_7d: number
+  first_sent_at: string | null
+  conversion_window_end: string | null
+}
+
 export interface ClientSummary {
   client_telegram_id: string | number | null
   client_phone: string | null

@@ -1789,3 +1789,60 @@
   font-size: 1rem;
   color: var(--text-h);
 }
+
+/* Карточка одной рассылки */
+.broadcast-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.broadcast-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.broadcast-facts dt {
+  color: var(--text);
+}
+
+.broadcast-facts dd {
+  margin: 0;
+  color: var(--text-h);
+}
+
+.broadcast-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.broadcast-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--soft-white);
+}
+
+.broadcast-stat-value {
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.broadcast-stat-label {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.broadcast-stat-value.broadcast-failed {
+  color: var(--danger);
+}
