@@ -73,7 +73,8 @@
     "historyEmpty": "[EN] Пока ничего не начислялось и не списывалось.",
     "historyEarn": "[EN] Начисление за визит",
     "historyRedeem": "[EN] Списание при оплате",
-    "historyBurn": "[EN] Сгорание баллов"
+    "historyBurn": "[EN] Сгорание баллов",
+    "historyBirthday": "[EN] Подарок на день рождения 🎂"
   },
   "home": {
     "yourBookingEyebrow": "[EN] ВАША ЗАПИСЬ",

@@ -73,6 +73,30 @@ export async function accrueForCompletedVisit(
   return { cashback, newBalance: updated[0].points_balance as number };
 }
 
+// Начисляет баллы в подарок (например, на день рождения). В отличие от
+// кэшбэка за визит, total_spent не растёт — подарок не двигает уровень.
+// Сгорают так же, как обычные начисления — через POINTS_EXPIRY_MONTHS
+export async function accrueGiftPoints(clientTelegramId: number, points: number, reason: string): Promise<number> {
+  const { rows } = await db.query(
+    `INSERT INTO loyalty_points (client_telegram_id, points_balance, total_spent)
+     VALUES ($1, $2, 0)
+     ON CONFLICT (client_telegram_id) DO UPDATE SET points_balance = loyalty_points.points_balance + $2
+     RETURNING points_balance`,
+    [clientTelegramId, points]
+  );
+
+  const expiresAt = new Date();
+  expiresAt.setMonth(expiresAt.getMonth() + POINTS_EXPIRY_MONTHS);
+
+  await db.query(
+    `INSERT INTO loyalty_transactions (client_telegram_id, amount, reason, expires_at)
+     VALUES ($1, $2, $3, $4)`,
+    [clientTelegramId, points, reason, expiresAt]
+  );
+
+  return rows[0].points_balance as number;
+}
+
 export interface LoyaltyStatus {
   pointsBalance: number;
   totalSpent: number;

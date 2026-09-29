@@ -1783,3 +1783,9 @@
 .broadcast-audience .staff-form-hint {
   margin: 0;
 }
+
+/* Поздравления с ДР — главный переключатель "включено/выключено" */
+.birthday-toggle {
+  font-size: 1rem;
+  color: var(--text-h);
+}

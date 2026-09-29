@@ -378,7 +378,7 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS birthday_campaign_settings (
       id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
       enabled BOOLEAN NOT NULL DEFAULT false,
-      message_template TEXT NOT NULL DEFAULT 'С днём рождения! 🎉 Дарим вам подарок: {gift}',
+      message_template TEXT NOT NULL DEFAULT '{name}, с днём рождения! 🎉 Дарим вам подарок: {gift}',
       gift_type TEXT NOT NULL DEFAULT 'discount'
         CHECK (gift_type IN ('discount', 'points', 'free_service')),
       gift_value TEXT NOT NULL DEFAULT '10'

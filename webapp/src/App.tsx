@@ -114,6 +114,7 @@ function loyaltyHistoryLabel(h: LoyaltyHistoryEntry, t: TFunction): string {
   if (h.reason === 'начисление за визит') return h.service_name ?? t('loyalty.historyEarn')
   if (h.reason === 'списание при оплате') return t('loyalty.historyRedeem')
   if (h.reason === 'сгорание') return t('loyalty.historyBurn')
+  if (h.reason === 'подарок на день рождения') return t('loyalty.historyBirthday')
   return h.reason
 }
 

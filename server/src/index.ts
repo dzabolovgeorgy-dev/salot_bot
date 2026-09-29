@@ -11,6 +11,7 @@ import { api } from "./api.js";
 import { attachTelegramIdentity } from "./telegramAuthMiddleware.js";
 import { startReminderScheduler } from "./reminders.js";
 import { startBroadcastScheduler } from "./broadcasts.js";
+import { startBirthdayScheduler } from "./birthday.js";
 import { normalizeLang, type Lang } from "./i18n.js";
 
 declare global {
@@ -125,6 +126,7 @@ startBot();
 setupMenuButton();
 startReminderScheduler();
 startBroadcastScheduler();
+startBirthdayScheduler();
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));

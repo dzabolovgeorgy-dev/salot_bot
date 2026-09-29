@@ -29,6 +29,12 @@ import {
   MAX_TEXT_LENGTH,
   MAX_CAPTION_LENGTH,
 } from "./broadcasts.js";
+import {
+  getBirthdaySettings,
+  parseBirthdaySettings,
+  buildGreeting,
+  type BirthdayCampaignSettings,
+} from "./birthday.js";
 import { secondsUntilUnblocked, recordFailure, recordSuccess } from "./loginRateLimit.js";
 
 // Фото храним в памяти (не на диске сервера) и сразу заливаем в Supabase
@@ -2935,4 +2941,80 @@ api.post("/staff/broadcasts", async (req, res) => {
     errors: 0,
     blocked: 0,
   });
+});
+
+// ── Поздравление с днём рождения ──────────────────────────────────────────
+
+api.get("/staff/birthday-campaign", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  res.json(await getBirthdaySettings());
+});
+
+api.put("/staff/birthday-campaign", async (req, res) => {
+  const { telegram_id, ...raw } = req.body as Partial<BirthdayCampaignSettings> & { telegram_id?: number };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const settings = parseBirthdaySettings(raw);
+  if (typeof settings === "string") {
+    res.status(400).json({ error: settings });
+    return;
+  }
+  const { rows } = await db.query(
+    `UPDATE birthday_campaign_settings
+     SET enabled = $1, message_template = $2, gift_type = $3, gift_value = $4
+     WHERE id = 1
+     RETURNING enabled, message_template, gift_type, gift_value`,
+    [settings.enabled, settings.message_template, settings.gift_type, settings.gift_value]
+  );
+  res.json(rows[0]);
+});
+
+// Тест поздравления себе — с настройками прямо из формы (даже ещё не
+// сохранёнными). Баллы при тесте не начисляются
+api.post("/staff/birthday-campaign/test", async (req, res) => {
+  const { telegram_id, ...raw } = req.body as Partial<BirthdayCampaignSettings> & { telegram_id?: number };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const settings = parseBirthdaySettings(raw);
+  if (typeof settings === "string") {
+    res.status(400).json({ error: settings });
+    return;
+  }
+  let firstName: string | null = null;
+  try {
+    const chat = await bot.telegram.getChat(telegram_id);
+    firstName = "first_name" in chat ? chat.first_name : null;
+  } catch {
+    // имя не узнали — {name} просто уберётся из текста
+  }
+  try {
+    await sendBroadcastMessage(telegram_id, buildGreeting(settings, firstName), null);
+  } catch {
+    res.status(502).json({ error: "Не удалось отправить — проверьте, что вы писали боту и не блокировали его" });
+    return;
+  }
+  res.json({ ok: true });
 });
