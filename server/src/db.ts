@@ -332,6 +332,59 @@ export async function initDb(): Promise<void> {
       language TEXT NOT NULL,
       updated_at TIMESTAMP NOT NULL DEFAULT now()
     );
+
+    -- Рассылки. Отдельной таблицы "клиенты" нет — карточка клиента это
+    -- client_notes, туда и кладём согласие на рекламные сообщения и дату
+    -- рождения. Без согласия (по умолчанию его нет) клиент не попадает
+    -- ни в одну рассылку, какой бы сегмент ни выбрали
+    ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS marketing_consent_date TIMESTAMP;
+    ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS birth_date DATE;
+    -- Год, в котором клиента уже поздравили с днём рождения — чтобы при
+    -- перезапуске сервера в тот же день поздравление не ушло повторно
+    ALTER TABLE client_notes ADD COLUMN IF NOT EXISTS birthday_greeted_year INTEGER;
+
+    -- segment_filter — условия отбора получателей, например
+    -- {"min_days_since_visit": 60} или {"service_id": 3}; NULL — все клиенты.
+    -- scheduled_at NULL — отправить сразу
+    CREATE TABLE IF NOT EXISTS broadcasts (
+      id SERIAL PRIMARY KEY,
+      text TEXT NOT NULL,
+      image_url TEXT,
+      segment_filter JSONB,
+      scheduled_at TIMESTAMP,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'scheduled', 'sending', 'completed')),
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS broadcasts_scheduled_idx ON broadcasts (scheduled_at) WHERE status = 'scheduled';
+
+    -- Кому ушла конкретная рассылка и чем закончилась отправка. Уникальность
+    -- пары (рассылка, клиент) — если отправка прервалась (перезапуск сервера)
+    -- и продолжилась, уже получившим сообщение оно не придёт второй раз
+    CREATE TABLE IF NOT EXISTS broadcast_recipients (
+      id SERIAL PRIMARY KEY,
+      broadcast_id INTEGER NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
+      client_telegram_id BIGINT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('sent', 'error', 'blocked')),
+      sent_at TIMESTAMP NOT NULL DEFAULT now(),
+      UNIQUE (broadcast_id, client_telegram_id)
+    );
+
+    -- Настройка автоматического поздравления с днём рождения — всегда одна
+    -- строка (id = 1). gift_value — текст, потому что смысл зависит от типа:
+    -- процент скидки, число баллов или название бесплатной услуги
+    CREATE TABLE IF NOT EXISTS birthday_campaign_settings (
+      id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      enabled BOOLEAN NOT NULL DEFAULT false,
+      message_template TEXT NOT NULL DEFAULT 'С днём рождения! 🎉 Дарим вам подарок: {gift}',
+      gift_type TEXT NOT NULL DEFAULT 'discount'
+        CHECK (gift_type IN ('discount', 'points', 'free_service')),
+      gift_value TEXT NOT NULL DEFAULT '10'
+    );
+
+    INSERT INTO birthday_campaign_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
   `);
 
   // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
@@ -364,13 +417,16 @@ export async function initDb(): Promise<void> {
     ALTER TABLE inventory_items ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inventory_transactions ENABLE ROW LEVEL SECURITY;
     ALTER TABLE service_inventory_items ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE broadcasts ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE broadcast_recipients ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE birthday_campaign_settings ENABLE ROW LEVEL SECURITY;
 
     REVOKE ALL ON
       masters, services, master_services, bookings, staff, pwa_sessions, pwa_login_codes, user_languages,
       blocked_slots, master_photos, photo_folders, master_photo_folders,
       inspiration_photos, saved_photos, client_notes, loyalty_points,
       loyalty_transactions, master_ratings, inventory_items, inventory_transactions,
-      service_inventory_items
+      service_inventory_items, broadcasts, broadcast_recipients, birthday_campaign_settings
     FROM anon, authenticated;
   `);
 
