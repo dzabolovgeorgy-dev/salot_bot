@@ -12,7 +12,7 @@ import {
 } from "./bookingScene.js";
 import { internalHeaders } from "./internalAuth.js";
 import { getRole } from "./roles.js";
-import { DEFAULT_LANG, SUPPORTED_LANGS, allLangs, isSupportedLang, localizedSql, t, type Lang } from "./i18n.js";
+import { DEFAULT_LANG, SUPPORTED_LANGS, allLangs, isSupportedLang, localizedSql, normalizeLang, t, type Lang } from "./i18n.js";
 import { resolveLanguage, saveLanguage } from "./userLanguage.js";
 
 const token = process.env.BOT_TOKEN;
@@ -31,6 +31,31 @@ function getWebAppUrl(): string | undefined {
 }
 
 export const bot = new Telegraf<BotContext>(token);
+
+// Ошибка в любом обработчике бота. Без этого библиотека Telegraf по умолчанию
+// останавливает приём сообщений целиком — бот молча перестаёт отвечать ВСЕМ,
+// а сервер при этом работает дальше, и Render его не перезапускает. Здесь
+// ошибка только записывается в журнал, человеку уходит "попробуйте ещё раз",
+// а бот продолжает работать для всех остальных
+bot.catch(async (err, ctx) => {
+  console.error(`Ошибка бота (${ctx.updateType}, от ${ctx.from?.id ?? "?"}):`, err);
+  // 403 — человек заблокировал бота: написать ему всё равно не получится
+  if ((err as { response?: { error_code?: number } }).response?.error_code === 403) return;
+  // Язык мог не определиться, если сломалось как раз его чтение из базы
+  const lang = ctx.lang ?? normalizeLang(ctx.from?.language_code);
+  const text = t(lang, "bot.somethingWrong");
+  try {
+    if (ctx.callbackQuery) {
+      // Гасим "часики" на нажатой кнопке и показываем текст всплывающим окном
+      await ctx.answerCbQuery(text, { show_alert: true });
+    } else if (ctx.chat) {
+      await ctx.reply(text);
+    }
+  } catch {
+    // Не получилось даже сообщить (например, нажатие кнопки уже "устарело") —
+    // главное, что бот продолжает работать
+  }
+});
 
 // Диалог записи прямо в чате (команда /book, без Mini App). Состояние диалога
 // хранится в памяти сервера (не в базе) — если сервер перезапустится посреди
