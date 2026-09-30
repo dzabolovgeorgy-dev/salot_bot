@@ -154,7 +154,7 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
       {loading ? (
         <p className="staff-empty">Загрузка…</p>
       ) : broadcasts.length === 0 ? (
-        <p className="staff-empty">Рассылок пока не было</p>
+        !error && <p className="staff-empty">Рассылок пока не было</p>
       ) : (
         <ul className="staff-list">
           {broadcasts.map((b) => {
