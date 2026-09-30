@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import multer from "multer";
 import { db } from "./db.js";
+import { forwardAsyncErrors } from "./apiErrors.js";
 import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientComment, syncInventoryItem } from "./sheets.js";
 import { uploadPhoto, deletePhoto, pathFromPublicUrl } from "./storage.js";
@@ -50,6 +51,9 @@ function extFromMimeType(mimeType: string): string {
 }
 
 export const api = Router();
+// Ошибки внутри любого запроса ниже доходят до общего обработчика ошибок
+// (handleApiErrors), а не теряются — см. apiErrors.ts
+forwardAsyncErrors(api);
 
 // Для записей без Telegram (звонок/WhatsApp) телефон — единственный ID
 // клиента. Приводим к цифрам, чтобы "+7 999 123-45-67" и "79991234567"
