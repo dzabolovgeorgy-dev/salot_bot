@@ -3097,3 +3097,185 @@ api.get("/faq", async (req, res) => {
     salon_location_url: settings[0]?.salon_location_url ?? null,
   });
 });
+
+// ── Управление FAQ (только администратор) ─────────────────────────────────
+
+interface FaqItemBody {
+  telegram_id: number;
+  question: string;
+  answer: string;
+  question_en?: string | null;
+  answer_en?: string | null;
+  show_route_button?: boolean;
+}
+
+// Проверка текста вопроса — возвращает ошибку или очищенные значения
+function parseFaqItem(body: Partial<FaqItemBody>):
+  | string
+  | { question: string; answer: string; question_en: string | null; answer_en: string | null; show_route_button: boolean } {
+  const question = body.question?.trim() ?? "";
+  const answer = body.answer?.trim() ?? "";
+  if (!question) return "Введите вопрос";
+  if (!answer) return "Введите ответ";
+  if (question.length > 300) return "Вопрос слишком длинный (до 300 символов)";
+  if (answer.length > 3000) return "Ответ слишком длинный (до 3000 символов)";
+  return {
+    question,
+    answer,
+    question_en: body.question_en?.trim() || null,
+    answer_en: body.answer_en?.trim() || null,
+    show_route_button: !!body.show_route_button,
+  };
+}
+
+const FAQ_COLUMNS = "id, question, answer, question_en, answer_en, display_order, show_route_button";
+
+// Всё для экрана управления: вопросы (с переводами) и адрес салона
+api.get("/staff/faq", async (req, res) => {
+  const telegramId = Number(req.query.telegram_id);
+  if (!telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const { rows: items } = await db.query(`SELECT ${FAQ_COLUMNS} FROM faq_items ORDER BY display_order ASC, id ASC`);
+  const { rows: settings } = await db.query(
+    "SELECT salon_address, salon_location_url FROM salon_settings WHERE id = 1"
+  );
+  res.json({
+    items,
+    salon_address: settings[0]?.salon_address ?? null,
+    salon_location_url: settings[0]?.salon_location_url ?? null,
+  });
+});
+
+// Новый вопрос — в конец списка
+api.post("/staff/faq", async (req, res) => {
+  const body = req.body as Partial<FaqItemBody>;
+  if (!body.telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, body.telegram_id)) return;
+  if (!(await requireAdmin(body.telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const item = parseFaqItem(body);
+  if (typeof item === "string") {
+    res.status(400).json({ error: item });
+    return;
+  }
+  const { rows } = await db.query(
+    `INSERT INTO faq_items (question, answer, question_en, answer_en, show_route_button, display_order)
+     VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(display_order), 0) + 10 FROM faq_items))
+     RETURNING ${FAQ_COLUMNS}`,
+    [item.question, item.answer, item.question_en, item.answer_en, item.show_route_button]
+  );
+  res.status(201).json(rows[0]);
+});
+
+api.put("/staff/faq/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body as Partial<FaqItemBody>;
+  if (!id || !body.telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, body.telegram_id)) return;
+  if (!(await requireAdmin(body.telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const item = parseFaqItem(body);
+  if (typeof item === "string") {
+    res.status(400).json({ error: item });
+    return;
+  }
+  const { rows } = await db.query(
+    `UPDATE faq_items SET question = $1, answer = $2, question_en = $3, answer_en = $4, show_route_button = $5
+     WHERE id = $6 RETURNING ${FAQ_COLUMNS}`,
+    [item.question, item.answer, item.question_en, item.answer_en, item.show_route_button, id]
+  );
+  if (!rows[0]) {
+    res.status(404).json({ error: "Вопрос не найден" });
+    return;
+  }
+  res.json(rows[0]);
+});
+
+api.delete("/staff/faq/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const telegramId = Number(req.query.telegram_id);
+  if (!id || !telegramId) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegramId)) return;
+  if (!(await requireAdmin(telegramId))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  await db.query("DELETE FROM faq_items WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// Новый порядок вопросов — список id сверху вниз. Номера раздаём с шагом 10
+api.put("/staff/faq-order", async (req, res) => {
+  const { telegram_id, ids } = req.body as { telegram_id?: number; ids?: unknown };
+  if (!telegram_id || !Array.isArray(ids) || !ids.every((x) => Number.isInteger(x) && x > 0)) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  await db.query(
+    `UPDATE faq_items f SET display_order = o.pos * 10
+     FROM unnest($1::int[]) WITH ORDINALITY AS o(id, pos)
+     WHERE f.id = o.id`,
+    [ids]
+  );
+  res.json({ ok: true });
+});
+
+// Адрес салона и (необязательно) прямая ссылка на карту — для кнопки
+// "Построить маршрут" в FAQ
+api.put("/staff/salon-settings", async (req, res) => {
+  const { telegram_id, salon_address, salon_location_url } = req.body as {
+    telegram_id?: number;
+    salon_address?: string | null;
+    salon_location_url?: string | null;
+  };
+  if (!telegram_id) {
+    res.status(400).json({ error: "Не хватает параметров" });
+    return;
+  }
+  if (rejectIfNotVerified(req, res, telegram_id)) return;
+  if (!(await requireAdmin(telegram_id))) {
+    res.status(403).json({ error: "Доступно только администратору" });
+    return;
+  }
+  const address = salon_address?.trim() || null;
+  const locationUrl = salon_location_url?.trim() || null;
+  if (address && address.length > 300) {
+    res.status(400).json({ error: "Адрес слишком длинный" });
+    return;
+  }
+  if (locationUrl && !/^https:\/\/\S+$/.test(locationUrl)) {
+    res.status(400).json({ error: "Ссылка на карту должна начинаться с https://" });
+    return;
+  }
+  const { rows } = await db.query(
+    `UPDATE salon_settings SET salon_address = $1, salon_location_url = $2 WHERE id = 1
+     RETURNING salon_address, salon_location_url`,
+    [address, locationUrl]
+  );
+  res.json(rows[0]);
+});
