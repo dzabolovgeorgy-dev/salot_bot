@@ -420,6 +420,9 @@ export async function initDb(): Promise<void> {
     -- во вкладке FAQ. _en — перевод, как у вопросов
     ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS working_hours TEXT;
     ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS working_hours_en TEXT;
+    -- Демо-адрес и часы уже вписывались один раз (см. ниже) — флаг, чтобы
+    -- после того как админ сотрёт или поменяет их, они не вернулись сами
+    ALTER TABLE salon_settings ADD COLUMN IF NOT EXISTS demo_contacts_seeded BOOLEAN NOT NULL DEFAULT false;
   `);
 
   // Примеры частых вопросов — один раз, чтобы раздел FAQ не был пустым при
@@ -442,6 +445,33 @@ export async function initDb(): Promise<void> {
         [question, answer, (i + 1) * 10, route]
       );
     }
+  }
+
+  // Демо-адрес и часы работы для показа бота салонам — чтобы карта во вкладке
+  // FAQ была видна сразу (так же, как демо-мастера и услуги ниже). Один раз и
+  // только в пустые поля: настоящий адрес, если его уже вписали, не трогаем.
+  // Салон-покупатель меняет их на свои в "Ещё" → "Частые вопросы"
+  const { rowCount: seedContacts } = await db.query(
+    "UPDATE salon_settings SET demo_contacts_seeded = true WHERE id = 1 AND demo_contacts_seeded = false"
+  );
+  if (seedContacts) {
+    await db.query(
+      `UPDATE salon_settings SET
+         salon_address = COALESCE(salon_address, 'Anexartisias 47, Limassol, Cyprus'),
+         working_hours = COALESCE(working_hours, 'Ежедневно 9:00–21:00'),
+         working_hours_en = COALESCE(working_hours_en, 'Daily 9:00–21:00')
+       WHERE id = 1`
+    );
+    // Первая версия примера "Где вы находитесь?" отсылала к адресу "ниже" и
+    // показывала свою кнопку маршрута — теперь адрес с картой стоит вверху
+    // вкладки. Обновляем пример, только если админ его ещё не менял
+    await db.query(
+      `UPDATE faq_items
+       SET answer = 'Адрес, карта и часы работы — в самом верху этого раздела. Нажмите «Построить маршрут», чтобы проложить путь до салона.',
+           show_route_button = false
+       WHERE question = 'Где вы находитесь?'
+         AND answer = 'Адрес салона указан ниже — нажмите «Построить маршрут», чтобы открыть его на карте.'`
+    );
   }
 
   // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
