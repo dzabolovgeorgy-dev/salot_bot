@@ -53,7 +53,7 @@ import { WEEKDAY_LABELS, dateKeyOf, startOfMonth, buildMonthCells } from './cale
 // путать одно и то же под двумя разными кнопками).
 // "Записаться" объединяет в себе бывшие Услуги + Мастера + Вдохновение
 // (см. BookSubTab ниже)
-type Tab = 'home' | 'book' | 'bookings'
+type Tab = 'home' | 'book' | 'bookings' | 'faq'
 type BookSubTab = 'services' | 'masters' | 'inspiration'
 type BookingsSubTab = 'upcoming' | 'history'
 type FlowOrigin = 'services' | 'masters' | 'bookings'
@@ -65,6 +65,7 @@ const TABS: { key: Tab; Icon: LucideIcon }[] = [
   { key: 'home', Icon: Home },
   { key: 'book', Icon: Sparkles },
   { key: 'bookings', Icon: CalendarDays },
+  { key: 'faq', Icon: CircleHelp },
 ]
 
 const BOOK_SUB_TABS: BookSubTab[] = ['services', 'masters', 'inspiration']
@@ -407,9 +408,8 @@ function App() {
   const [profileLoyalty, setProfileLoyalty] = useState<LoyaltyStatus | null>(null)
   const [loyaltyCardOpen, setLoyaltyCardOpen] = useState(false)
   const [loyaltyHistory, setLoyaltyHistory] = useState<LoyaltyHistoryEntry[]>([])
-  // Экран "Частые вопросы": загружается при каждом открытии (админ мог что-то
-  // поменять), раскрытые вопросы запоминаются по id
-  const [faqOpen, setFaqOpen] = useState(false)
+  // Вкладка "Вопросы" (FAQ): загружается при каждом переходе на неё (админ
+  // мог что-то поменять), раскрытые вопросы запоминаются по id
   const [faqData, setFaqData] = useState<FaqData | null>(null)
   const [faqError, setFaqError] = useState<string | null>(null)
   const [openFaqIds, setOpenFaqIds] = useState<Set<number>>(new Set())
@@ -703,7 +703,10 @@ function App() {
   }, [loyaltyCardOpen])
 
   useEffect(() => {
-    if (!faqOpen) return
+    if (activeTab !== 'faq') {
+      setOpenFaqIds(new Set())
+      return
+    }
     setFaqError(null)
     apiFetch(`${API_URL}/api/faq`)
       .then(async (r) => {
@@ -713,15 +716,10 @@ function App() {
       })
       .catch((err) => setFaqError(err instanceof Error ? err.message : t('errors.loadFailed')))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [faqOpen])
+  }, [activeTab])
 
   const goBack = () => {
     setError(null)
-    if (faqOpen) {
-      setFaqOpen(false)
-      setOpenFaqIds(new Set())
-      return
-    }
     if (openHistoryBooking) {
       setOpenHistoryBooking(null)
       return
@@ -1043,97 +1041,6 @@ function App() {
     )
   }
 
-  if (faqOpen) {
-    // Прямая ссылка на карту, если админ её задал, иначе — поиск адреса в Google Maps
-    const routeUrl = faqData?.salon_location_url
-      ? faqData.salon_location_url
-      : faqData?.salon_address
-        ? `https://maps.google.com/?q=${encodeURIComponent(faqData.salon_address)}`
-        : null
-    const toggleFaq = (id: number) =>
-      setOpenFaqIds((prev) => {
-        const next = new Set(prev)
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return next
-      })
-    return (
-      <motion.div
-        className="app"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
-      >
-        <div className="topbar">
-          <button className="icon-back" onClick={goBack} aria-label={t('common.back')}>
-            <ArrowLeft size={18} />
-          </button>
-          <div className="topbar-title">{t('faq.title')}</div>
-        </div>
-        <div className="content">
-          {faqError && <p className="error">{faqError}</p>}
-          {!faqData ? (
-            !faqError && <p className="faq-loading">{t('common.loading')}</p>
-          ) : faqData.items.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">
-                <CircleHelp size={26} />
-              </div>
-              <h2>{t('faq.emptyTitle')}</h2>
-              <p>{t('faq.emptyText')}</p>
-            </div>
-          ) : (
-            <div className="faq-list">
-              {faqData.items.map((item) => {
-                const isOpen = openFaqIds.has(item.id)
-                return (
-                  <article key={item.id} className={`faq-item${isOpen ? ' open' : ''}`}>
-                    <button
-                      type="button"
-                      className="faq-question"
-                      onClick={() => toggleFaq(item.id)}
-                      aria-expanded={isOpen}
-                    >
-                      <span>{item.question}</span>
-                      <ChevronDown size={18} className="faq-chevron" />
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {isOpen && (
-                        <motion.div
-                          className="faq-answer-wrap"
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.22, ease: 'easeOut' }}
-                        >
-                          <div className="faq-answer">
-                            <p>{item.answer}</p>
-                            {item.show_route_button && faqData.salon_address && (
-                              <p className="faq-address">
-                                <MapPin size={14} />
-                                {faqData.salon_address}
-                              </p>
-                            )}
-                            {item.show_route_button && routeUrl && (
-                              <button type="button" className="primary faq-route" onClick={() => openExternalLink(routeUrl)}>
-                                <MapPin size={16} />
-                                {t('faq.route')}
-                              </button>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </article>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </motion.div>
-    )
-  }
-
   if (savedPhotosOpen) {
     return (
       <motion.div
@@ -1355,6 +1262,20 @@ function App() {
   const progress = flowSteps ? ((flowIndex + 1) / flowSteps.length) * 100 : 0
   const showChrome = !inFlow && !reschedule
 
+  // Прямая ссылка на карту, если админ её задал, иначе — поиск адреса в Google Maps
+  const routeUrl = faqData?.salon_location_url
+    ? faqData.salon_location_url
+    : faqData?.salon_address
+      ? `https://maps.google.com/?q=${encodeURIComponent(faqData.salon_address)}`
+      : null
+  const toggleFaq = (id: number) =>
+    setOpenFaqIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   const flowServices = selectedMaster
     ? services.filter((s) => selectedMaster.service_ids.includes(s.id))
     : services
@@ -1440,7 +1361,9 @@ function App() {
               ? t('steps.time')
               : inFlow && flowStep
                 ? t(`steps.${flowStep}`)
-                : t(`tabs.${activeTab}`)}
+                : activeTab === 'faq'
+                  ? t('faq.title')
+                  : t(`tabs.${activeTab}`)}
           </div>
           {isTestUser && <div className="test-badge">{t('common.test')}</div>}
         </div>
@@ -1551,19 +1474,6 @@ function App() {
           </button>
         )}
 
-        {isHomeHero && (
-          <button type="button" className="home-saved-row" onClick={() => setFaqOpen(true)}>
-            <span className="home-saved-row-icon">
-              <CircleHelp size={16} />
-            </span>
-            <span className="home-saved-row-body">
-              <span className="home-saved-row-name">{t('faq.title')}</span>
-              <span className="home-saved-row-count">{t('faq.subtitle')}</span>
-            </span>
-            <ChevronRight size={14} className="home-saved-row-arrow" />
-          </button>
-        )}
-
         {isHomeHero &&
           (heroBooking && heroMaster ? (
             <>
@@ -1644,6 +1554,69 @@ function App() {
               </button>
             </>
           ))}
+
+        {!inFlow && !reschedule && activeTab === 'faq' && (
+          <>
+            {faqError && <p className="error">{faqError}</p>}
+            {!faqData ? (
+              !faqError && <p className="faq-loading">{t('common.loading')}</p>
+            ) : faqData.items.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <CircleHelp size={26} />
+                </div>
+                <h2>{t('faq.emptyTitle')}</h2>
+                <p>{t('faq.emptyText')}</p>
+              </div>
+            ) : (
+              <div className="faq-list">
+                {faqData.items.map((item) => {
+                  const isOpen = openFaqIds.has(item.id)
+                  return (
+                    <article key={item.id} className={`faq-item${isOpen ? ' open' : ''}`}>
+                      <button
+                        type="button"
+                        className="faq-question"
+                        onClick={() => toggleFaq(item.id)}
+                        aria-expanded={isOpen}
+                      >
+                        <span>{item.question}</span>
+                        <ChevronDown size={18} className="faq-chevron" />
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {isOpen && (
+                          <motion.div
+                            className="faq-answer-wrap"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.22, ease: 'easeOut' }}
+                          >
+                            <div className="faq-answer">
+                              <p>{item.answer}</p>
+                              {item.show_route_button && faqData.salon_address && (
+                                <p className="faq-address">
+                                  <MapPin size={14} />
+                                  {faqData.salon_address}
+                                </p>
+                              )}
+                              {item.show_route_button && routeUrl && (
+                                <button type="button" className="primary faq-route" onClick={() => openExternalLink(routeUrl)}>
+                                  <MapPin size={16} />
+                                  {t('faq.route')}
+                                </button>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
 
         {!inFlow && !reschedule && activeTab === 'book' && (
           <div className="book-subtabs">

@@ -2292,8 +2292,10 @@
   border: none;
   cursor: pointer;
   color: var(--text);
-  font-size: 10px;
+  /* font-size — после font: inherit, иначе inherit его перебивает (так и было
+     раньше: подписи были 16px и с четырьмя вкладками почти слипались) */
   font: inherit;
+  font-size: 12px;
   padding: 4px 2px;
   border-radius: var(--radius-lg);
   white-space: nowrap;
