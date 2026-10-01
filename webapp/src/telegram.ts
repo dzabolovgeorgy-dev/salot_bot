@@ -54,3 +54,15 @@ export function getTelegramLanguageCode(): string | null {
   const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user
   return tgUser?.language_code ?? null
 }
+
+// Открыть внешнюю ссылку (например, карту) — внутри Telegram через openLink,
+// чтобы она открылась в браузере/приложении карт телефона, а не поверх
+// мини-приложения; вне Telegram (PWA, обычный браузер) — в новой вкладке
+export function openExternalLink(url: string): void {
+  const webApp = (window as any).Telegram?.WebApp
+  if (webApp?.openLink) {
+    webApp.openLink(url)
+  } else {
+    window.open(url, '_blank', 'noopener')
+  }
+}

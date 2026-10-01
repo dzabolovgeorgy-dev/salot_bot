@@ -573,11 +573,18 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text-h);
+  white-space: nowrap;
 }
 
+/* Подпись справа от названия — если не влезает, обрезается многоточием,
+   а не переносит строку целиком */
 .home-saved-row-count {
   font-size: 12px;
   color: var(--text);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .home-saved-row-arrow {
@@ -2334,4 +2341,95 @@
 .dev-lang-btn.active {
   background: rgba(255, 255, 255, 0.85);
   color: var(--text-h);
+}
+
+/* Частые вопросы (FAQ) — аккордеон: тап по вопросу раскрывает ответ.
+   Те же скруглённые "стеклянные" карточки, что и у карты лояльности */
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.faq-item {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.faq-question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 18px;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.faq-chevron {
+  flex-shrink: 0;
+  color: var(--primary);
+  transition: transform 0.22s ease;
+}
+
+.faq-item.open .faq-chevron {
+  transform: rotate(180deg);
+}
+
+.faq-answer-wrap {
+  overflow: hidden;
+}
+
+.faq-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 18px 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.faq-answer p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.faq-address {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.faq-address svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--primary);
+}
+
+.faq-route {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 16px;
+}
+
+.faq-loading {
+  text-align: center;
+  color: var(--text);
 }

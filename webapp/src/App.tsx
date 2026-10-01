@@ -8,11 +8,14 @@ import {
   CalendarDays,
   Check,
   ChevronLeft,
+  ChevronDown,
   ChevronRight,
   Clock3,
+  CircleHelp,
   Heart,
   Home,
   Images,
+  MapPin,
   Palette,
   Scissors,
   Sparkles,
@@ -32,10 +35,11 @@ import type {
   LoyaltyStatus,
   MasterReview,
   LoyaltyHistoryEntry,
+  FaqData,
 } from './types'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { getTelegramUserId, getTelegramUserName, getTelegramUsername, getTelegramLanguageCode } from './telegram'
+import { getTelegramUserId, getTelegramUserName, getTelegramUsername, getTelegramLanguageCode, openExternalLink } from './telegram'
 import { apiFetch, setApiLang } from './apiFetch'
 import i18n, { SUPPORTED_LANGS, dateLocale, isSupportedLang, normalizeLang } from './i18n'
 import type { Lang } from './i18n'
@@ -403,6 +407,12 @@ function App() {
   const [profileLoyalty, setProfileLoyalty] = useState<LoyaltyStatus | null>(null)
   const [loyaltyCardOpen, setLoyaltyCardOpen] = useState(false)
   const [loyaltyHistory, setLoyaltyHistory] = useState<LoyaltyHistoryEntry[]>([])
+  // Экран "Частые вопросы": загружается при каждом открытии (админ мог что-то
+  // поменять), раскрытые вопросы запоминаются по id
+  const [faqOpen, setFaqOpen] = useState(false)
+  const [faqData, setFaqData] = useState<FaqData | null>(null)
+  const [faqError, setFaqError] = useState<string | null>(null)
+  const [openFaqIds, setOpenFaqIds] = useState<Set<number>>(new Set())
 
   const clientTelegramId = getTelegramUserId()
   const isTestUser = !(window as any).Telegram?.WebApp?.initDataUnsafe?.user
@@ -692,8 +702,26 @@ function App() {
       .catch(() => setLoyaltyHistory([]))
   }, [loyaltyCardOpen])
 
+  useEffect(() => {
+    if (!faqOpen) return
+    setFaqError(null)
+    apiFetch(`${API_URL}/api/faq`)
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? t('errors.loadFailed'))
+        setFaqData(data)
+      })
+      .catch((err) => setFaqError(err instanceof Error ? err.message : t('errors.loadFailed')))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [faqOpen])
+
   const goBack = () => {
     setError(null)
+    if (faqOpen) {
+      setFaqOpen(false)
+      setOpenFaqIds(new Set())
+      return
+    }
     if (openHistoryBooking) {
       setOpenHistoryBooking(null)
       return
@@ -1010,6 +1038,97 @@ function App() {
             {t('booking.repeat')}
           </button>
           {!canRepeat && <p className="footer-hint">{t('booking.repeatUnavailable')}</p>}
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (faqOpen) {
+    // Прямая ссылка на карту, если админ её задал, иначе — поиск адреса в Google Maps
+    const routeUrl = faqData?.salon_location_url
+      ? faqData.salon_location_url
+      : faqData?.salon_address
+        ? `https://maps.google.com/?q=${encodeURIComponent(faqData.salon_address)}`
+        : null
+    const toggleFaq = (id: number) =>
+      setOpenFaqIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    return (
+      <motion.div
+        className="app"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+      >
+        <div className="topbar">
+          <button className="icon-back" onClick={goBack} aria-label={t('common.back')}>
+            <ArrowLeft size={18} />
+          </button>
+          <div className="topbar-title">{t('faq.title')}</div>
+        </div>
+        <div className="content">
+          {faqError && <p className="error">{faqError}</p>}
+          {!faqData ? (
+            !faqError && <p className="faq-loading">{t('common.loading')}</p>
+          ) : faqData.items.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <CircleHelp size={26} />
+              </div>
+              <h2>{t('faq.emptyTitle')}</h2>
+              <p>{t('faq.emptyText')}</p>
+            </div>
+          ) : (
+            <div className="faq-list">
+              {faqData.items.map((item) => {
+                const isOpen = openFaqIds.has(item.id)
+                return (
+                  <article key={item.id} className={`faq-item${isOpen ? ' open' : ''}`}>
+                    <button
+                      type="button"
+                      className="faq-question"
+                      onClick={() => toggleFaq(item.id)}
+                      aria-expanded={isOpen}
+                    >
+                      <span>{item.question}</span>
+                      <ChevronDown size={18} className="faq-chevron" />
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          className="faq-answer-wrap"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: 'easeOut' }}
+                        >
+                          <div className="faq-answer">
+                            <p>{item.answer}</p>
+                            {item.show_route_button && faqData.salon_address && (
+                              <p className="faq-address">
+                                <MapPin size={14} />
+                                {faqData.salon_address}
+                              </p>
+                            )}
+                            {item.show_route_button && routeUrl && (
+                              <button type="button" className="primary faq-route" onClick={() => openExternalLink(routeUrl)}>
+                                <MapPin size={16} />
+                                {t('faq.route')}
+                              </button>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </article>
+                )
+              })}
+            </div>
+          )}
         </div>
       </motion.div>
     )
@@ -1427,6 +1546,19 @@ function App() {
               <span className="home-saved-row-count">
                 {savedPhotos.length > 0 ? t('saved.count', { count: savedPhotos.length }) : t('common.empty')}
               </span>
+            </span>
+            <ChevronRight size={14} className="home-saved-row-arrow" />
+          </button>
+        )}
+
+        {isHomeHero && (
+          <button type="button" className="home-saved-row" onClick={() => setFaqOpen(true)}>
+            <span className="home-saved-row-icon">
+              <CircleHelp size={16} />
+            </span>
+            <span className="home-saved-row-body">
+              <span className="home-saved-row-name">{t('faq.title')}</span>
+              <span className="home-saved-row-count">{t('faq.subtitle')}</span>
             </span>
             <ChevronRight size={14} className="home-saved-row-arrow" />
           </button>

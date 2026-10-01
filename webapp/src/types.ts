@@ -206,3 +206,17 @@ export type StaffRole =
 export type PwaIdentity =
   | { role: 'master'; master_id: number; master_name: string; telegram_id: number }
   | { role: 'admin'; telegram_id: number }
+
+// Частый вопрос для клиентского экрана FAQ (текст уже на языке клиента)
+export interface FaqItem {
+  id: number
+  question: string
+  answer: string
+  show_route_button: boolean
+}
+
+export interface FaqData {
+  items: FaqItem[]
+  salon_address: string | null
+  salon_location_url: string | null
+}

@@ -3074,3 +3074,26 @@ api.get("/staff/broadcasts/:id", async (req, res) => {
     conversion_window_end: b.conversion_window_end ? toIso(b.conversion_window_end) : null,
   });
 });
+
+// ── Частые вопросы (FAQ) ──────────────────────────────────────────────────
+
+// Для клиентского экрана FAQ: вопросы по порядку на языке клиента (нет
+// перевода — русский текст) и адрес салона для кнопки "Построить маршрут"
+api.get("/faq", async (req, res) => {
+  const { rows: items } = await db.query(
+    `SELECT id,
+            ${localizedSql(req.lang, "f", "question")} AS question,
+            ${localizedSql(req.lang, "f", "answer")} AS answer,
+            show_route_button
+     FROM faq_items f
+     ORDER BY display_order ASC, id ASC`
+  );
+  const { rows: settings } = await db.query(
+    "SELECT salon_address, salon_location_url FROM salon_settings WHERE id = 1"
+  );
+  res.json({
+    items,
+    salon_address: settings[0]?.salon_address ?? null,
+    salon_location_url: settings[0]?.salon_location_url ?? null,
+  });
+});
