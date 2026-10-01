@@ -29,6 +29,8 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
 
   const [address, setAddress] = useState('')
   const [locationUrl, setLocationUrl] = useState('')
+  const [hours, setHours] = useState('')
+  const [hoursEn, setHoursEn] = useState('')
   const [addressSaving, setAddressSaving] = useState(false)
   const [addressSaved, setAddressSaved] = useState(false)
 
@@ -47,6 +49,8 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
         setItems(data.items)
         setAddress(data.salon_address ?? '')
         setLocationUrl(data.salon_location_url ?? '')
+        setHours(data.working_hours ?? '')
+        setHoursEn(data.working_hours_en ?? '')
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Не удалось загрузить вопросы')
       } finally {
@@ -63,12 +67,20 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
       const res = await apiFetch(`${API_URL}/api/staff/salon-settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: telegramId, salon_address: address, salon_location_url: locationUrl }),
+        body: JSON.stringify({
+          telegram_id: telegramId,
+          salon_address: address,
+          salon_location_url: locationUrl,
+          working_hours: hours,
+          working_hours_en: hoursEn,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось сохранить адрес')
       setAddress(data.salon_address ?? '')
       setLocationUrl(data.salon_location_url ?? '')
+      setHours(data.working_hours ?? '')
+      setHoursEn(data.working_hours_en ?? '')
       setAddressSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить адрес')
@@ -254,7 +266,7 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
       ) : (
         <>
           <form className="staff-admin-form faq-manage-form" onSubmit={saveAddress}>
-            <h3>Адрес салона</h3>
+            <h3>Салон: адрес и часы работы</h3>
             <label>
               Адрес
               <input
@@ -283,9 +295,36 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
               Без ссылки кнопка «Построить маршрут» сама найдёт адрес в Google Maps. Ссылка нужна, если по адресу
               карта находит не то место
             </p>
+            <label>
+              Часы работы
+              <input
+                type="text"
+                value={hours}
+                onChange={(e) => {
+                  setHours(e.target.value)
+                  setAddressSaved(false)
+                }}
+                placeholder="Ежедневно 9:00–21:00"
+              />
+            </label>
+            <label>
+              Часы работы по-английски (необязательно)
+              <input
+                type="text"
+                value={hoursEn}
+                onChange={(e) => {
+                  setHoursEn(e.target.value)
+                  setAddressSaved(false)
+                }}
+                placeholder="Daily 9:00–21:00"
+              />
+            </label>
+            <p className="staff-form-hint">
+              Клиенты видят адрес, карту и часы работы вверху вкладки FAQ
+            </p>
             <div className="staff-form-actions">
               <button type="submit" disabled={addressSaving}>
-                {addressSaving ? 'Сохранение…' : addressSaved ? 'Сохранено ✓' : 'Сохранить адрес'}
+                {addressSaving ? 'Сохранение…' : addressSaved ? 'Сохранено ✓' : 'Сохранить'}
               </button>
             </div>
           </form>

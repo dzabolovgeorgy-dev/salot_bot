@@ -2435,3 +2435,52 @@
   text-align: center;
   color: var(--text);
 }
+
+/* Карточка салона во вкладке FAQ: карта, адрес, часы работы, маршрут */
+.salon-card {
+  margin-bottom: 16px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.salon-card-map {
+  display: block;
+  width: 100%;
+  height: 190px;
+  border: 0;
+  background: var(--surface-muted);
+}
+
+.salon-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 18px;
+}
+
+.salon-card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-h);
+}
+
+.salon-card-row svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+.salon-card-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+}

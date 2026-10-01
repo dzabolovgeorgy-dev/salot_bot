@@ -3089,12 +3089,15 @@ api.get("/faq", async (req, res) => {
      ORDER BY display_order ASC, id ASC`
   );
   const { rows: settings } = await db.query(
-    "SELECT salon_address, salon_location_url FROM salon_settings WHERE id = 1"
+    `SELECT salon_address, salon_location_url,
+            ${localizedSql(req.lang, "s", "working_hours")} AS working_hours
+     FROM salon_settings s WHERE id = 1`
   );
   res.json({
     items,
     salon_address: settings[0]?.salon_address ?? null,
     salon_location_url: settings[0]?.salon_location_url ?? null,
+    working_hours: settings[0]?.working_hours ?? null,
   });
 });
 
@@ -3144,12 +3147,14 @@ api.get("/staff/faq", async (req, res) => {
   }
   const { rows: items } = await db.query(`SELECT ${FAQ_COLUMNS} FROM faq_items ORDER BY display_order ASC, id ASC`);
   const { rows: settings } = await db.query(
-    "SELECT salon_address, salon_location_url FROM salon_settings WHERE id = 1"
+    "SELECT salon_address, salon_location_url, working_hours, working_hours_en FROM salon_settings WHERE id = 1"
   );
   res.json({
     items,
     salon_address: settings[0]?.salon_address ?? null,
     salon_location_url: settings[0]?.salon_location_url ?? null,
+    working_hours: settings[0]?.working_hours ?? null,
+    working_hours_en: settings[0]?.working_hours_en ?? null,
   });
 });
 
@@ -3245,13 +3250,15 @@ api.put("/staff/faq-order", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Адрес салона и (необязательно) прямая ссылка на карту — для кнопки
-// "Построить маршрут" в FAQ
+// Адрес салона, (необязательно) прямая ссылка на карту и часы работы — для
+// карточки салона и кнопки "Построить маршрут" во вкладке FAQ
 api.put("/staff/salon-settings", async (req, res) => {
-  const { telegram_id, salon_address, salon_location_url } = req.body as {
+  const { telegram_id, salon_address, salon_location_url, working_hours, working_hours_en } = req.body as {
     telegram_id?: number;
     salon_address?: string | null;
     salon_location_url?: string | null;
+    working_hours?: string | null;
+    working_hours_en?: string | null;
   };
   if (!telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
@@ -3272,10 +3279,18 @@ api.put("/staff/salon-settings", async (req, res) => {
     res.status(400).json({ error: "Ссылка на карту должна начинаться с https://" });
     return;
   }
+  const hours = working_hours?.trim() || null;
+  const hoursEn = working_hours_en?.trim() || null;
+  if ((hours && hours.length > 200) || (hoursEn && hoursEn.length > 200)) {
+    res.status(400).json({ error: "Часы работы — не длиннее 200 символов" });
+    return;
+  }
   const { rows } = await db.query(
-    `UPDATE salon_settings SET salon_address = $1, salon_location_url = $2 WHERE id = 1
-     RETURNING salon_address, salon_location_url`,
-    [address, locationUrl]
+    `UPDATE salon_settings
+     SET salon_address = $1, salon_location_url = $2, working_hours = $3, working_hours_en = $4
+     WHERE id = 1
+     RETURNING salon_address, salon_location_url, working_hours, working_hours_en`,
+    [address, locationUrl, hours, hoursEn]
   );
   res.json(rows[0]);
 });

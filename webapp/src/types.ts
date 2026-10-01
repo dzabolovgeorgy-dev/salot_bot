@@ -219,4 +219,5 @@ export interface FaqData {
   items: FaqItem[]
   salon_address: string | null
   salon_location_url: string | null
+  working_hours: string | null
 }

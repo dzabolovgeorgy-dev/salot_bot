@@ -1558,6 +1558,46 @@ function App() {
         {!inFlow && !reschedule && activeTab === 'faq' && (
           <>
             {faqError && <p className="error">{faqError}</p>}
+            {/* Карточка салона: встроенная карта по адресу (Google Maps без
+                ключа — режим output=embed), под ней адрес, часы работы и
+                кнопка маршрута. Карта ищет именно адрес: короткую ссылку
+                salon_location_url встроить нельзя, она нужна только кнопке */}
+            {faqData && (faqData.salon_address || faqData.working_hours) && (
+              <article className="salon-card">
+                {faqData.salon_address && (
+                  <iframe
+                    className="salon-card-map"
+                    title={t('faq.mapTitle')}
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(faqData.salon_address)}&z=16&hl=${lang}&output=embed`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                )}
+                <div className="salon-card-body">
+                  {faqData.salon_address && (
+                    <p className="salon-card-row">
+                      <MapPin size={16} />
+                      <span>{faqData.salon_address}</span>
+                    </p>
+                  )}
+                  {faqData.working_hours && (
+                    <p className="salon-card-row">
+                      <Clock3 size={16} />
+                      <span>
+                        <span className="salon-card-label">{t('faq.hours')}</span>
+                        {faqData.working_hours}
+                      </span>
+                    </p>
+                  )}
+                  {routeUrl && (
+                    <button type="button" className="primary faq-route" onClick={() => openExternalLink(routeUrl)}>
+                      <MapPin size={16} />
+                      {t('faq.route')}
+                    </button>
+                  )}
+                </div>
+              </article>
+            )}
             {!faqData ? (
               !faqError && <p className="faq-loading">{t('common.loading')}</p>
             ) : faqData.items.length === 0 ? (
