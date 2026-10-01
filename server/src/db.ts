@@ -385,7 +385,58 @@ export async function initDb(): Promise<void> {
     );
 
     INSERT INTO birthday_campaign_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+    -- Частые вопросы (FAQ) для клиентов. display_order — порядок в списке
+    -- (меньше — выше). question_en/answer_en — перевод, как name_en у услуг:
+    -- пусто — показывается русский текст. show_route_button — под ответом
+    -- кнопка "Построить маршрут" (для вопроса "Где вы находитесь?" и т.п.)
+    CREATE TABLE IF NOT EXISTS faq_items (
+      id SERIAL PRIMARY KEY,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      question_en TEXT,
+      answer_en TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      show_route_button BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    -- Общие настройки салона — всегда одна строка (id = 1). Адрес нужен для
+    -- кнопки "Построить маршрут": если задана прямая ссылка на карту — берётся
+    -- она, иначе ссылка на Google Maps собирается из адреса.
+    -- faq_seeded — примеры вопросов уже добавлялись один раз; если админ их
+    -- удалит, при перезапуске сервера они не появятся снова
+    CREATE TABLE IF NOT EXISTS salon_settings (
+      id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      salon_address TEXT,
+      salon_location_url TEXT,
+      faq_seeded BOOLEAN NOT NULL DEFAULT false
+    );
+
+    INSERT INTO salon_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
   `);
+
+  // Примеры частых вопросов — один раз, чтобы раздел FAQ не был пустым при
+  // первом показе. Общие для любого салона, без конкретных адресов и цен —
+  // админ правит их под себя в "Ещё" → FAQ
+  const { rowCount: seedFaq } = await db.query(
+    "UPDATE salon_settings SET faq_seeded = true WHERE id = 1 AND faq_seeded = false"
+  );
+  if (seedFaq) {
+    const examples: [string, string, boolean][] = [
+      ["Где вы находитесь?", "Адрес салона указан ниже — нажмите «Построить маршрут», чтобы открыть его на карте.", true],
+      ["Как записаться?", "Выберите услугу, мастера и удобное время прямо в этом приложении или в чате с ботом командой /book.", false],
+      ["Можно ли перенести или отменить запись?", "Да — в разделе «Мои записи» или кнопками под сообщением о записи в чате с ботом. Пожалуйста, предупреждайте заранее.", false],
+      ["Как работают бонусные баллы?", "За каждый визит начисляется кэшбэк баллами — процент зависит от вашего уровня. Баллами можно оплатить до 30% стоимости следующего визита.", false],
+      ["Какие способы оплаты вы принимаете?", "Наличные и банковские карты.", false],
+    ];
+    for (const [i, [question, answer, route]] of examples.entries()) {
+      await db.query(
+        "INSERT INTO faq_items (question, answer, display_order, show_route_button) VALUES ($1, $2, $3, $4)",
+        [question, answer, (i + 1) * 10, route]
+      );
+    }
+  }
 
   // Безопасность: у Supabase есть свой отдельный автоматический интернет-адрес
   // для базы (REST API), доступный кому угодно по одному лишь "анонимному"
@@ -420,13 +471,16 @@ export async function initDb(): Promise<void> {
     ALTER TABLE broadcasts ENABLE ROW LEVEL SECURITY;
     ALTER TABLE broadcast_recipients ENABLE ROW LEVEL SECURITY;
     ALTER TABLE birthday_campaign_settings ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE faq_items ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE salon_settings ENABLE ROW LEVEL SECURITY;
 
     REVOKE ALL ON
       masters, services, master_services, bookings, staff, pwa_sessions, pwa_login_codes, user_languages,
       blocked_slots, master_photos, photo_folders, master_photo_folders,
       inspiration_photos, saved_photos, client_notes, loyalty_points,
       loyalty_transactions, master_ratings, inventory_items, inventory_transactions,
-      service_inventory_items, broadcasts, broadcast_recipients, birthday_campaign_settings
+      service_inventory_items, broadcasts, broadcast_recipients, birthday_campaign_settings,
+      faq_items, salon_settings
     FROM anon, authenticated;
   `);
 
