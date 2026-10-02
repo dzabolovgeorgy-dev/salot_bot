@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { bot } from "./bot.js";
 import { LOYALTY_TIERS } from "./loyalty.js";
+import { DEFAULT_LANG, isSupportedLang, type Lang } from "./i18n.js";
 
 // Условия отбора получателей рассылки — хранятся в broadcasts.segment_filter.
 // Используется ровно одно условие (или ни одного — тогда "все клиенты")
@@ -14,6 +15,9 @@ export interface SegmentFilter {
 export interface Recipient {
   telegram_id: number;
   name: string | null;
+  // Язык клиента (общий с ботом и приложением) — по нему выбирается русский
+  // или английский текст рассылки
+  lang: Lang;
 }
 
 // Лимиты Telegram на длину: подпись под фото короче обычного сообщения
@@ -83,17 +87,23 @@ export async function selectRecipients(filter: SegmentFilter | null): Promise<Re
                                  AND b.status = 'upcoming' AND b.starts_at > now())`);
   }
 
-  const { rows } = await db.query<{ telegram_id: string; name: string | null }>(
+  const { rows } = await db.query<{ telegram_id: string; name: string | null; language: string | null }>(
     `SELECT cn.client_telegram_id AS telegram_id,
             (SELECT b.client_name FROM bookings b WHERE b.client_telegram_id = cn.client_telegram_id
-               AND b.client_name IS NOT NULL ORDER BY b.created_at DESC LIMIT 1) AS name
+               AND b.client_name IS NOT NULL ORDER BY b.created_at DESC LIMIT 1) AS name,
+            ul.language
      FROM client_notes cn
      LEFT JOIN loyalty_points lp ON lp.client_telegram_id = cn.client_telegram_id
+     LEFT JOIN user_languages ul ON ul.telegram_id = cn.client_telegram_id
      WHERE cn.marketing_consent = true AND cn.client_telegram_id IS NOT NULL
      ${conditions.map((c) => `AND ${c}`).join("\n     ")}`,
     params
   );
-  return rows.map((r) => ({ telegram_id: Number(r.telegram_id), name: r.name }));
+  return rows.map((r) => ({
+    telegram_id: Number(r.telegram_id),
+    name: r.name,
+    lang: isSupportedLang(r.language) ? r.language : DEFAULT_LANG,
+  }));
 }
 
 // Подставляет имя клиента вместо {name}. Если имени нет — убирает метку
@@ -179,12 +189,17 @@ export async function runBroadcast(broadcastId: number): Promise<void> {
   if (runningId !== null) return;
   runningId = broadcastId;
   try {
-    const { rows } = await db.query<{ text: string; image_url: string | null; segment_filter: SegmentFilter | null }>(
-      "SELECT text, image_url, segment_filter FROM broadcasts WHERE id = $1 AND status = 'sending'",
+    const { rows } = await db.query<{
+      text: string;
+      text_en: string | null;
+      image_url: string | null;
+      segment_filter: SegmentFilter | null;
+    }>(
+      "SELECT text, text_en, image_url, segment_filter FROM broadcasts WHERE id = $1 AND status = 'sending'",
       [broadcastId]
     );
     if (!rows[0]) return;
-    const { text, image_url, segment_filter } = rows[0];
+    const { text, text_en, image_url, segment_filter } = rows[0];
 
     const recipients = await selectRecipients(segment_filter);
     const { rows: done } = await db.query<{ client_telegram_id: string }>(
@@ -196,7 +211,9 @@ export async function runBroadcast(broadcastId: number): Promise<void> {
     let photo = image_url;
     for (const recipient of recipients) {
       if (alreadyDone.has(recipient.telegram_id)) continue;
-      const { status, fileId } = await sendToRecipient(recipient, text, photo);
+      // Английский текст — клиентам с английским языком, если он задан
+      const recipientText = recipient.lang === "en" && text_en ? text_en : text;
+      const { status, fileId } = await sendToRecipient(recipient, recipientText, photo);
       if (fileId) photo = fileId;
       await db.query(
         `INSERT INTO broadcast_recipients (broadcast_id, client_telegram_id, status)

@@ -1956,3 +1956,19 @@
   align-items: center;
   gap: 8px;
 }
+
+/* Пометка «EN» у английской версии текста рассылки/поздравления */
+.broadcast-lang-tag {
+  display: inline-block;
+  margin: 10px 12px 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.broadcast-lang-tag + .broadcast-preview-text {
+  padding-top: 6px;
+}

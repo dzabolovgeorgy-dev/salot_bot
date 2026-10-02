@@ -12,29 +12,34 @@ const MAX_CAPTION_LENGTH = 1024
 
 const LOYALTY_TIERS = ['Новичок', 'Серебро', 'Золото', 'Платина']
 
-// Готовые тексты — чтобы не начинать с чистого листа. {name} при отправке
-// заменится именем клиента
-const TEMPLATES: { label: string; text: string }[] = [
+// Готовые тексты — чтобы не начинать с чистого листа, сразу на двух языках.
+// {name} при отправке заменится именем клиента
+const TEMPLATES: { label: string; text: string; textEn: string }[] = [
   {
     label: 'Скучаем',
     text: '{name}, мы по вам скучаем! 💐 Давно не виделись — запишитесь на удобное время прямо в приложении.',
+    textEn: "{name}, we miss you! 💐 It's been a while — book a convenient time right in the app.",
   },
   {
     label: 'Акция',
     text: '{name}, только на этой неделе — скидка 15% на все услуги! Успейте записаться 🌸',
+    textEn: '{name}, this week only — 15% off all services! Book while it lasts 🌸',
   },
   {
     label: 'Новая услуга',
     text: '{name}, у нас новая услуга! ✨ Будем рады видеть вас — запись уже открыта в приложении.',
+    textEn: "{name}, we have a new service! ✨ We'd love to see you — booking is already open in the app.",
   },
   {
     label: 'Свободные окна',
     text: '{name}, на завтра освободилось несколько окошек у наших мастеров. Записывайтесь, пока есть время 🕊',
+    textEn: '{name}, a few slots have opened up with our specialists for tomorrow. Book while they last 🕊',
   },
 ]
 
 // Имя, которым показываем {name} в предпросмотре
 const PREVIEW_NAME = 'Анна'
+const PREVIEW_NAME_EN = 'Anna'
 
 type SegmentKind = 'all' | 'service' | 'master' | 'tier' | 'days'
 
@@ -46,12 +51,15 @@ interface BroadcastFormProps {
   onCancel: () => void
 }
 
-function previewText(text: string): string {
-  return text.replaceAll('{name}', PREVIEW_NAME)
+function previewText(text: string, name = PREVIEW_NAME): string {
+  return text.replaceAll('{name}', name)
 }
 
 export default function BroadcastForm({ telegramId, services, masters, onCreated, onCancel }: BroadcastFormProps) {
   const [text, setText] = useState('')
+  // Необязательный английский текст — его получат клиенты с английским языком
+  const [textEn, setTextEn] = useState('')
+  const [showEn, setShowEn] = useState(false)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -73,6 +81,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
 
   const limit = imageUrl ? MAX_CAPTION_LENGTH : MAX_TEXT_LENGTH
   const tooLong = text.trim().length > limit
+  const tooLongEn = textEn.trim().length > limit
 
   // Условие отбора в том виде, в каком его ждёт сервер. null — "все клиенты";
   // undefined — условие ещё не дозаполнено (например, не выбрана услуга)
@@ -145,7 +154,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
   }
 
   async function sendTest() {
-    if (!text.trim() || tooLong) return
+    if (!text.trim() || tooLong || tooLongEn) return
     setTesting(true)
     setTestSent(false)
     setError('')
@@ -153,7 +162,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
       const res = await apiFetch(`${API_URL}/api/staff/broadcasts/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: telegramId, text: text.trim(), image_url: imageUrl }),
+        body: JSON.stringify({ telegram_id: telegramId, text: text.trim(), text_en: textEn.trim(), image_url: imageUrl }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Не удалось отправить тест')
@@ -167,7 +176,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!text.trim() || tooLong || filter === undefined) return
+    if (!text.trim() || tooLong || tooLongEn || filter === undefined) return
     if (scheduleMode === 'later' && !scheduledAt) {
       setError('Выберите дату и время отправки')
       return
@@ -185,6 +194,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
         body: JSON.stringify({
           telegram_id: telegramId,
           text: text.trim(),
+          text_en: textEn.trim(),
           image_url: imageUrl,
           segment_filter: filter,
           scheduled_at: scheduleMode === 'later' ? scheduledAt : null,
@@ -200,7 +210,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
     }
   }
 
-  const canSubmit = !!text.trim() && !tooLong && filter !== undefined && !uploading && !submitting
+  const canSubmit = !!text.trim() && !tooLong && !tooLongEn && filter !== undefined && !uploading && !submitting
 
   return (
     <form className="staff-admin-form broadcast-form" onSubmit={submit}>
@@ -212,7 +222,17 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
         <span className="broadcast-label">Шаблоны</span>
         <div className="staff-folder-chips broadcast-chips">
           {TEMPLATES.map((tpl) => (
-            <button key={tpl.label} type="button" className="staff-folder-chip" onClick={() => setText(tpl.text)}>
+            <button
+              key={tpl.label}
+              type="button"
+              className="staff-folder-chip"
+              onClick={() => {
+                setText(tpl.text)
+                setTextEn(tpl.textEn)
+                setShowEn(true)
+                setTestSent(false)
+              }}
+            >
               {tpl.label}
             </button>
           ))}
@@ -236,6 +256,30 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
           {imageUrl && ' (с фото Telegram разрешает не больше 1024 символов)'} · {'{name}'} заменится именем клиента
         </span>
       </label>
+
+      {!showEn ? (
+        <button type="button" className="faq-manage-link" onClick={() => setShowEn(true)}>
+          + Текст по-английски
+        </button>
+      ) : (
+        <label>
+          Текст по-английски (необязательно)
+          <textarea
+            className="broadcast-textarea"
+            value={textEn}
+            onChange={(e) => {
+              setTextEn(e.target.value)
+              setTestSent(false)
+            }}
+            rows={4}
+            placeholder="{name}, 10% off manicure until the end of the month!"
+          />
+          <span className={tooLongEn ? 'staff-form-hint staff-form-hint--error' : 'staff-form-hint'}>
+            {textEn.trim().length} / {limit} · получат клиенты с английским языком. Если пусто — им уйдёт русский
+            текст
+          </span>
+        </label>
+      )}
 
       <div className="broadcast-field">
         <span className="broadcast-label">Фото (необязательно)</span>
@@ -261,6 +305,13 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
             {imageUrl && <img src={imageUrl} alt="" className="broadcast-preview-image" />}
             <p className="broadcast-preview-text">{previewText(text.trim())}</p>
           </div>
+          {textEn.trim() && (
+            <div className="broadcast-preview">
+              {imageUrl && <img src={imageUrl} alt="" className="broadcast-preview-image" />}
+              <span className="broadcast-lang-tag">EN</span>
+              <p className="broadcast-preview-text">{previewText(textEn.trim(), PREVIEW_NAME_EN)}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -362,7 +413,7 @@ export default function BroadcastForm({ telegramId, services, masters, onCreated
         type="button"
         className="staff-cancel-btn"
         onClick={sendTest}
-        disabled={!text.trim() || tooLong || testing || uploading}
+        disabled={!text.trim() || tooLong || tooLongEn || testing || uploading}
       >
         {testing ? 'Отправка…' : testSent ? 'Тест отправлен ✓ — проверьте Telegram' : 'Отправить тест себе'}
       </button>

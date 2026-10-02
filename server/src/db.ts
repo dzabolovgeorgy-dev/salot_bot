@@ -386,6 +386,15 @@ export async function initDb(): Promise<void> {
 
     INSERT INTO birthday_campaign_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+    -- Английские версии: рассылке — необязательный текст для клиентов с
+    -- английским языком (пусто — им уходит русский); поздравлению — свой
+    -- шаблон (сразу с готовым текстом по умолчанию) и название бесплатной
+    -- услуги в подарок по-английски
+    ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS text_en TEXT;
+    ALTER TABLE birthday_campaign_settings ADD COLUMN IF NOT EXISTS message_template_en TEXT NOT NULL
+      DEFAULT '{name}, happy birthday! 🎉 Here''s a gift for you: {gift}';
+    ALTER TABLE birthday_campaign_settings ADD COLUMN IF NOT EXISTS gift_value_en TEXT;
+
     -- Частые вопросы (FAQ) для клиентов. display_order — порядок в списке
     -- (меньше — выше). question_en/answer_en — перевод, как name_en у услуг:
     -- пусто — показывается русский текст. show_route_button — под ответом

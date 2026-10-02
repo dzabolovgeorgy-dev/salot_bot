@@ -137,6 +137,8 @@ export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'completed'
 export interface Broadcast {
   id: number
   text: string
+  // Текст для клиентов с английским языком (необязательный)
+  text_en: string | null
   image_url: string | null
   segment_filter: SegmentFilter | null
   scheduled_at: string | null

@@ -1,14 +1,20 @@
 import { db } from "./db.js";
 import { personalize, sendBroadcastMessage, MAX_TEXT_LENGTH } from "./broadcasts.js";
 import { accrueGiftPoints } from "./loyalty.js";
+import { DEFAULT_LANG, isSupportedLang, type Lang } from "./i18n.js";
 
 export type GiftType = "discount" | "points" | "free_service";
 
 export interface BirthdayCampaignSettings {
   enabled: boolean;
   message_template: string;
+  // Шаблон для клиентов с английским языком
+  message_template_en: string;
   gift_type: GiftType;
   gift_value: string;
+  // Название бесплатной услуги в подарок по-английски (для скидки и баллов
+  // не нужно — там число). Пусто — подставится русское название
+  gift_value_en: string | null;
 }
 
 // Поздравления уходят не в полночь, а начиная с этого часа (местное время
@@ -23,7 +29,8 @@ const GIFT_POINTS_REASON = "подарок на день рождения";
 
 export async function getBirthdaySettings(): Promise<BirthdayCampaignSettings> {
   const { rows } = await db.query<BirthdayCampaignSettings>(
-    "SELECT enabled, message_template, gift_type, gift_value FROM birthday_campaign_settings WHERE id = 1"
+    `SELECT enabled, message_template, message_template_en, gift_type, gift_value, gift_value_en
+     FROM birthday_campaign_settings WHERE id = 1`
   );
   return rows[0];
 }
@@ -34,6 +41,9 @@ export function parseBirthdaySettings(raw: Partial<BirthdayCampaignSettings>): B
   const template = typeof raw.message_template === "string" ? raw.message_template.trim() : "";
   if (!template) return "Введите текст поздравления";
   if (template.length > MAX_TEXT_LENGTH - 200) return "Текст поздравления слишком длинный";
+  const templateEn = typeof raw.message_template_en === "string" ? raw.message_template_en.trim() : "";
+  if (!templateEn) return "Введите текст поздравления по-английски";
+  if (templateEn.length > MAX_TEXT_LENGTH - 200) return "Текст поздравления по-английски слишком длинный";
   if (raw.gift_type !== "discount" && raw.gift_type !== "points" && raw.gift_type !== "free_service") {
     return "Выберите тип подарка";
   }
@@ -47,23 +57,39 @@ export function parseBirthdaySettings(raw: Partial<BirthdayCampaignSettings>): B
   } else if (!value) {
     return "Укажите, какая услуга в подарок";
   }
-  return { enabled: !!raw.enabled, message_template: template, gift_type: raw.gift_type, gift_value: value };
+  return {
+    enabled: !!raw.enabled,
+    message_template: template,
+    message_template_en: templateEn,
+    gift_type: raw.gift_type,
+    gift_value: value,
+    gift_value_en: raw.gift_type === "free_service" ? String(raw.gift_value_en ?? "").trim() || null : null,
+  };
 }
 
 // Как подарок звучит в тексте поздравления — подставляется вместо {gift}
-export function describeGift(type: GiftType, value: string): string {
+export function describeGift(settings: BirthdayCampaignSettings, lang: Lang): string {
+  const { gift_type: type, gift_value: value } = settings;
+  if (lang === "en") {
+    if (type === "discount") return `${value}% off any service`;
+    if (type === "points") return `${value} points added to your account`;
+    return `a free “${settings.gift_value_en || value}”`;
+  }
   if (type === "discount") return `скидка ${value}% на любую услугу`;
   if (type === "points") return `${value} баллов на ваш счёт`;
   return `бесплатная услуга «${value}»`;
 }
 
-// Готовый текст поздравления для конкретного клиента. Если {gift} в тексте
-// нет — подарок дописывается в конце, чтобы клиент точно о нём узнал
-export function buildGreeting(settings: BirthdayCampaignSettings, name: string | null): string {
-  const gift = describeGift(settings.gift_type, settings.gift_value);
-  const text = settings.message_template.includes("{gift}")
-    ? settings.message_template.replaceAll("{gift}", gift)
-    : `${settings.message_template}\n\n🎁 Ваш подарок: ${gift}`;
+// Готовый текст поздравления для конкретного клиента на его языке. Если
+// {gift} в тексте нет — подарок дописывается в конце, чтобы клиент точно о
+// нём узнал
+export function buildGreeting(settings: BirthdayCampaignSettings, name: string | null, lang: Lang = DEFAULT_LANG): string {
+  const gift = describeGift(settings, lang);
+  const template = lang === "en" ? settings.message_template_en : settings.message_template;
+  const giftLine = lang === "en" ? "🎁 Your gift" : "🎁 Ваш подарок";
+  const text = template.includes("{gift}")
+    ? template.replaceAll("{gift}", gift)
+    : `${template}\n\n${giftLine}: ${gift}`;
   return personalize(text, name);
 }
 
@@ -71,6 +97,7 @@ interface BirthdayClient {
   id: number;
   telegram_id: string;
   name: string | null;
+  language: string | null;
 }
 
 // Именинники сегодня: согласие на рассылки есть, Telegram есть, в этом году
@@ -79,8 +106,10 @@ async function findTodaysBirthdays(): Promise<BirthdayClient[]> {
   const { rows } = await db.query<BirthdayClient>(
     `SELECT cn.id, cn.client_telegram_id AS telegram_id,
             (SELECT b.client_name FROM bookings b WHERE b.client_telegram_id = cn.client_telegram_id
-               AND b.client_name IS NOT NULL ORDER BY b.created_at DESC LIMIT 1) AS name
+               AND b.client_name IS NOT NULL ORDER BY b.created_at DESC LIMIT 1) AS name,
+            ul.language
      FROM client_notes cn
+     LEFT JOIN user_languages ul ON ul.telegram_id = cn.client_telegram_id
      WHERE cn.marketing_consent = true
        AND cn.client_telegram_id IS NOT NULL
        AND cn.birth_date IS NOT NULL
@@ -114,7 +143,8 @@ async function greetBirthdays(): Promise<void> {
 
     const telegramId = Number(client.telegram_id);
     try {
-      await sendBroadcastMessage(telegramId, buildGreeting(settings, client.name), null);
+      const lang = isSupportedLang(client.language) ? client.language : DEFAULT_LANG;
+      await sendBroadcastMessage(telegramId, buildGreeting(settings, client.name, lang), null);
     } catch (err) {
       // Не дошло (например, бот заблокирован) — подарок баллами не начисляем.
       // Повторно в этом году не пытаемся: отметка уже стоит

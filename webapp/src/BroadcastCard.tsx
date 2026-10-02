@@ -95,6 +95,12 @@ export default function BroadcastCard({ telegramId, broadcastId, statusLabels, d
             {data.image_url && <img src={data.image_url} alt="" className="broadcast-preview-image" />}
             <p className="broadcast-preview-text">{data.text}</p>
           </div>
+          {data.text_en && (
+            <div className="broadcast-preview">
+              <span className="broadcast-lang-tag">EN</span>
+              <p className="broadcast-preview-text">{data.text_en}</p>
+            </div>
+          )}
 
           {data.status === 'scheduled' ? (
             <p className="staff-form-hint">Статистика появится после отправки</p>

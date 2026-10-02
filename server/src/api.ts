@@ -2786,7 +2786,7 @@ api.get("/staff/broadcasts", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.id, b.text, b.image_url, b.segment_filter, b.scheduled_at, b.status, b.created_at,
+    `SELECT b.id, b.text, b.text_en, b.image_url, b.segment_filter, b.scheduled_at, b.status, b.created_at,
             COUNT(r.id)::int AS total,
             COUNT(r.id) FILTER (WHERE r.status = 'sent')::int AS sent,
             COUNT(r.id) FILTER (WHERE r.status = 'error')::int AS errors,
@@ -2866,7 +2866,12 @@ api.post("/staff/broadcasts/audience", async (req, res) => {
 // "Отправить тест себе" — то же сообщение, что увидят клиенты, но только
 // самому администратору. {name} заменяется его именем из Telegram
 api.post("/staff/broadcasts/test", async (req, res) => {
-  const { telegram_id, text, image_url } = req.body as { telegram_id?: number; text?: string; image_url?: string | null };
+  const { telegram_id, text, text_en, image_url } = req.body as {
+    telegram_id?: number;
+    text?: string;
+    text_en?: string | null;
+    image_url?: string | null;
+  };
   if (!telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -2876,7 +2881,8 @@ api.post("/staff/broadcasts/test", async (req, res) => {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
   }
-  const contentError = broadcastContentError(text, image_url ?? null);
+  const contentError =
+    broadcastContentError(text, image_url ?? null) ?? (text_en?.trim() ? broadcastContentError(text_en, image_url ?? null) : null);
   if (contentError) {
     res.status(400).json({ error: contentError });
     return;
@@ -2889,8 +2895,12 @@ api.post("/staff/broadcasts/test", async (req, res) => {
   } catch {
     // имя не узнали — {name} просто уберётся из текста
   }
+  // Если есть английская версия — присылаем обе, чтобы проверить каждую
   try {
     await sendBroadcastMessage(telegram_id, personalize(text!.trim(), firstName), image_url ?? null);
+    if (text_en?.trim()) {
+      await sendBroadcastMessage(telegram_id, personalize(text_en.trim(), firstName), image_url ?? null);
+    }
   } catch {
     res.status(502).json({ error: "Не удалось отправить — проверьте, что вы писали боту и не блокировали его" });
     return;
@@ -2901,9 +2911,10 @@ api.post("/staff/broadcasts/test", async (req, res) => {
 // Создание рассылки. Со scheduled_at — ждёт своего времени (статус
 // "Запланирована"), без него — сразу уходит в отправку
 api.post("/staff/broadcasts", async (req, res) => {
-  const { telegram_id, text, image_url, segment_filter, scheduled_at } = req.body as {
+  const { telegram_id, text, text_en, image_url, segment_filter, scheduled_at } = req.body as {
     telegram_id?: number;
     text?: string;
+    text_en?: string | null;
     image_url?: string | null;
     segment_filter?: unknown;
     scheduled_at?: string | null;
@@ -2917,7 +2928,8 @@ api.post("/staff/broadcasts", async (req, res) => {
     res.status(403).json({ error: "Доступно только администратору" });
     return;
   }
-  const contentError = broadcastContentError(text, image_url ?? null);
+  const contentError =
+    broadcastContentError(text, image_url ?? null) ?? (text_en?.trim() ? broadcastContentError(text_en, image_url ?? null) : null);
   if (contentError) {
     res.status(400).json({ error: contentError });
     return;
@@ -2945,10 +2957,10 @@ api.post("/staff/broadcasts", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `INSERT INTO broadcasts (text, image_url, segment_filter, scheduled_at, status)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, text, image_url, segment_filter, scheduled_at, status, created_at`,
-    [text!.trim(), image_url ?? null, filter, scheduledAt, scheduledAt ? "scheduled" : "sending"]
+    `INSERT INTO broadcasts (text, text_en, image_url, segment_filter, scheduled_at, status)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, text, text_en, image_url, segment_filter, scheduled_at, status, created_at`,
+    [text!.trim(), text_en?.trim() || null, image_url ?? null, filter, scheduledAt, scheduledAt ? "scheduled" : "sending"]
   );
   const created = rows[0];
   // "Отправить сейчас" — запускаем отправку, не дожидаясь её конца: админ
@@ -3000,10 +3012,18 @@ api.put("/staff/birthday-campaign", async (req, res) => {
   }
   const { rows } = await db.query(
     `UPDATE birthday_campaign_settings
-     SET enabled = $1, message_template = $2, gift_type = $3, gift_value = $4
+     SET enabled = $1, message_template = $2, gift_type = $3, gift_value = $4,
+         message_template_en = $5, gift_value_en = $6
      WHERE id = 1
-     RETURNING enabled, message_template, gift_type, gift_value`,
-    [settings.enabled, settings.message_template, settings.gift_type, settings.gift_value]
+     RETURNING enabled, message_template, message_template_en, gift_type, gift_value, gift_value_en`,
+    [
+      settings.enabled,
+      settings.message_template,
+      settings.gift_type,
+      settings.gift_value,
+      settings.message_template_en,
+      settings.gift_value_en,
+    ]
   );
   res.json(rows[0]);
 });
@@ -3034,7 +3054,9 @@ api.post("/staff/birthday-campaign/test", async (req, res) => {
     // имя не узнали — {name} просто уберётся из текста
   }
   try {
-    await sendBroadcastMessage(telegram_id, buildGreeting(settings, firstName), null);
+    // Обе версии — чтобы проверить и русский, и английский текст
+    await sendBroadcastMessage(telegram_id, buildGreeting(settings, firstName, "ru"), null);
+    await sendBroadcastMessage(telegram_id, buildGreeting(settings, firstName, "en"), null);
   } catch {
     res.status(502).json({ error: "Не удалось отправить — проверьте, что вы писали боту и не блокировали его" });
     return;
@@ -3059,7 +3081,7 @@ api.get("/staff/broadcasts/:id", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `SELECT b.id, b.text, b.image_url, b.segment_filter, b.scheduled_at, b.status, b.created_at,
+    `SELECT b.id, b.text, b.text_en, b.image_url, b.segment_filter, b.scheduled_at, b.status, b.created_at,
             COUNT(r.id)::int AS total,
             COUNT(r.id) FILTER (WHERE r.status = 'sent')::int AS sent,
             COUNT(r.id) FILTER (WHERE r.status = 'error')::int AS errors,

@@ -10,8 +10,12 @@ type GiftType = 'discount' | 'points' | 'free_service'
 interface Settings {
   enabled: boolean
   message_template: string
+  // Шаблон для клиентов с английским языком
+  message_template_en: string
   gift_type: GiftType
   gift_value: string
+  // Название бесплатной услуги по-английски (только для «Бесплатная услуга»)
+  gift_value_en: string | null
 }
 
 interface BirthdayCampaignProps {
@@ -24,20 +28,25 @@ const GIFT_LABELS: Record<GiftType, { label: string; valueLabel: string; placeho
   free_service: { label: 'Бесплатная услуга', valueLabel: 'Какая услуга', placeholder: 'Например: маникюр' },
 }
 
-// Тот же текст подарка, что подставляет сервер вместо {gift} (birthday.ts)
-function describeGift(type: GiftType, value: string): string {
-  const v = value.trim() || '…'
-  if (type === 'discount') return `скидка ${v}% на любую услугу`
-  if (type === 'points') return `${v} баллов на ваш счёт`
+// Тот же текст подарка и поздравления, что собирает сервер (birthday.ts)
+function describeGift(s: Settings, lang: 'ru' | 'en'): string {
+  const v = s.gift_value.trim() || '…'
+  if (lang === 'en') {
+    if (s.gift_type === 'discount') return `${v}% off any service`
+    if (s.gift_type === 'points') return `${v} points added to your account`
+    return `a free “${s.gift_value_en?.trim() || v}”`
+  }
+  if (s.gift_type === 'discount') return `скидка ${v}% на любую услугу`
+  if (s.gift_type === 'points') return `${v} баллов на ваш счёт`
   return `бесплатная услуга «${v}»`
 }
 
-function previewGreeting(s: Settings): string {
-  const gift = describeGift(s.gift_type, s.gift_value)
-  const text = s.message_template.includes('{gift}')
-    ? s.message_template.replaceAll('{gift}', gift)
-    : `${s.message_template}\n\n🎁 Ваш подарок: ${gift}`
-  return text.replaceAll('{name}', 'Анна')
+function previewGreeting(s: Settings, lang: 'ru' | 'en'): string {
+  const gift = describeGift(s, lang)
+  const template = lang === 'en' ? s.message_template_en : s.message_template
+  const giftLine = lang === 'en' ? '🎁 Your gift' : '🎁 Ваш подарок'
+  const text = template.includes('{gift}') ? template.replaceAll('{gift}', gift) : `${template}\n\n${giftLine}: ${gift}`
+  return text.replaceAll('{name}', lang === 'en' ? 'Anna' : 'Анна')
 }
 
 // Показывается вкладкой "День рождения" внутри раздела "Рассылки"
@@ -144,10 +153,21 @@ export default function BirthdayCampaign({ telegramId }: BirthdayCampaignProps) 
           </label>
 
           <label>
+            Текст поздравления по-английски
+            <textarea
+              className="broadcast-textarea"
+              rows={3}
+              value={settings.message_template_en}
+              onChange={(e) => update({ message_template_en: e.target.value })}
+            />
+            <span className="staff-form-hint">Получат клиенты с английским языком. Подарок подставится по-английски</span>
+          </label>
+
+          <label>
             Подарок
             <select
               value={settings.gift_type}
-              onChange={(e) => update({ gift_type: e.target.value as GiftType, gift_value: '' })}
+              onChange={(e) => update({ gift_type: e.target.value as GiftType, gift_value: '', gift_value_en: null })}
             >
               {(Object.keys(GIFT_LABELS) as GiftType[]).map((type) => (
                 <option key={type} value={type}>
@@ -173,10 +193,26 @@ export default function BirthdayCampaign({ telegramId }: BirthdayCampaignProps) 
             </label>
           )}
 
+          {settings.gift_type === 'free_service' && (
+            <label>
+              Услуга по-английски (необязательно)
+              <input
+                type="text"
+                value={settings.gift_value_en ?? ''}
+                onChange={(e) => update({ gift_value_en: e.target.value })}
+                placeholder="Например: Manicure"
+              />
+            </label>
+          )}
+
           <div className="broadcast-field">
             <span className="broadcast-label">Так увидит клиент</span>
             <div className="broadcast-preview">
-              <p className="broadcast-preview-text">{previewGreeting(settings)}</p>
+              <p className="broadcast-preview-text">{previewGreeting(settings, 'ru')}</p>
+            </div>
+            <div className="broadcast-preview">
+              <span className="broadcast-lang-tag">EN</span>
+              <p className="broadcast-preview-text">{previewGreeting(settings, 'en')}</p>
             </div>
           </div>
 
