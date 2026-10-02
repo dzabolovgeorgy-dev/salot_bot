@@ -540,8 +540,12 @@ export async function initDb(): Promise<void> {
 
   // Если база пустая — наполняем тестовыми мастерами и услугами
   const { rows: countRows } = await db.query("SELECT COUNT(*)::int AS count FROM masters");
-  if (countRows[0].count > 0) return;
+  if (countRows[0].count === 0) await seedDemoMastersAndServices();
 
+  await fillDemoTranslations();
+}
+
+async function seedDemoMastersAndServices(): Promise<void> {
   const anna = await db.query(
     `INSERT INTO masters (name, bio, experience_years, photo_url) VALUES ($1, $2, $3, $4) RETURNING id`,
     [
@@ -582,4 +586,65 @@ export async function initDb(): Promise<void> {
     mariaId,
     manicure.rows[0].id,
   ]);
+}
+
+// Английские переводы демо-данных — чтобы английская версия бота сразу
+// выглядела законченной на показе. Заполняется только пустое (или тестовая
+// заглушка "[EN] …") и только у записей с точно таким русским текстом, как в
+// демо: свои услуги/описания салона не трогаем — их переводят в панели.
+// Безопасно выполнять при каждом запуске
+const DEMO_SERVICE_NAMES_EN: Record<string, string> = {
+  "Стрижка": "Haircut",
+  "Женская стрижка": "Women's haircut",
+  "Мужская стрижка": "Men's haircut",
+  "Детская стрижка": "Kids' haircut",
+  "Окрашивание": "Hair colouring",
+  "Укладка": "Hair styling",
+  "Маникюр": "Manicure",
+  "Педикюр": "Pedicure",
+  "Покрытие гель-лаком": "Gel polish",
+  "Наращивание ресниц": "Eyelash extensions",
+  "Ламинирование ресниц": "Lash lift",
+  "Коррекция бровей": "Eyebrow shaping",
+  "Окрашивание бровей": "Eyebrow tinting",
+  "Стрижка бороды": "Beard trim",
+};
+
+const DEMO_MASTER_BIOS_EN: Record<string, string> = {
+  "Парикмахер-стилист: стрижки, окрашивание и укладки любой сложности.":
+    "Hair stylist: haircuts, colouring and styling of any complexity.",
+  "Мастер маникюра: аккуратный уход и стойкое покрытие.": "Manicure specialist: gentle care and long-lasting polish.",
+};
+
+const DEMO_FAQ_EN: Record<string, [string, string]> = {
+  "Как записаться?": [
+    "How do I book?",
+    "Choose a service, a specialist and a convenient time right in this app, or in the chat with the bot using the /book command.",
+  ],
+  "Можно ли перенести или отменить запись?": [
+    "Can I reschedule or cancel my booking?",
+    "Yes — in “My bookings” or with the buttons under the booking message in the chat with the bot. Please let us know in advance.",
+  ],
+  "Как работают бонусные баллы?": [
+    "How do bonus points work?",
+    "You earn cashback in points for every visit — the percentage depends on your level. Points can cover up to 30% of your next visit.",
+  ],
+  "Какие способы оплаты вы принимаете?": ["What payment methods do you accept?", "Cash and bank cards."],
+};
+
+async function fillDemoTranslations(): Promise<void> {
+  const empty = (col: string) => `(${col} IS NULL OR ${col} = '' OR ${col} LIKE '[EN]%')`;
+  for (const [ru, en] of Object.entries(DEMO_SERVICE_NAMES_EN)) {
+    await db.query(`UPDATE services SET name_en = $1 WHERE name = $2 AND ${empty("name_en")}`, [en, ru]);
+  }
+  for (const [ru, en] of Object.entries(DEMO_MASTER_BIOS_EN)) {
+    await db.query(`UPDATE masters SET bio_en = $1 WHERE bio = $2 AND ${empty("bio_en")}`, [en, ru]);
+  }
+  for (const [ru, [question, answer]] of Object.entries(DEMO_FAQ_EN)) {
+    await db.query(
+      `UPDATE faq_items SET question_en = $1, answer_en = $2
+       WHERE question = $3 AND ${empty("question_en")} AND ${empty("answer_en")}`,
+      [question, answer, ru]
+    );
+  }
 }

@@ -224,7 +224,7 @@ async function hasConflict(
 
 api.get("/masters", async (req, res) => {
   const { rows: masters } = await db.query(
-    `SELECT m.id, m.name, ${localizedSql(req.lang, "m", "bio")} AS bio, m.experience_years, m.photo_url, m.schedule_type, m.schedule_anchor,
+    `SELECT m.id, m.name, ${localizedSql(req.lang, "m", "bio")} AS bio, m.bio_en, m.experience_years, m.photo_url, m.schedule_type, m.schedule_anchor,
             m.work_days, m.off_days, m.work_weekdays, m.schedule_month, m.schedule_month_off_days,
             m.buffer_minutes, m.work_start_time, m.work_end_time,
             r.avg_rating, COALESCE(r.ratings_count, 0)::int AS ratings_count
@@ -250,7 +250,7 @@ api.get("/masters", async (req, res) => {
 // по категориям, которые сопоставляются по русским словам
 api.get("/services", async (req, res) => {
   const { rows } = await db.query(
-    `SELECT id, ${localizedSql(req.lang, "services", "name")} AS name, name AS name_ru, duration_minutes, price FROM services ORDER BY id`
+    `SELECT id, ${localizedSql(req.lang, "services", "name")} AS name, name AS name_ru, name_en, duration_minutes, price FROM services ORDER BY id`
   );
   res.json(rows);
 });
@@ -2036,6 +2036,9 @@ interface MasterBody {
   experience_years?: number;
   photo_url?: string;
   access_telegram_id?: number | null;
+  // Описание по-английски; пустая строка — стереть перевод (тогда клиенты
+  // на английском увидят русское описание), не прислали — не трогать
+  bio_en?: string | null;
 }
 
 // Выдать/поменять/убрать доступ мастера к панели персонала — используется
@@ -2082,7 +2085,7 @@ api.post("/masters", async (req, res) => {
 
 api.patch("/masters/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { telegram_id, name, bio, experience_years, photo_url, access_telegram_id } =
+  const { telegram_id, name, bio, experience_years, photo_url, access_telegram_id, bio_en } =
     req.body as Partial<MasterBody>;
   if (!id || !telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
@@ -2106,6 +2109,13 @@ api.patch("/masters/:id", async (req, res) => {
   if (!rows[0]) {
     res.status(404).json({ error: "Мастер не найден" });
     return;
+  }
+  if (bio_en !== undefined) {
+    const { rows: updated } = await db.query("UPDATE masters SET bio_en = $1 WHERE id = $2 RETURNING bio_en", [
+      bio_en?.trim() || null,
+      id,
+    ]);
+    rows[0].bio_en = updated[0].bio_en;
   }
   const warning = await setMasterAccess(id, access_telegram_id);
 
@@ -2142,10 +2152,12 @@ interface ServiceBody {
   name: string;
   duration_minutes: number;
   price: number;
+  // Название по-английски; пустая строка — стереть перевод, не прислали — не трогать
+  name_en?: string | null;
 }
 
 api.post("/services", async (req, res) => {
-  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
+  const { telegram_id, name, duration_minutes, price, name_en } = req.body as Partial<ServiceBody>;
   if (!telegram_id || !name || !duration_minutes || price === undefined) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -2157,15 +2169,15 @@ api.post("/services", async (req, res) => {
   }
 
   const { rows } = await db.query(
-    `INSERT INTO services (name, duration_minutes, price) VALUES ($1, $2, $3) RETURNING *`,
-    [name, duration_minutes, price]
+    `INSERT INTO services (name, duration_minutes, price, name_en) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [name, duration_minutes, price, name_en?.trim() || null]
   );
   res.status(201).json(rows[0]);
 });
 
 api.patch("/services/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { telegram_id, name, duration_minutes, price } = req.body as Partial<ServiceBody>;
+  const { telegram_id, name, duration_minutes, price, name_en } = req.body as Partial<ServiceBody>;
   if (!id || !telegram_id) {
     res.status(400).json({ error: "Не хватает параметров" });
     return;
@@ -2187,6 +2199,13 @@ api.patch("/services/:id", async (req, res) => {
   if (!rows[0]) {
     res.status(404).json({ error: "Услуга не найдена" });
     return;
+  }
+  if (name_en !== undefined) {
+    const { rows: updated } = await db.query("UPDATE services SET name_en = $1 WHERE id = $2 RETURNING name_en", [
+      name_en?.trim() || null,
+      id,
+    ]);
+    rows[0].name_en = updated[0].name_en;
   }
   res.json(rows[0]);
 });

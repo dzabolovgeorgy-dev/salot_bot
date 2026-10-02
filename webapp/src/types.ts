@@ -2,6 +2,9 @@ export interface Master {
   id: number
   name: string
   bio: string | null
+  // Описание по-английски (сырое, для редактирования в панели); клиенту на
+  // английском уже приходит переведённое в bio
+  bio_en?: string | null
   experience_years: number | null
   photo_url: string | null
   service_ids: number[]
@@ -63,6 +66,8 @@ export interface Service {
   // Русское название — всегда, даже на другом языке: по нему подбирается иконка
   // и категория из "Вдохновения" (name уже может быть переводом)
   name_ru: string
+  // Название по-английски (сырое, для редактирования в панели)
+  name_en?: string | null
   duration_minutes: number
   price: number
 }

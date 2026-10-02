@@ -25,8 +25,8 @@ interface AdminManageProps {
   onBack?: () => void
 }
 
-const emptyMasterForm = { name: '', bio: '', experience_years: '', photo_url: '', accessTelegramId: '' }
-const emptyServiceForm = { name: '', duration_minutes: '', price: '' }
+const emptyMasterForm = { name: '', bio: '', bioEn: '', experience_years: '', photo_url: '', accessTelegramId: '' }
+const emptyServiceForm = { name: '', nameEn: '', duration_minutes: '', price: '' }
 
 export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   const [section, setSection] = useState<Section>('menu')
@@ -95,6 +95,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
     setMasterForm({
       name: m.name,
       bio: m.bio ?? '',
+      bioEn: m.bio_en ?? '',
       experience_years: m.experience_years?.toString() ?? '',
       photo_url: m.photo_url ?? '',
       accessTelegramId: staffByMasterId.get(m.id)?.telegram_id?.toString() ?? '',
@@ -146,6 +147,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
           telegram_id: telegramId,
           name: masterForm.name,
           bio: masterForm.bio || undefined,
+          bio_en: masterForm.bioEn,
           experience_years: masterForm.experience_years ? Number(masterForm.experience_years) : undefined,
           photo_url: masterForm.photo_url || undefined,
           access_telegram_id: masterForm.accessTelegramId ? Number(masterForm.accessTelegramId) : null,
@@ -216,7 +218,8 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
   function startEditService(s: Service) {
     setEditingServiceId(s.id)
     setServiceForm({
-      name: s.name,
+      name: s.name_ru ?? s.name,
+      nameEn: s.name_en ?? '',
       duration_minutes: s.duration_minutes.toString(),
       price: s.price.toString(),
     })
@@ -254,6 +257,7 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
       const body = {
         telegram_id: telegramId,
         name: serviceForm.name,
+        name_en: serviceForm.nameEn,
         duration_minutes: Number(serviceForm.duration_minutes),
         price: Number(serviceForm.price),
       }
@@ -535,6 +539,15 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
               />
             </label>
             <label>
+              Описание по-английски (необязательно)
+              <input
+                type="text"
+                value={masterForm.bioEn}
+                onChange={(e) => setMasterForm({ ...masterForm, bioEn: e.target.value })}
+                placeholder="Если пусто — англоязычные клиенты увидят русское описание"
+              />
+            </label>
+            <label>
               Опыт (лет)
               <input
                 type="number"
@@ -628,6 +641,15 @@ export default function AdminManage({ telegramId, onBack }: AdminManageProps) {
                 value={serviceForm.name}
                 onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
                 required
+              />
+            </label>
+            <label>
+              Название по-английски (необязательно)
+              <input
+                type="text"
+                value={serviceForm.nameEn}
+                onChange={(e) => setServiceForm({ ...serviceForm, nameEn: e.target.value })}
+                placeholder="Например: Haircut"
               />
             </label>
             <label>
