@@ -472,8 +472,9 @@ function App() {
       setMasters(mastersData)
     })
 
-  // ВРЕМЕННЫЙ переключатель языка для проверки (см. блок "dev-lang-switcher"
-  // на главной): запоминает выбор на сервере и перечитывает данные
+  // Смена языка клиентом (переключатель в карточке профиля на главной):
+  // выбор запоминается на сервере — он общий с ботом — и данные (названия
+  // услуг и т.п.) перечитываются уже на новом языке
   const switchLanguage = async (next: Lang) => {
     if (next === lang) return
     await applyLanguage(next)
@@ -1395,25 +1396,20 @@ function App() {
                 {getTelegramUsername() ? `@${getTelegramUsername()}` : t('home.telegramId', { id: clientTelegramId })}
               </div>
             </div>
+            <div className="lang-switch" role="group" aria-label={t('home.language')}>
+              {SUPPORTED_LANGS.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  className={`lang-switch-btn${lang === l ? ' active' : ''}`}
+                  aria-pressed={lang === l}
+                  onClick={() => switchLanguage(l)}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </article>
-        )}
-
-        {/* ВРЕМЕННЫЙ переключатель языка — только для проверки мультиязычности,
-            не финальный интерфейс. Маленькая полупрозрачная пилюля у верхнего
-            края экрана, чтобы не мешать (position: fixed — см. App.css) */}
-        {isHomeHero && (
-          <div className="dev-lang-switcher">
-            {SUPPORTED_LANGS.map((l) => (
-              <button
-                key={l}
-                type="button"
-                className={`dev-lang-btn${lang === l ? ' active' : ''}`}
-                onClick={() => switchLanguage(l)}
-              >
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
         )}
 
         {isHomeHero &&

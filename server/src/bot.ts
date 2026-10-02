@@ -76,6 +76,24 @@ bot.use(stage.middleware());
 // без необходимости писать /start. По умолчанию (для тех, кто ещё не писал
 // /start) стоит клиентский текст — большинство открывающих бота впервые это клиенты
 export async function setupMenuButton(): Promise<void> {
+  // Список команд в меню "/" — у каждого языка Telegram свой (русский по
+  // умолчанию, английский для тех, у кого Telegram на английском)
+  for (const lang of SUPPORTED_LANGS) {
+    try {
+      await bot.telegram.setMyCommands(
+        [
+          { command: "book", description: t(lang, "bot.cmdBook") },
+          { command: "services", description: t(lang, "bot.cmdServices") },
+          { command: "masters", description: t(lang, "bot.cmdMasters") },
+          { command: "language", description: t(lang, "bot.cmdLanguage") },
+        ],
+        lang === DEFAULT_LANG ? undefined : { language_code: lang }
+      );
+    } catch (err) {
+      console.warn("Не удалось настроить список команд:", err instanceof Error ? err.message : err);
+    }
+  }
+
   const webAppUrl = getWebAppUrl();
   if (!webAppUrl) return;
   try {
@@ -146,15 +164,26 @@ bot.command("book", (ctx) => ctx.scene.enter("booking"));
 // Кнопка внизу чата называется по-разному на разных языках — узнаём любую
 bot.hears(allLangs("bot.bookButton"), (ctx) => ctx.scene.enter("booking"));
 
-// ВРЕМЕННЫЙ переключатель языка — только чтобы проверять мультиязычность руками
-// (не финальный интерфейс; убрать/заменить настоящим выбором языка). /lang
-// показывает кнопки выбора, выбор сохраняется в базе и действует и для бота,
-// и для TWA (общая запись на пользователя)
-bot.command("lang", async (ctx) => {
-  await ctx.reply(t(ctx.lang, "dev.langPrompt", { lang: ctx.lang }), {
-    reply_markup: {
-      inline_keyboard: [SUPPORTED_LANGS.map((l) => ({ text: l.toUpperCase(), callback_data: `setlang:${l}` }))],
-    },
+// Выбор языка: /language (и старое /lang — вдруг кто-то запомнил). Язык
+// определяется сам по настройкам Telegram при первом обращении, эта команда —
+// чтобы сменить его вручную. Выбор хранится в базе один на человека и
+// действует сразу и в боте, и в мини-приложении
+const LANG_LABELS: Record<Lang, string> = { ru: "🇷🇺 Русский", en: "🇬🇧 English" };
+
+function languageButtons(current: Lang) {
+  return {
+    inline_keyboard: [
+      SUPPORTED_LANGS.map((l) => ({
+        text: l === current ? `✓ ${LANG_LABELS[l]}` : LANG_LABELS[l],
+        callback_data: `setlang:${l}`,
+      })),
+    ],
+  };
+}
+
+bot.command(["language", "lang"], async (ctx) => {
+  await ctx.reply(t(ctx.lang, "bot.languagePrompt", { language: LANG_LABELS[ctx.lang] }), {
+    reply_markup: languageButtons(ctx.lang),
   });
 });
 
@@ -164,11 +193,15 @@ bot.action(/^setlang:(\w+)$/, async (ctx) => {
   if (!isSupportedLang(chosen)) return;
   await saveLanguage(ctx.from.id, chosen);
   ctx.lang = chosen;
-  await ctx.editMessageText(t(chosen, "dev.langPrompt", { lang: chosen }), {
-    reply_markup: {
-      inline_keyboard: [SUPPORTED_LANGS.map((l) => ({ text: l.toUpperCase(), callback_data: `setlang:${l}` }))],
-    },
-  });
+  await ctx.editMessageText(t(chosen, "bot.languageChanged", { language: LANG_LABELS[chosen] }));
+
+  // Кнопки внизу чата и слева от поля ввода — тоже на новом языке. Только
+  // клиенту: у персонала там своя кнопка "Панель", её не трогаем
+  const role = await getRole(ctx.from.id);
+  if (role.role !== "client") return;
+  await ctx.reply(t(chosen, "bot.languageKeyboard"), Markup.keyboard([[bookButtonText(chosen)]]).resize().persistent());
+  const webAppUrl = getWebAppUrl();
+  if (webAppUrl && ctx.chat) await setPersonalMenuButton(ctx.chat.id, t(chosen, "bot.menuBook"), webAppUrl);
 });
 
 // Кнопка "🔄 Перенести" под сообщением о записи — работает вне зависимости от

@@ -89,7 +89,8 @@
     "seeAllServices": "See all services",
     "noBooking": "You have no bookings yet",
     "book": "Book now",
-    "telegramId": "Telegram ID: {{id}}"
+    "telegramId": "Telegram ID: {{id}}",
+    "language": "Language"
   },
   "faq": {
     "title": "FAQ",

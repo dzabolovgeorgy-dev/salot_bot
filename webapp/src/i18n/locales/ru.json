@@ -89,7 +89,8 @@
     "seeAllServices": "Смотреть все услуги",
     "noBooking": "У вас пока нет записи",
     "book": "Записаться",
-    "telegramId": "Telegram ID: {{id}}"
+    "telegramId": "Telegram ID: {{id}}",
+    "language": "Язык"
   },
   "faq": {
     "title": "Частые вопросы",

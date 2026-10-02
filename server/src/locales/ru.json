@@ -87,7 +87,14 @@
     "noServices": "Услуг пока нет.",
     "servicesList": "Наши услуги:\n{{list}}",
     "serviceLine": "{{n}}. {{name}} — {{minutes}} мин, {{price}} €",
-    "menuBook": "Записаться"
+    "menuBook": "Записаться",
+    "languagePrompt": "🌐 Язык: {{language}}\n\nВыберите язык бота и приложения:",
+    "languageChanged": "✅ Язык: {{language}}",
+    "languageKeyboard": "Готово! Кнопки внизу тоже обновлены.",
+    "cmdBook": "Записаться в чате",
+    "cmdServices": "Наши услуги",
+    "cmdMasters": "Наши мастера",
+    "cmdLanguage": "Сменить язык"
   },
   "book": {
     "restartHint": "Нажмите «{{button}}», чтобы начать заново.",
@@ -117,8 +124,5 @@
     "bookFailed": "Не получилось записать: {{error}}. Нажмите «{{button}}», чтобы попробовать снова.",
     "booked": "✅ Готово! Подробности пришлю следующим сообщением.",
     "masterLabel": "{{name}} — {{rating}} ⭐"
-  },
-  "dev": {
-    "langPrompt": "Язык интерфейса: {{lang}}. Выберите (временный переключатель для проверки):"
   }
 }

@@ -87,7 +87,14 @@
     "noServices": "No services yet.",
     "servicesList": "Our services:\n{{list}}",
     "serviceLine": "{{n}}. {{name}} — {{minutes}} min, €{{price}}",
-    "menuBook": "Book now"
+    "menuBook": "Book now",
+    "languagePrompt": "🌐 Language: {{language}}\n\nChoose the language for the bot and the app:",
+    "languageChanged": "✅ Language: {{language}}",
+    "languageKeyboard": "Done! The buttons below are updated too.",
+    "cmdBook": "Book in chat",
+    "cmdServices": "Our services",
+    "cmdMasters": "Our specialists",
+    "cmdLanguage": "Change language"
   },
   "book": {
     "restartHint": "Tap “{{button}}” to start over.",
@@ -117,8 +124,5 @@
     "bookFailed": "Couldn't book: {{error}}. Tap “{{button}}” to try again.",
     "booked": "✅ Done! I'll send the details in the next message.",
     "masterLabel": "{{name}} — {{rating}} ⭐"
-  },
-  "dev": {
-    "langPrompt": "Interface language: {{lang}}. Choose one (temporary switch for testing):"
   }
 }
