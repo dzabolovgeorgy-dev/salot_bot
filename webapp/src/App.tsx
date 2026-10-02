@@ -205,7 +205,7 @@ function ServiceRow({ service, onClick }: { service: Service; onClick: () => voi
           {t('common.minutes', { n: service.duration_minutes })}
         </span>
       </span>
-      <span className="service-row-price">{service.price} €</span>
+      <span className="service-row-price">{t('common.price', { amount: service.price })}</span>
       <ChevronRight size={16} className="service-row-arrow" />
     </button>
   )
@@ -1009,7 +1009,7 @@ function App() {
                 {b.price != null && (
                   <div className="summary-row">
                     <span className="summary-label">{t('booking.cost')}</span>
-                    <span className="summary-value">{b.price} €</span>
+                    <span className="summary-value">{t('common.price', { amount: b.price })}</span>
                   </div>
                 )}
               </div>
@@ -2118,12 +2118,12 @@ function App() {
                 </div>
                 <div className="summary-row">
                   <span className="summary-label">{t('booking.cost')}</span>
-                  <span className="summary-value">{selectedService.price} €</span>
+                  <span className="summary-value">{t('common.price', { amount: selectedService.price })}</span>
                 </div>
                 {useLoyaltyPoints && loyaltyStatus?.max_redeemable ? (
                   <div className="summary-row">
                     <span className="summary-label">{t('booking.byPoints')}</span>
-                    <span className="summary-value">−{loyaltyStatus.max_redeemable} €</span>
+                    <span className="summary-value">−{t('common.price', { amount: loyaltyStatus.max_redeemable })}</span>
                   </div>
                 ) : null}
               </div>
