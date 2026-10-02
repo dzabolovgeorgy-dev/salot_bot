@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Broadcast, BroadcastStatus, Master, SegmentFilter, Service } from './types'
 import BroadcastForm from './BroadcastForm'
 import BroadcastCard from './BroadcastCard'
+import BirthdayCampaign from './BirthdayCampaign'
 import { apiFetch } from './apiFetch'
 import './StaffApp.css'
 
@@ -48,6 +49,8 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
   const [openedId, setOpenedId] = useState<number | null>(null)
+  // Вкладки раздела: обычные рассылки и автоматическое поздравление с ДР
+  const [section, setSection] = useState<'broadcasts' | 'birthday'>('broadcasts')
   const [services, setServices] = useState<Service[]>([])
   const [masters, setMasters] = useState<Master[]>([])
 
@@ -132,64 +135,87 @@ export default function Broadcasts({ telegramId, onBack }: BroadcastsProps) {
       </button>
       <h3>Рассылки</h3>
 
-      {error && <div className="staff-error">{error}</div>}
-
-      {!creating ? (
-        <button type="button" className="staff-more-menu-item" onClick={() => setCreating(true)}>
-          + Новая рассылка
+      <div className="staff-mode-toggle">
+        <button
+          type="button"
+          className={section === 'broadcasts' ? 'active' : ''}
+          onClick={() => setSection('broadcasts')}
+        >
+          📣 Рассылки
         </button>
-      ) : (
-        <BroadcastForm
-          telegramId={telegramId}
-          services={services}
-          masters={masters}
-          onCreated={(created) => {
-            setBroadcasts((prev) => [created, ...prev])
-            setCreating(false)
-          }}
-          onCancel={() => setCreating(false)}
-        />
-      )}
+        <button
+          type="button"
+          className={section === 'birthday' ? 'active' : ''}
+          onClick={() => setSection('birthday')}
+        >
+          🎂 День рождения
+        </button>
+      </div>
 
-      {loading ? (
-        <p className="staff-empty">Загрузка…</p>
-      ) : broadcasts.length === 0 ? (
-        !error && <p className="staff-empty">Рассылок пока не было</p>
+      {section === 'birthday' ? (
+        <BirthdayCampaign telegramId={telegramId} />
       ) : (
-        <ul className="staff-list">
-          {broadcasts.map((b) => {
-            const failed = b.errors + b.blocked
-            return (
-              <li
-                key={b.id}
-                className="staff-list-item staff-list-item--clickable broadcast-item"
-                onClick={() => setOpenedId(b.id)}
-              >
-                <div className="broadcast-item-head">
-                  <span className={`broadcast-status broadcast-status--${b.status}`}>{STATUS_LABELS[b.status]}</span>
-                  <span className="broadcast-date">
-                    {b.status === 'scheduled' && b.scheduled_at
-                      ? `на ${formatDateTime(b.scheduled_at)}`
-                      : formatDateTime(b.created_at)}
-                  </span>
-                </div>
-                <p className="broadcast-text">
-                  {b.image_url && '🖼 '}
-                  {b.text}
-                </p>
-                <div className="broadcast-meta">
-                  <span>{describeSegment(b.segment_filter, names)}</span>
-                  {b.total > 0 && (
-                    <span className="broadcast-stats">
-                      дошло {b.sent}
-                      {failed > 0 && <span className="broadcast-failed"> · не дошло {failed}</span>}
-                    </span>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+        <>
+          {error && <div className="staff-error">{error}</div>}
+
+          {!creating ? (
+            <button type="button" className="staff-more-menu-item" onClick={() => setCreating(true)}>
+              + Новая рассылка
+            </button>
+          ) : (
+            <BroadcastForm
+              telegramId={telegramId}
+              services={services}
+              masters={masters}
+              onCreated={(created) => {
+                setBroadcasts((prev) => [created, ...prev])
+                setCreating(false)
+              }}
+              onCancel={() => setCreating(false)}
+            />
+          )}
+
+          {loading ? (
+            <p className="staff-empty">Загрузка…</p>
+          ) : broadcasts.length === 0 ? (
+            !error && <p className="staff-empty">Рассылок пока не было</p>
+          ) : (
+            <ul className="staff-list">
+              {broadcasts.map((b) => {
+                const failed = b.errors + b.blocked
+                return (
+                  <li
+                    key={b.id}
+                    className="staff-list-item staff-list-item--clickable broadcast-item"
+                    onClick={() => setOpenedId(b.id)}
+                  >
+                    <div className="broadcast-item-head">
+                      <span className={`broadcast-status broadcast-status--${b.status}`}>{STATUS_LABELS[b.status]}</span>
+                      <span className="broadcast-date">
+                        {b.status === 'scheduled' && b.scheduled_at
+                          ? `на ${formatDateTime(b.scheduled_at)}`
+                          : formatDateTime(b.created_at)}
+                      </span>
+                    </div>
+                    <p className="broadcast-text">
+                      {b.image_url && '🖼 '}
+                      {b.text}
+                    </p>
+                    <div className="broadcast-meta">
+                      <span>{describeSegment(b.segment_filter, names)}</span>
+                      {b.total > 0 && (
+                        <span className="broadcast-stats">
+                          дошло {b.sent}
+                          {failed > 0 && <span className="broadcast-failed"> · не дошло {failed}</span>}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
       )}
     </section>
   )

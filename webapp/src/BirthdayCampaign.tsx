@@ -16,7 +16,6 @@ interface Settings {
 
 interface BirthdayCampaignProps {
   telegramId: number
-  onBack: () => void
 }
 
 const GIFT_LABELS: Record<GiftType, { label: string; valueLabel: string; placeholder: string }> = {
@@ -41,7 +40,9 @@ function previewGreeting(s: Settings): string {
   return text.replaceAll('{name}', 'Анна')
 }
 
-export default function BirthdayCampaign({ telegramId, onBack }: BirthdayCampaignProps) {
+// Показывается вкладкой "День рождения" внутри раздела "Рассылки"
+// (Broadcasts.tsx) — поэтому без своей рамки, кнопки "назад" и заголовка
+export default function BirthdayCampaign({ telegramId }: BirthdayCampaignProps) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -113,12 +114,7 @@ export default function BirthdayCampaign({ telegramId, onBack }: BirthdayCampaig
   const gift = settings ? GIFT_LABELS[settings.gift_type] : null
 
   return (
-    <section className="staff-admin-form">
-      <button type="button" className="staff-back-btn" onClick={onBack}>
-        ← Ещё
-      </button>
-      <h3>Поздравления с днём рождения</h3>
-
+    <>
       {error && <div className="staff-error">{error}</div>}
 
       {!settings ? (
@@ -195,6 +191,6 @@ export default function BirthdayCampaign({ telegramId, onBack }: BirthdayCampaig
           </div>
         </form>
       )}
-    </section>
+    </>
   )
 }

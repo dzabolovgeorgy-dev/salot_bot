@@ -10,7 +10,6 @@ import { requestMasterScheduleUpdate } from './masterScheduleApi'
 import AdminManage from './AdminManage'
 import Warehouse from './Warehouse'
 import Broadcasts from './Broadcasts'
-import BirthdayCampaign from './BirthdayCampaign'
 import FaqManage from './FaqManage'
 import ClientsPanel from './ClientsPanel'
 import PwaAccess from './PwaAccess'
@@ -18,7 +17,7 @@ import './StaffApp.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
 
-type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more' | 'warehouse' | 'broadcasts' | 'birthday' | 'faq' | 'pwa'
+type StaffTab = 'main' | 'profile' | 'today' | 'week' | 'schedule' | 'block' | 'clients' | 'manage' | 'myschedule' | 'more' | 'warehouse' | 'broadcasts' | 'faq' | 'pwa'
 
 interface MyStats {
   income: number
@@ -897,7 +896,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
     more: 'Ещё',
     warehouse: 'Склад',
     broadcasts: 'Рассылки',
-    birthday: 'Поздравления',
     faq: 'Частые вопросы',
     pwa: 'Вход на телефоне',
   }
@@ -1250,10 +1248,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
             📦 Склад
           </button>
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('broadcasts')}>
-            📣 Рассылки
-          </button>
-          <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('birthday')}>
-            🎂 Поздравления с днём рождения
+            📣 Рассылки и поздравления
           </button>
           <button type="button" className="staff-more-menu-item" onClick={() => setActiveTab('faq')}>
             ❓ Частые вопросы
@@ -2284,8 +2279,6 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
 
       {activeTab === 'broadcasts' && <Broadcasts telegramId={telegramId} onBack={() => setActiveTab('more')} />}
 
-      {activeTab === 'birthday' && <BirthdayCampaign telegramId={telegramId} onBack={() => setActiveTab('more')} />}
-
       {activeTab === 'faq' && <FaqManage telegramId={telegramId} onBack={() => setActiveTab('more')} />}
 
       {role === 'master' && (
@@ -2356,7 +2349,7 @@ export default function StaffApp({ telegramId, role, masterId, masterName, onLog
           <button
             type="button"
             className={
-              activeTab === 'more' || activeTab === 'manage' || activeTab === 'block' || activeTab === 'warehouse' || activeTab === 'broadcasts' || activeTab === 'birthday' || activeTab === 'faq' || activeTab === 'pwa'
+              activeTab === 'more' || activeTab === 'manage' || activeTab === 'block' || activeTab === 'warehouse' || activeTab === 'broadcasts' || activeTab === 'faq' || activeTab === 'pwa'
                 ? 'active'
                 : ''
             }
