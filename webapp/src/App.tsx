@@ -39,7 +39,14 @@ import type {
 } from './types'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { getTelegramUserId, getTelegramUserName, getTelegramUsername, getTelegramLanguageCode, openExternalLink } from './telegram'
+import {
+  getTelegramUserId,
+  getTelegramUserName,
+  getTelegramFirstName,
+  getTelegramUsername,
+  getTelegramLanguageCode,
+  openExternalLink,
+} from './telegram'
 import { apiFetch, setApiLang } from './apiFetch'
 import i18n, { SUPPORTED_LANGS, dateLocale, isSupportedLang, normalizeLang } from './i18n'
 import type { Lang } from './i18n'
@@ -1346,7 +1353,13 @@ function App() {
             {isTestUser && <div className="hero-badge">{t('common.test')}</div>}
             <div className="hero-text">
               <p className="hero-eyebrow">{heroBooking ? t('home.yourBookingEyebrow') : t('home.salonEyebrow')}</p>
-              <div className="hero-name">{heroBooking ? heroBooking.service_name : t('home.welcome')}</div>
+              <div className="hero-name">
+                {heroBooking
+                  ? heroBooking.service_name
+                  : getTelegramFirstName()
+                    ? t('home.welcomeName', { name: getTelegramFirstName() })
+                    : t('home.welcome')}
+              </div>
             </div>
           </div>
         </div>

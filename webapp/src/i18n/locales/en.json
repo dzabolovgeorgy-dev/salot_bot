@@ -82,6 +82,7 @@
     "yourBookingEyebrow": "YOUR BOOKING",
     "salonEyebrow": "BEAUTY SALON",
     "welcome": "Welcome",
+    "welcomeName": "Welcome, {{name}}",
     "quickActions": "Quick actions",
     "allServices": "All services",
     "date": "Date",

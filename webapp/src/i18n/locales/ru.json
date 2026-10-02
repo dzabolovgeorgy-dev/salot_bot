@@ -82,6 +82,7 @@
     "yourBookingEyebrow": "ВАША ЗАПИСЬ",
     "salonEyebrow": "САЛОН КРАСОТЫ",
     "welcome": "Добро пожаловать",
+    "welcomeName": "Добро пожаловать, {{name}}",
     "quickActions": "Быстрые действия",
     "allServices": "Все услуги",
     "date": "Дата",

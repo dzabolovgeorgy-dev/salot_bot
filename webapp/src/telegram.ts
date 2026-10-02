@@ -9,6 +9,13 @@ export function getTelegramUserName(): string {
   return [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Клиент'
 }
 
+// Только имя (без фамилии) — для приветствия в шапке главного экрана.
+// null вне Telegram, тогда приветствие без имени
+export function getTelegramFirstName(): string | null {
+  const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user
+  return tgUser?.first_name?.trim() || null
+}
+
 // Публичный @username — есть не у всех, нужен, чтобы мастер мог открыть
 // с клиентом личный чат в Telegram (t.me/username)
 export function getTelegramUsername(): string | null {
