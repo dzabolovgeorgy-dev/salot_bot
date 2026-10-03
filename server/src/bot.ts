@@ -370,6 +370,8 @@ function faqOverview(faq: FaqData, lang: Lang) {
   );
   const route = faqRouteUrl(faq);
   if (route) keyboard.push([{ text: t(lang, "faq.route"), url: route }]);
+  // Если FAQ открыли случайно — убрать сообщение из чата одним нажатием
+  keyboard.push([{ text: t(lang, "faq.close"), callback_data: "faq_close" }]);
   return { text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } };
 }
 
@@ -392,8 +394,26 @@ bot.action(/^faq:(\d+)$/, async (ctx) => {
     return;
   }
   await ctx.editMessageText(`❓ ${item.question}\n\n${item.answer}`, {
-    reply_markup: { inline_keyboard: [[{ text: t(ctx.lang, "faq.back"), callback_data: "faq_list" }]] },
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: t(ctx.lang, "faq.back"), callback_data: "faq_list" },
+          { text: t(ctx.lang, "faq.close"), callback_data: "faq_close" },
+        ],
+      ],
+    },
   });
+});
+
+// Закрыть FAQ — сообщение удаляется из чата. Сообщения старше 48 часов
+// Telegram удалять не даёт — тогда просто сворачиваем его до одной строки
+bot.action("faq_close", async (ctx) => {
+  await ctx.answerCbQuery();
+  try {
+    await ctx.deleteMessage();
+  } catch {
+    await ctx.editMessageText(t(ctx.lang, "faq.closed"));
+  }
 });
 
 bot.action("faq_list", async (ctx) => {

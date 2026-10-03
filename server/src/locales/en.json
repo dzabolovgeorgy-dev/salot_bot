@@ -133,7 +133,9 @@
     "pick": "Choose a question:",
     "empty": "No questions yet — message us and we'll answer.",
     "route": "📍 Get directions",
-    "back": "← All questions"
+    "back": "← All questions",
+    "close": "✖️ Close",
+    "closed": "FAQ closed."
   },
   "chat": {
     "prompt": "Write your message to {{master}} in one message — I'll pass it on.",
