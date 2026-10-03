@@ -447,7 +447,7 @@ export async function initDb(): Promise<void> {
   );
   if (seedFaq) {
     const examples: [string, string, boolean][] = [
-      ["Как записаться?", "Выберите услугу, мастера и удобное время прямо в этом приложении или в чате с ботом командой /book.", false],
+      ["Как записаться?", "Выберите услугу, мастера и удобное время прямо в приложении — или нажмите «📅 Записаться в чате» внизу чата с ботом.", false],
       ["Можно ли перенести или отменить запись?", "Да — в разделе «Мои записи» или кнопками под сообщением о записи в чате с ботом. Пожалуйста, предупреждайте заранее.", false],
       ["Как работают бонусные баллы?", "За каждый визит начисляется кэшбэк баллами — процент зависит от вашего уровня. Баллами можно оплатить до 30% стоимости следующего визита.", false],
       ["Какие способы оплаты вы принимаете?", "Наличные и банковские карты.", false],
@@ -641,7 +641,7 @@ const DEMO_FAQ_BUTTON_LABELS: Record<string, [string, string]> = {
 const DEMO_FAQ_EN: Record<string, [string, string]> = {
   "Как записаться?": [
     "How do I book?",
-    "Choose a service, a specialist and a convenient time right in this app, or in the chat with the bot using the /book command.",
+    "Choose a service, a specialist and a convenient time right in the app — or tap “📅 Book in chat” at the bottom of the chat with the bot.",
   ],
   "Можно ли перенести или отменить запись?": [
     "Can I reschedule or cancel my booking?",
@@ -662,6 +662,17 @@ async function fillDemoTranslations(): Promise<void> {
   for (const [ru, en] of Object.entries(DEMO_MASTER_BIOS_EN)) {
     await db.query(`UPDATE masters SET bio_en = $1 WHERE bio = $2 AND ${empty("bio_en")}`, [en, ru]);
   }
+  // Первая версия ответа «Как записаться?» отсылала к команде /book — теперь
+  // в чате всегда есть кнопка «Записаться в чате». Меняем только если текст
+  // не правили вручную
+  await db.query("UPDATE faq_items SET answer = $1 WHERE answer = $2", [
+    "Выберите услугу, мастера и удобное время прямо в приложении — или нажмите «📅 Записаться в чате» внизу чата с ботом.",
+    "Выберите услугу, мастера и удобное время прямо в этом приложении или в чате с ботом командой /book.",
+  ]);
+  await db.query("UPDATE faq_items SET answer_en = $1 WHERE answer_en = $2", [
+    "Choose a service, a specialist and a convenient time right in the app — or tap “📅 Book in chat” at the bottom of the chat with the bot.",
+    "Choose a service, a specialist and a convenient time right in this app, or in the chat with the bot using the /book command.",
+  ]);
   for (const [ru, [label, labelEn]] of Object.entries(DEMO_FAQ_BUTTON_LABELS)) {
     await db.query(
       `UPDATE faq_items SET button_label = $1, button_label_en = $2
