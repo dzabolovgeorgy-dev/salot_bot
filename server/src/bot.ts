@@ -404,6 +404,13 @@ function faqOverview(faq: FaqData, lang: Lang) {
   );
   const route = faqRouteUrl(faq);
   if (route) keyboard.push([{ text: t(lang, "faq.route"), url: route }]);
+  // Смена языка прямо отсюда; текущий отмечен галочкой
+  keyboard.push(
+    SUPPORTED_LANGS.map((l) => ({
+      text: l === lang ? `✓ ${LANG_LABELS[l]}` : LANG_LABELS[l],
+      callback_data: `faqlang:${l}`,
+    }))
+  );
   // Если FAQ открыли случайно — убрать сообщение из чата одним нажатием
   keyboard.push([{ text: t(lang, "faq.close"), callback_data: "faq_close" }]);
   return { text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } };
@@ -448,6 +455,25 @@ bot.action("faq_close", async (ctx) => {
   } catch {
     await ctx.editMessageText(t(ctx.lang, "faq.closed"));
   }
+});
+
+// Выбор языка из FAQ: само сообщение FAQ перерисовывается на новом языке.
+// Кнопки внизу чата Telegram меняет только вместе с новым сообщением —
+// поэтому клиенту приходит одна короткая строка "✅ Язык: …" с новыми кнопками
+bot.action(/^faqlang:(\w+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const chosen = ctx.match[1];
+  if (!isSupportedLang(chosen) || chosen === ctx.lang) return;
+  await confirmLanguage(ctx.from.id, chosen);
+  ctx.lang = chosen;
+  const { text, reply_markup } = faqOverview(await fetchFaq(chosen), chosen);
+  await ctx.editMessageText(text, { reply_markup });
+
+  const role = await getRole(ctx.from.id);
+  if (role.role !== "client") return;
+  await ctx.reply(t(chosen, "bot.languageChanged", { language: LANG_LABELS[chosen] }), clientKeyboard(chosen));
+  const webAppUrl = getWebAppUrl();
+  if (webAppUrl && ctx.chat) await setPersonalMenuButton(ctx.chat.id, t(chosen, "bot.menuBook"), webAppUrl);
 });
 
 bot.action("faq_list", async (ctx) => {
