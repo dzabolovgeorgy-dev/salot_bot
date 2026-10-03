@@ -21,6 +21,10 @@ interface DueBooking {
 
 type ReminderColumn = "reminder_24h_sent" | "reminder_2h_sent";
 
+// За сколько часов до записи напоминать клиенту
+const CLIENT_REMINDER_TOMORROW_HOURS = 24;
+const CLIENT_REMINDER_SOON_HOURS = 2;
+
 // Название услуги приходит на русском и на английском сразу — язык клиента
 // известен только при отправке (см. sendReminder), там и выбираем
 interface DueRowRaw extends DueBooking {
@@ -81,6 +85,21 @@ async function checkAndSend(
 // запись в суете. Текст — только по-русски: панель и уведомления персонала
 // не переводятся (см. i18n-infrastructure)
 const MASTER_REMINDER_HOURS = 1;
+
+// Напоминание, время которого уже прошло к моменту записи (или переноса),
+// не нужно вовсе: клиент только что получил подтверждение. Без этого запись
+// "через 15 минут" сразу получала и "завтра у вас запись", и "уже совсем
+// скоро" (а мастер — "через час"), потому что под условие "до записи меньше
+// N часов" она подходила сразу. Используется в api.ts при создании и переносе
+// записи — значения вычисляются в том же запросе, что и сама запись, чтобы
+// проверка напоминаний не успела вклиниться между ними
+export const REMINDER_FLAG_COLUMNS = "reminder_24h_sent, reminder_2h_sent, reminder_master_sent";
+
+export function passedReminderFlagsSql(startsAt: string): string {
+  return [CLIENT_REMINDER_TOMORROW_HOURS, CLIENT_REMINDER_SOON_HOURS, MASTER_REMINDER_HOURS]
+    .map((hours) => `(${startsAt}::timestamp <= now() + interval '${hours} hours')`)
+    .join(", ");
+}
 
 interface MasterDueRow {
   id: number;
@@ -144,8 +163,8 @@ export async function checkAndSendMasterReminders(): Promise<void> {
 export function startReminderScheduler(): void {
   const run = async () => {
     try {
-      await checkAndSend("reminder_24h_sent", 24, "reminder.tomorrow");
-      await checkAndSend("reminder_2h_sent", 2, "reminder.soon");
+      await checkAndSend("reminder_24h_sent", CLIENT_REMINDER_TOMORROW_HOURS, "reminder.tomorrow");
+      await checkAndSend("reminder_2h_sent", CLIENT_REMINDER_SOON_HOURS, "reminder.soon");
       await checkAndSendMasterReminders();
     } catch (err) {
       console.error("Ошибка при проверке напоминаний (пробуем снова через минуту):", err);

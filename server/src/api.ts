@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import multer from "multer";
 import { db } from "./db.js";
+import { REMINDER_FLAG_COLUMNS, passedReminderFlagsSql } from "./reminders.js";
 import { forwardAsyncErrors } from "./apiErrors.js";
 import { bot } from "./bot.js";
 import { appendBookingRow, addClientSpend, syncClientComment, syncInventoryItem } from "./sheets.js";
@@ -637,8 +638,9 @@ api.post("/bookings", async (req, res) => {
   }
 
   const { rows: inserted } = await db.query(
-    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_username, reference_photo_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_username, reference_photo_id,
+                           ${REMINDER_FLAG_COLUMNS})
+     VALUES ($1, $2, $3, $4, $5, $6, $7, ${passedReminderFlagsSql("$4")}) RETURNING *`,
     [client_telegram_id, master_id, service_id, starts_at, client_name ?? null, client_username ?? null, referencePhotoId]
   );
 
@@ -777,8 +779,9 @@ api.post("/staff/bookings", async (req, res) => {
   const normalizedPhone = client_phone?.trim() ? normalizePhone(client_phone) : null;
 
   const { rows: inserted } = await db.query(
-    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_phone)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    `INSERT INTO bookings (client_telegram_id, master_id, service_id, starts_at, client_name, client_phone,
+                           ${REMINDER_FLAG_COLUMNS})
+     VALUES ($1, $2, $3, $4, $5, $6, ${passedReminderFlagsSql("$4")}) RETURNING *`,
     [client_telegram_id ?? null, master_id, service_id, starts_at, client_name.trim(), normalizedPhone]
   );
 
@@ -887,10 +890,10 @@ api.patch("/bookings/:id", async (req, res) => {
     return;
   }
 
-  // Сбрасываем отметки об отправленных напоминаниях — время другое, значит и
-  // напоминания должны прийти заново, ближе к новому времени
+  // Отметки напоминаний считаем заново под новое время: что ещё впереди —
+  // придёт ближе к новому времени, что уже прошло — не придёт вовсе
   await db.query(
-    "UPDATE bookings SET starts_at = $1, reminder_24h_sent = false, reminder_2h_sent = false, reminder_master_sent = false WHERE id = $2",
+    `UPDATE bookings SET starts_at = $1, (${REMINDER_FLAG_COLUMNS}) = (${passedReminderFlagsSql("$1")}) WHERE id = $2`,
     [starts_at, id]
   );
 

@@ -46,10 +46,10 @@ export function reminderActionButtons(bookingId: number, lang: Lang): InlineButt
       { text: t(lang, "buttons.reschedule"), callback_data: `resched:${bookingId}` },
       { text: t(lang, "buttons.cancelBooking"), callback_data: `cancelbk:${bookingId}` },
     ],
-    [
-      { text: t(lang, "buttons.late"), callback_data: `late:${bookingId}` },
-      { text: t(lang, "buttons.messageMaster"), callback_data: `msgm:${bookingId}` },
-    ],
+    [{ text: t(lang, "buttons.late"), callback_data: `late:${bookingId}` }],
+    // Отдельной строкой: рядом с "Я опаздываю" в узком сообщении Telegram
+    // обрезал подпись до "Напи...мастеру"
+    [{ text: t(lang, "buttons.messageMaster"), callback_data: `msgm:${bookingId}` }],
   ];
 }
 
