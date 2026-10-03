@@ -13,7 +13,8 @@ import {
 import { internalHeaders } from "./internalAuth.js";
 import { getRole } from "./roles.js";
 import { DEFAULT_LANG, SUPPORTED_LANGS, allLangs, isSupportedLang, localizedSql, normalizeLang, t, type Lang } from "./i18n.js";
-import { resolveLanguage, saveLanguage } from "./userLanguage.js";
+import { resolveLanguage, saveLanguage, getUserLanguage } from "./userLanguage.js";
+import { formatDateTime, formatRuDateTime } from "./format.js";
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -158,6 +159,178 @@ bot.start(async (ctx) => {
     // На случай, если у этого чата раньше стояла кнопка "Панель" (роль сменилась
     // с персонала на клиента, например, при тестировании) — возвращаем клиентский текст
     await setPersonalMenuButton(ctx.chat.id, t(lang, "bot.menuBook"), webAppUrl);
+  }
+});
+
+// ── Переписка клиента с мастером через бота ──────────────────────────────
+// Под сообщением о записи у клиента кнопка "💬 Написать мастеру": клиент
+// пишет боту, бот передаёт мастеру (с данными записи и кнопкой "Ответить"),
+// ответ мастера бот передаёт клиенту. Личный Telegram мастера клиенту не
+// раскрывается. Если у мастера нет доступа к боту — сообщение получают
+// администраторы. Сторона персонала — по-русски, как и вся панель.
+// Ожидание "следующего сообщения" живёт в памяти сервера (как и комментарий
+// к оценке): после перезапуска сервера кнопку нужно нажать заново
+const CHAT_WAIT_MS = 30 * 60 * 1000;
+// Писать по записи можно, пока она предстоит, и ещё 2 дня после визита
+const CHAT_DAYS_AFTER = 2;
+
+interface ChatWait {
+  bookingId: number;
+  until: number;
+}
+const awaitingClientMessage = new Map<number, ChatWait>();
+const awaitingMasterReply = new Map<number, ChatWait>();
+
+interface ChatBooking {
+  id: number;
+  client_telegram_id: string | null;
+  client_name: string | null;
+  starts_at: string;
+  service_name: string;
+  service_name_en: string | null;
+  master_name: string;
+  master_telegram_id: string | null;
+  active: boolean;
+}
+
+async function loadChatBooking(bookingId: number): Promise<ChatBooking | null> {
+  const { rows } = await db.query<ChatBooking>(
+    `SELECT b.id, b.client_telegram_id, b.client_name, b.starts_at,
+            s.name AS service_name, s.name_en AS service_name_en, m.name AS master_name,
+            st.telegram_id AS master_telegram_id,
+            (b.status = 'upcoming' OR b.starts_at > now() - make_interval(days => $2)) AS active
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     JOIN masters m ON m.id = b.master_id
+     LEFT JOIN staff st ON st.master_id = b.master_id AND st.role = 'master'
+     WHERE b.id = $1`,
+    [bookingId, CHAT_DAYS_AFTER]
+  );
+  return rows[0] ?? null;
+}
+
+// Кому из персонала уходит сообщение клиента: мастер записи, а если у него
+// нет доступа к боту — все администраторы
+async function chatStaffRecipients(booking: ChatBooking): Promise<number[]> {
+  if (booking.master_telegram_id) return [Number(booking.master_telegram_id)];
+  const { rows } = await db.query<{ telegram_id: string }>("SELECT telegram_id FROM staff WHERE role = 'admin'");
+  return rows.map((r) => Number(r.telegram_id));
+}
+
+function chatCancelButton(lang: Lang) {
+  return { inline_keyboard: [[{ text: t(lang, "common.cancel"), callback_data: "chatcancel" }]] };
+}
+
+// Кнопки внизу чата и команды — не сообщение мастеру: отменяем ожидание и
+// даём им сработать как обычно
+function isChatEscape(text: string): boolean {
+  return text.startsWith("/") || allLangs("bot.bookButton").includes(text) || allLangs("bot.faqButton").includes(text);
+}
+
+bot.action(/^msgm:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const booking = await loadChatBooking(Number(ctx.match[1]));
+  if (!booking || Number(booking.client_telegram_id) !== ctx.from.id || !booking.active) {
+    await ctx.reply(t(ctx.lang, "chat.notAvailable"));
+    return;
+  }
+  awaitingMasterReply.delete(ctx.from.id);
+  awaitingClientMessage.set(ctx.from.id, { bookingId: booking.id, until: Date.now() + CHAT_WAIT_MS });
+  await ctx.reply(t(ctx.lang, "chat.prompt", { master: booking.master_name }), {
+    reply_markup: chatCancelButton(ctx.lang),
+  });
+});
+
+bot.action(/^replyc:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const booking = await loadChatBooking(Number(ctx.match[1]));
+  const role = await getRole(ctx.from.id);
+  const allowed =
+    booking &&
+    (role.role === "admin" || (role.role === "master" && Number(booking.master_telegram_id) === ctx.from.id));
+  if (!booking || !allowed || !booking.client_telegram_id) {
+    await ctx.reply("Ответить по этой записи не получится.");
+    return;
+  }
+  awaitingClientMessage.delete(ctx.from.id);
+  awaitingMasterReply.set(ctx.from.id, { bookingId: booking.id, until: Date.now() + CHAT_WAIT_MS });
+  await ctx.reply(`Напишите ответ клиенту (${booking.client_name ?? "клиент"}) одним сообщением — я передам его.`, {
+    reply_markup: chatCancelButton(DEFAULT_LANG),
+  });
+});
+
+bot.action("chatcancel", async (ctx) => {
+  await ctx.answerCbQuery();
+  awaitingClientMessage.delete(ctx.from.id);
+  awaitingMasterReply.delete(ctx.from.id);
+  await ctx.editMessageText(t(ctx.lang, "chat.cancelled"));
+});
+
+bot.on("message", async (ctx, next) => {
+  const fromId = ctx.from.id;
+  const clientWait = awaitingClientMessage.get(fromId);
+  const masterWait = awaitingMasterReply.get(fromId);
+  const wait = clientWait ?? masterWait;
+  if (!wait) return next();
+
+  const text = "text" in ctx.message ? ctx.message.text.trim() : null;
+  if (wait.until < Date.now() || (text !== null && isChatEscape(text))) {
+    awaitingClientMessage.delete(fromId);
+    awaitingMasterReply.delete(fromId);
+    return next();
+  }
+  if (!text) {
+    await ctx.reply(t(ctx.lang, "chat.textOnly"));
+    return;
+  }
+
+  const booking = await loadChatBooking(wait.bookingId);
+  awaitingClientMessage.delete(fromId);
+  awaitingMasterReply.delete(fromId);
+  if (!booking || !booking.client_telegram_id) {
+    await ctx.reply(t(ctx.lang, "chat.failed"));
+    return;
+  }
+
+  if (clientWait) {
+    // Клиент → мастер (или админам)
+    const recipients = await chatStaffRecipients(booking);
+    const header =
+      `💬 Сообщение от клиента\n\n${booking.client_name ?? "Клиент"}\n` +
+      `${booking.service_name} — ${booking.master_name}, ${formatRuDateTime(booking.starts_at)}`;
+    let delivered = 0;
+    for (const staffId of recipients) {
+      try {
+        await bot.telegram.sendMessage(staffId, `${header}\n\n${text}`, {
+          reply_markup: { inline_keyboard: [[{ text: "↩️ Ответить клиенту", callback_data: `replyc:${booking.id}` }]] },
+        });
+        delivered++;
+      } catch (err) {
+        console.warn(`Не удалось передать сообщение клиента сотруднику ${staffId}:`, err);
+      }
+    }
+    await ctx.reply(t(ctx.lang, delivered ? "chat.sent" : "chat.failed"));
+    return;
+  }
+
+  // Мастер/админ → клиент, на языке клиента
+  const clientId = Number(booking.client_telegram_id);
+  const lang = await getUserLanguage(clientId);
+  const service = lang === "en" && booking.service_name_en ? booking.service_name_en : booking.service_name;
+  try {
+    await bot.telegram.sendMessage(
+      clientId,
+      t(lang, "chat.fromMaster", {
+        master: booking.master_name,
+        service,
+        date: formatDateTime(booking.starts_at, lang),
+        text,
+      }),
+      { reply_markup: { inline_keyboard: [[{ text: t(lang, "buttons.messageMaster"), callback_data: `msgm:${booking.id}` }]] } }
+    );
+    await ctx.reply("✅ Ответ отправлен клиенту.");
+  } catch {
+    await ctx.reply("Не получилось отправить ответ — возможно, клиент заблокировал бота.");
   }
 });
 

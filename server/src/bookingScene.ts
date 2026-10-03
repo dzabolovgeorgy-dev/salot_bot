@@ -32,6 +32,7 @@ export function bookingActionButtons(bookingId: number, lang: Lang): InlineButto
       { text: t(lang, "buttons.reschedule"), callback_data: `resched:${bookingId}` },
       { text: t(lang, "buttons.cancelBooking"), callback_data: `cancelbk:${bookingId}` },
     ],
+    [{ text: t(lang, "buttons.messageMaster"), callback_data: `msgm:${bookingId}` }],
   ];
 }
 
@@ -45,7 +46,10 @@ export function reminderActionButtons(bookingId: number, lang: Lang): InlineButt
       { text: t(lang, "buttons.reschedule"), callback_data: `resched:${bookingId}` },
       { text: t(lang, "buttons.cancelBooking"), callback_data: `cancelbk:${bookingId}` },
     ],
-    [{ text: t(lang, "buttons.late"), callback_data: `late:${bookingId}` }],
+    [
+      { text: t(lang, "buttons.late"), callback_data: `late:${bookingId}` },
+      { text: t(lang, "buttons.messageMaster"), callback_data: `msgm:${bookingId}` },
+    ],
   ];
 }
 

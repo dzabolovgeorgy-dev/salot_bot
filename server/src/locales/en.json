@@ -13,7 +13,8 @@
     "noKeep": "No, keep it",
     "addComment": "💬 Add a comment",
     "openApp": "Open the app",
-    "minutes": "{{n}} min"
+    "minutes": "{{n}} min",
+    "messageMaster": "💬 Message the specialist"
   },
   "calendar": {
     "month_0": "January",
@@ -133,5 +134,14 @@
     "empty": "No questions yet — message us and we'll answer.",
     "route": "📍 Get directions",
     "back": "← All questions"
+  },
+  "chat": {
+    "prompt": "Write your message to {{master}} in one message — I'll pass it on.",
+    "sent": "✅ Your message has been passed to the specialist. The reply will come here, in this chat.",
+    "fromMaster": "💬 Reply from {{master}}\n{{service}}, {{date}}\n\n{{text}}",
+    "notAvailable": "You can no longer message the specialist about this booking — it has passed or been cancelled.",
+    "textOnly": "For now you can only send text — please type your message.",
+    "cancelled": "Cancelled.",
+    "failed": "Couldn't deliver your message, please try again later."
   }
 }
