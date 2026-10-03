@@ -18,9 +18,22 @@ interface AdminFaqItem {
   answer_en: string | null
   display_order: number
   show_route_button: boolean
+  button_label: string | null
+  button_label_en: string | null
 }
 
-const emptyForm = { question: '', answer: '', questionEn: '', answerEn: '', showRoute: false }
+const emptyForm = {
+  question: '',
+  answer: '',
+  questionEn: '',
+  answerEn: '',
+  showRoute: false,
+  buttonLabel: '',
+  buttonLabelEn: '',
+}
+
+// Длиннее этого подпись на кнопке в чате Telegram, скорее всего, обрежет
+const BUTTON_LABEL_SOFT_LIMIT = 30
 
 export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
   const [items, setItems] = useState<AdminFaqItem[]>([])
@@ -104,8 +117,10 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
       questionEn: item.question_en ?? '',
       answerEn: item.answer_en ?? '',
       showRoute: item.show_route_button,
+      buttonLabel: item.button_label ?? '',
+      buttonLabelEn: item.button_label_en ?? '',
     })
-    setShowTranslation(!!(item.question_en || item.answer_en))
+    setShowTranslation(!!(item.question_en || item.answer_en || item.button_label_en))
     setError('')
   }
 
@@ -126,6 +141,8 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
           question_en: form.questionEn,
           answer_en: form.answerEn,
           show_route_button: form.showRoute,
+          button_label: form.buttonLabel,
+          button_label_en: form.buttonLabelEn,
         }),
       })
       const data = await res.json()
@@ -191,6 +208,27 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
         />
       </label>
       <label>
+        Подпись на кнопке в чате (необязательно)
+        <input
+          type="text"
+          value={form.buttonLabel}
+          onChange={(e) => setForm({ ...form, buttonLabel: e.target.value })}
+          placeholder="Например: Парковка"
+          maxLength={60}
+        />
+        <span
+          className={
+            form.buttonLabel.trim().length > BUTTON_LABEL_SOFT_LIMIT
+              ? 'staff-form-hint staff-form-hint--error'
+              : 'staff-form-hint'
+          }
+        >
+          {form.buttonLabel.trim().length > BUTTON_LABEL_SOFT_LIMIT
+            ? `${form.buttonLabel.trim().length} символов — Telegram может обрезать, лучше до ${BUTTON_LABEL_SOFT_LIMIT}`
+            : `Короткий вариант для кнопки в чате с ботом — до ${BUTTON_LABEL_SOFT_LIMIT} символов. Если пусто — на кнопке будет сам вопрос`}
+        </span>
+      </label>
+      <label>
         Ответ
         <textarea
           className="broadcast-textarea"
@@ -221,6 +259,16 @@ export default function FaqManage({ telegramId, onBack }: FaqManageProps) {
               type="text"
               value={form.questionEn}
               onChange={(e) => setForm({ ...form, questionEn: e.target.value })}
+            />
+          </label>
+          <label>
+            Подпись на кнопке по-английски
+            <input
+              type="text"
+              value={form.buttonLabelEn}
+              onChange={(e) => setForm({ ...form, buttonLabelEn: e.target.value })}
+              placeholder="Например: Parking"
+              maxLength={60}
             />
           </label>
           <label>

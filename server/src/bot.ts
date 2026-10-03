@@ -342,7 +342,8 @@ bot.command("book", (ctx) => ctx.scene.enter("booking"));
 // сообщении, "← Все вопросы" возвращает список. Данные — тот же /api/faq,
 // что и у вкладки FAQ в приложении, на языке клиента
 interface FaqData {
-  items: { id: number; question: string; answer: string }[];
+  // button_label — короткая подпись для кнопки (или сам вопрос, если её нет)
+  items: { id: number; question: string; answer: string; button_label: string }[];
   salon_address: string | null;
   salon_location_url: string | null;
   working_hours: string | null;
@@ -366,7 +367,7 @@ function faqOverview(faq: FaqData, lang: Lang) {
   lines.push(`\n${t(lang, faq.items.length ? "faq.pick" : "faq.empty")}`);
 
   const keyboard: ({ text: string; callback_data: string } | { text: string; url: string })[][] = faq.items.map(
-    (item) => [{ text: item.question, callback_data: `faq:${item.id}` }]
+    (item) => [{ text: item.button_label || item.question, callback_data: `faq:${item.id}` }]
   );
   const route = faqRouteUrl(faq);
   if (route) keyboard.push([{ text: t(lang, "faq.route"), url: route }]);

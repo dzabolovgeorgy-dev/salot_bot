@@ -391,6 +391,11 @@ export async function initDb(): Promise<void> {
     -- шаблон (сразу с готовым текстом по умолчанию) и название бесплатной
     -- услуги в подарок по-английски
     ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS text_en TEXT;
+    -- Короткая подпись вопроса для кнопки в чате с ботом: Telegram обрезает
+    -- длинные подписи посередине ("Можно ли перене…отменить запись?"). Пусто —
+    -- на кнопке сам вопрос. В приложении всегда показывается полный вопрос
+    ALTER TABLE faq_items ADD COLUMN IF NOT EXISTS button_label TEXT;
+    ALTER TABLE faq_items ADD COLUMN IF NOT EXISTS button_label_en TEXT;
     ALTER TABLE birthday_campaign_settings ADD COLUMN IF NOT EXISTS message_template_en TEXT NOT NULL
       DEFAULT '{name}, happy birthday! 🎉 Here''s a gift for you: {gift}';
     ALTER TABLE birthday_campaign_settings ADD COLUMN IF NOT EXISTS gift_value_en TEXT;
@@ -625,6 +630,14 @@ const DEMO_MASTER_BIOS_EN: Record<string, string> = {
   "Мастер маникюра: аккуратный уход и стойкое покрытие.": "Manicure specialist: gentle care and long-lasting polish.",
 };
 
+// Короткие подписи кнопок для демо-вопросов в чате — [русская, английская]
+const DEMO_FAQ_BUTTON_LABELS: Record<string, [string, string]> = {
+  "Как записаться?": ["Как записаться", "How to book"],
+  "Можно ли перенести или отменить запись?": ["Перенос и отмена записи", "Rescheduling and cancelling"],
+  "Как работают бонусные баллы?": ["Бонусные баллы", "Bonus points"],
+  "Какие способы оплаты вы принимаете?": ["Способы оплаты", "Payment methods"],
+};
+
 const DEMO_FAQ_EN: Record<string, [string, string]> = {
   "Как записаться?": [
     "How do I book?",
@@ -648,6 +661,13 @@ async function fillDemoTranslations(): Promise<void> {
   }
   for (const [ru, en] of Object.entries(DEMO_MASTER_BIOS_EN)) {
     await db.query(`UPDATE masters SET bio_en = $1 WHERE bio = $2 AND ${empty("bio_en")}`, [en, ru]);
+  }
+  for (const [ru, [label, labelEn]] of Object.entries(DEMO_FAQ_BUTTON_LABELS)) {
+    await db.query(
+      `UPDATE faq_items SET button_label = $1, button_label_en = $2
+       WHERE question = $3 AND ${empty("button_label")} AND ${empty("button_label_en")}`,
+      [label, labelEn, ru]
+    );
   }
   for (const [ru, [question, answer]] of Object.entries(DEMO_FAQ_EN)) {
     await db.query(

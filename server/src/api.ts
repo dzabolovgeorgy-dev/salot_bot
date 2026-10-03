@@ -3128,7 +3128,8 @@ api.get("/faq", async (req, res) => {
     `SELECT id,
             ${localizedSql(req.lang, "f", "question")} AS question,
             ${localizedSql(req.lang, "f", "answer")} AS answer,
-            show_route_button
+            show_route_button,
+            ${faqButtonLabelSql(req.lang)} AS button_label
      FROM faq_items f
      ORDER BY display_order ASC, id ASC`
   );
@@ -3145,6 +3146,15 @@ api.get("/faq", async (req, res) => {
   });
 });
 
+// Подпись вопроса на кнопке в чате. По-английски: английская подпись →
+// английский вопрос → русская подпись → русский вопрос (чтобы английскому
+// клиенту не досталась русская подпись, когда сам вопрос уже переведён)
+function faqButtonLabelSql(lang: Lang): string {
+  const ru = "COALESCE(NULLIF(f.button_label, ''), f.question)";
+  if (lang !== "en") return ru;
+  return `COALESCE(NULLIF(f.button_label_en, ''), NULLIF(f.question_en, ''), ${ru})`;
+}
+
 // ── Управление FAQ (только администратор) ─────────────────────────────────
 
 interface FaqItemBody {
@@ -3154,28 +3164,46 @@ interface FaqItemBody {
   question_en?: string | null;
   answer_en?: string | null;
   show_route_button?: boolean;
+  button_label?: string | null;
+  button_label_en?: string | null;
 }
 
 // Проверка текста вопроса — возвращает ошибку или очищенные значения
 function parseFaqItem(body: Partial<FaqItemBody>):
   | string
-  | { question: string; answer: string; question_en: string | null; answer_en: string | null; show_route_button: boolean } {
+  | {
+      question: string;
+      answer: string;
+      question_en: string | null;
+      answer_en: string | null;
+      show_route_button: boolean;
+      button_label: string | null;
+      button_label_en: string | null;
+    } {
   const question = body.question?.trim() ?? "";
   const answer = body.answer?.trim() ?? "";
   if (!question) return "Введите вопрос";
   if (!answer) return "Введите ответ";
   if (question.length > 300) return "Вопрос слишком длинный (до 300 символов)";
   if (answer.length > 3000) return "Ответ слишком длинный (до 3000 символов)";
+  const buttonLabel = body.button_label?.trim() || null;
+  const buttonLabelEn = body.button_label_en?.trim() || null;
+  if ((buttonLabel?.length ?? 0) > 60 || (buttonLabelEn?.length ?? 0) > 60) {
+    return "Подпись на кнопке слишком длинная (до 60 символов, лучше до 30)";
+  }
   return {
     question,
     answer,
     question_en: body.question_en?.trim() || null,
     answer_en: body.answer_en?.trim() || null,
     show_route_button: !!body.show_route_button,
+    button_label: buttonLabel,
+    button_label_en: buttonLabelEn,
   };
 }
 
-const FAQ_COLUMNS = "id, question, answer, question_en, answer_en, display_order, show_route_button";
+const FAQ_COLUMNS =
+  "id, question, answer, question_en, answer_en, display_order, show_route_button, button_label, button_label_en";
 
 // Всё для экрана управления: вопросы (с переводами) и адрес салона
 api.get("/staff/faq", async (req, res) => {
@@ -3220,10 +3248,19 @@ api.post("/staff/faq", async (req, res) => {
     return;
   }
   const { rows } = await db.query(
-    `INSERT INTO faq_items (question, answer, question_en, answer_en, show_route_button, display_order)
-     VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(display_order), 0) + 10 FROM faq_items))
+    `INSERT INTO faq_items (question, answer, question_en, answer_en, show_route_button, button_label, button_label_en,
+                            display_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, (SELECT COALESCE(MAX(display_order), 0) + 10 FROM faq_items))
      RETURNING ${FAQ_COLUMNS}`,
-    [item.question, item.answer, item.question_en, item.answer_en, item.show_route_button]
+    [
+      item.question,
+      item.answer,
+      item.question_en,
+      item.answer_en,
+      item.show_route_button,
+      item.button_label,
+      item.button_label_en,
+    ]
   );
   res.status(201).json(rows[0]);
 });
@@ -3246,9 +3283,19 @@ api.put("/staff/faq/:id", async (req, res) => {
     return;
   }
   const { rows } = await db.query(
-    `UPDATE faq_items SET question = $1, answer = $2, question_en = $3, answer_en = $4, show_route_button = $5
-     WHERE id = $6 RETURNING ${FAQ_COLUMNS}`,
-    [item.question, item.answer, item.question_en, item.answer_en, item.show_route_button, id]
+    `UPDATE faq_items SET question = $1, answer = $2, question_en = $3, answer_en = $4, show_route_button = $5,
+                          button_label = $6, button_label_en = $7
+     WHERE id = $8 RETURNING ${FAQ_COLUMNS}`,
+    [
+      item.question,
+      item.answer,
+      item.question_en,
+      item.answer_en,
+      item.show_route_button,
+      item.button_label,
+      item.button_label_en,
+      id,
+    ]
   );
   if (!rows[0]) {
     res.status(404).json({ error: "Вопрос не найден" });
