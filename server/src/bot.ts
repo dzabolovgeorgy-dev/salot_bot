@@ -156,7 +156,14 @@ bot.start(async (ctx) => {
 // Приложение открывается кнопкой меню слева от поля ввода — отдельное
 // сообщение "Открыть приложение" больше не шлём
 async function sendClientWelcome(ctx: BotContext, lang: Lang) {
-  await ctx.reply(t(lang, "bot.welcome"), clientKeyboard(lang));
+  // Названия кнопок в тексте — те же, что на самих кнопках, жирным, чтобы
+  // их было легко найти глазами
+  const text = t(lang, "bot.welcome", {
+    book: bookButtonText(lang),
+    app: t(lang, "bot.menuBook"),
+    faq: t(lang, "bot.faqButton"),
+  });
+  await ctx.reply(text, { parse_mode: "HTML", ...clientKeyboard(lang) });
   const webAppUrl = getWebAppUrl();
   // На случай, если у этого чата раньше стояла кнопка "Панель" (роль сменилась
   // с персонала на клиента, например, при тестировании) — возвращаем клиентский текст
