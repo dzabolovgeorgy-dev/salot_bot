@@ -13,7 +13,7 @@ import {
 import { internalHeaders } from "./internalAuth.js";
 import { getRole } from "./roles.js";
 import { DEFAULT_LANG, SUPPORTED_LANGS, allLangs, isSupportedLang, localizedSql, normalizeLang, t, type Lang } from "./i18n.js";
-import { resolveLanguage, saveLanguage, getUserLanguage } from "./userLanguage.js";
+import { resolveLanguage, getUserLanguage, confirmLanguage, isLanguageConfirmed } from "./userLanguage.js";
 import { formatDateTime, formatRuDateTime } from "./format.js";
 
 const token = process.env.BOT_TOKEN;
@@ -143,23 +143,49 @@ bot.start(async (ctx) => {
     return;
   }
 
-  // .persistent() — иначе Telegram на телефоне сворачивает эту кнопку в
-  // маленькую иконку клавиатуры после первого нажатия, и кажется, что она пропала
-  const lang = ctx.lang;
-  await ctx.reply(
-    t(lang, "bot.welcome", { button: bookButtonText(lang), faq: t(lang, "bot.faqButton") }),
-    clientKeyboard(lang)
-  );
-
-  if (webAppUrl) {
-    await ctx.reply(
-      t(lang, "bot.welcomeApp"),
-      Markup.inlineKeyboard([Markup.button.webApp(t(lang, "buttons.openApp"), webAppUrl)])
-    );
-    // На случай, если у этого чата раньше стояла кнопка "Панель" (роль сменилась
-    // с персонала на клиента, например, при тестировании) — возвращаем клиентский текст
-    await setPersonalMenuButton(ctx.chat.id, t(lang, "bot.menuBook"), webAppUrl);
+  // Новому клиенту — сначала выбор языка (одно маленькое сообщение с
+  // флагами); тем, кто язык уже выбирал, — сразу приветствие
+  if (!(await isLanguageConfirmed(ctx.from.id))) {
+    await ctx.reply(LANGUAGE_PICKER_TEXT, { reply_markup: startLanguageButtons() });
+    return;
   }
+  await sendClientWelcome(ctx, ctx.lang);
+});
+
+// Одно короткое приветствие с кнопками внизу чата (запись и FAQ).
+// Приложение открывается кнопкой меню слева от поля ввода — отдельное
+// сообщение "Открыть приложение" больше не шлём
+async function sendClientWelcome(ctx: BotContext, lang: Lang) {
+  await ctx.reply(t(lang, "bot.welcome"), clientKeyboard(lang));
+  const webAppUrl = getWebAppUrl();
+  // На случай, если у этого чата раньше стояла кнопка "Панель" (роль сменилась
+  // с персонала на клиента, например, при тестировании) — возвращаем клиентский текст
+  if (webAppUrl && ctx.chat) await setPersonalMenuButton(ctx.chat.id, t(lang, "bot.menuBook"), webAppUrl);
+}
+
+// Выбор языка при первом /start — на обоих языках сразу, раз язык ещё не выбран
+const LANGUAGE_PICKER_TEXT = "🌐 Выберите язык / Choose language";
+
+function startLanguageButtons() {
+  return {
+    inline_keyboard: [SUPPORTED_LANGS.map((l) => ({ text: LANG_LABELS[l], callback_data: `startlang:${l}` }))],
+  };
+}
+
+// Нажали флаг: сообщение с выбором убираем, присылаем приветствие на этом языке
+bot.action(/^startlang:(\w+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const chosen = ctx.match[1];
+  if (!isSupportedLang(chosen)) return;
+  await confirmLanguage(ctx.from.id, chosen);
+  ctx.lang = chosen;
+  try {
+    await ctx.deleteMessage();
+  } catch {
+    // старое сообщение (больше 48 часов) Telegram удалить не даёт — просто убираем кнопки
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+  }
+  await sendClientWelcome(ctx, chosen);
 });
 
 // ── Переписка клиента с мастером через бота ──────────────────────────────
@@ -458,7 +484,7 @@ bot.action(/^setlang:(\w+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const chosen = ctx.match[1];
   if (!isSupportedLang(chosen)) return;
-  await saveLanguage(ctx.from.id, chosen);
+  await confirmLanguage(ctx.from.id, chosen);
   ctx.lang = chosen;
   await ctx.editMessageText(t(chosen, "bot.languageChanged", { language: LANG_LABELS[chosen] }));
 

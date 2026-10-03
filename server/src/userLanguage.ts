@@ -30,6 +30,25 @@ export async function saveLanguage(telegramId: number, lang: Lang): Promise<void
   cache.set(telegramId, lang);
 }
 
+// Человек сам выбрал язык (кнопками) — запоминаем и отмечаем, что выбор
+// подтверждён: больше не предлагаем выбрать язык при /start
+export async function confirmLanguage(telegramId: number, lang: Lang): Promise<void> {
+  await db.query(
+    `INSERT INTO user_languages (telegram_id, language, confirmed, updated_at) VALUES ($1, $2, true, now())
+     ON CONFLICT (telegram_id) DO UPDATE SET language = $2, confirmed = true, updated_at = now()`,
+    [telegramId, lang]
+  );
+  cache.set(telegramId, lang);
+}
+
+export async function isLanguageConfirmed(telegramId: number): Promise<boolean> {
+  const { rows } = await db.query<{ confirmed: boolean }>(
+    "SELECT confirmed FROM user_languages WHERE telegram_id = $1",
+    [telegramId]
+  );
+  return rows[0]?.confirmed ?? false;
+}
+
 // Первое обращение — определяем по языку Telegram и сохраняем; дальше — из базы
 export async function resolveLanguage(telegramId: number, languageCodeHint?: string | null): Promise<Lang> {
   const stored = await getStoredLanguage(telegramId);

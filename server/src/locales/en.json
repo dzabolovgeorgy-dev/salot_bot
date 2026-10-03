@@ -71,8 +71,7 @@
   "bot": {
     "somethingWrong": "Something went wrong, please try again 🙏",
     "bookButton": "📅 Book in chat",
-    "welcome": "Hi! I'll help you book an appointment at the salon.\n\nTo book right here in the chat, tap the “{{button}}” button below — it's always at hand. Our address, opening hours and answers to common questions are under “{{faq}}”.",
-    "welcomeApp": "In the app you can browse all our specialists and services in more detail — with photos and descriptions.",
+    "welcome": "👋 Hi! I'll help you book an appointment at the salon.\nBooking and answers to your questions — with the buttons below 👇",
     "reschedUnavailable": "This booking can no longer be rescheduled — it has already passed or been cancelled.",
     "cancelFailed": "Couldn't cancel: {{error}}",
     "cancelled": "❌ Booking cancelled.",

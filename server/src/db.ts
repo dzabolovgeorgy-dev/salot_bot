@@ -332,6 +332,10 @@ export async function initDb(): Promise<void> {
       language TEXT NOT NULL,
       updated_at TIMESTAMP NOT NULL DEFAULT now()
     );
+    -- Язык выбран самим человеком (кнопками при первом /start или /language),
+    -- а не только угадан по настройкам Telegram. Пока false — при /start
+    -- бот сначала предлагает выбрать язык
+    ALTER TABLE user_languages ADD COLUMN IF NOT EXISTS confirmed BOOLEAN NOT NULL DEFAULT false;
 
     -- Рассылки. Отдельной таблицы "клиенты" нет — карточка клиента это
     -- client_notes, туда и кладём согласие на рекламные сообщения и дату
