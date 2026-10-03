@@ -85,6 +85,7 @@ export async function setupMenuButton(): Promise<void> {
           { command: "book", description: t(lang, "bot.cmdBook") },
           { command: "services", description: t(lang, "bot.cmdServices") },
           { command: "masters", description: t(lang, "bot.cmdMasters") },
+          { command: "faq", description: t(lang, "bot.cmdFaq") },
           { command: "language", description: t(lang, "bot.cmdLanguage") },
         ],
         lang === DEFAULT_LANG ? undefined : { language_code: lang }
@@ -145,8 +146,8 @@ bot.start(async (ctx) => {
   // маленькую иконку клавиатуры после первого нажатия, и кажется, что она пропала
   const lang = ctx.lang;
   await ctx.reply(
-    t(lang, "bot.welcome", { button: bookButtonText(lang) }),
-    Markup.keyboard([[bookButtonText(lang)]]).resize().persistent()
+    t(lang, "bot.welcome", { button: bookButtonText(lang), faq: t(lang, "bot.faqButton") }),
+    clientKeyboard(lang)
   );
 
   if (webAppUrl) {
@@ -161,6 +162,72 @@ bot.start(async (ctx) => {
 });
 
 bot.command("book", (ctx) => ctx.scene.enter("booking"));
+
+// ── FAQ прямо в чате ─────────────────────────────────────────────────────
+// Кнопка "❓ FAQ" внизу чата (или /faq): адрес салона, часы работы, кнопка
+// маршрута и вопросы кнопками; нажатие на вопрос показывает ответ в том же
+// сообщении, "← Все вопросы" возвращает список. Данные — тот же /api/faq,
+// что и у вкладки FAQ в приложении, на языке клиента
+interface FaqData {
+  items: { id: number; question: string; answer: string }[];
+  salon_address: string | null;
+  salon_location_url: string | null;
+  working_hours: string | null;
+}
+
+async function fetchFaq(lang: Lang): Promise<FaqData> {
+  const res = await fetch(`${API_BASE}/faq`, { headers: internalHeaders({ "X-Lang": lang }) });
+  if (!res.ok) throw new Error(`FAQ: ${res.status}`);
+  return (await res.json()) as FaqData;
+}
+
+function faqRouteUrl(faq: FaqData): string | null {
+  if (faq.salon_location_url) return faq.salon_location_url;
+  return faq.salon_address ? `https://maps.google.com/?q=${encodeURIComponent(faq.salon_address)}` : null;
+}
+
+function faqOverview(faq: FaqData, lang: Lang) {
+  const lines = [t(lang, "faq.title")];
+  if (faq.salon_address) lines.push(`\n📍 ${faq.salon_address}`);
+  if (faq.working_hours) lines.push(`${faq.salon_address ? "" : "\n"}🕐 ${faq.working_hours}`);
+  lines.push(`\n${t(lang, faq.items.length ? "faq.pick" : "faq.empty")}`);
+
+  const keyboard: ({ text: string; callback_data: string } | { text: string; url: string })[][] = faq.items.map(
+    (item) => [{ text: item.question, callback_data: `faq:${item.id}` }]
+  );
+  const route = faqRouteUrl(faq);
+  if (route) keyboard.push([{ text: t(lang, "faq.route"), url: route }]);
+  return { text: lines.join("\n"), reply_markup: { inline_keyboard: keyboard } };
+}
+
+async function sendFaq(ctx: BotContext) {
+  const { text, reply_markup } = faqOverview(await fetchFaq(ctx.lang), ctx.lang);
+  await ctx.reply(text, { reply_markup });
+}
+
+bot.command("faq", sendFaq);
+bot.hears(allLangs("bot.faqButton"), sendFaq);
+
+bot.action(/^faq:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const faq = await fetchFaq(ctx.lang);
+  const item = faq.items.find((i) => i.id === Number(ctx.match[1]));
+  if (!item) {
+    // вопрос успели удалить — показываем актуальный список
+    const { text, reply_markup } = faqOverview(faq, ctx.lang);
+    await ctx.editMessageText(text, { reply_markup });
+    return;
+  }
+  await ctx.editMessageText(`❓ ${item.question}\n\n${item.answer}`, {
+    reply_markup: { inline_keyboard: [[{ text: t(ctx.lang, "faq.back"), callback_data: "faq_list" }]] },
+  });
+});
+
+bot.action("faq_list", async (ctx) => {
+  await ctx.answerCbQuery();
+  const { text, reply_markup } = faqOverview(await fetchFaq(ctx.lang), ctx.lang);
+  await ctx.editMessageText(text, { reply_markup });
+});
 // Кнопка внизу чата называется по-разному на разных языках — узнаём любую
 bot.hears(allLangs("bot.bookButton"), (ctx) => ctx.scene.enter("booking"));
 
@@ -168,6 +235,12 @@ bot.hears(allLangs("bot.bookButton"), (ctx) => ctx.scene.enter("booking"));
 // определяется сам по настройкам Telegram при первом обращении, эта команда —
 // чтобы сменить его вручную. Выбор хранится в базе один на человека и
 // действует сразу и в боте, и в мини-приложении
+// Кнопки внизу чата у клиента: запись в чате и частые вопросы.
+// .persistent() — иначе Telegram на телефоне сворачивает их в иконку
+function clientKeyboard(lang: Lang) {
+  return Markup.keyboard([[bookButtonText(lang), t(lang, "bot.faqButton")]]).resize().persistent();
+}
+
 const LANG_LABELS: Record<Lang, string> = { ru: "🇷🇺 Русский", en: "🇬🇧 English" };
 
 function languageButtons(current: Lang) {
@@ -199,7 +272,7 @@ bot.action(/^setlang:(\w+)$/, async (ctx) => {
   // клиенту: у персонала там своя кнопка "Панель", её не трогаем
   const role = await getRole(ctx.from.id);
   if (role.role !== "client") return;
-  await ctx.reply(t(chosen, "bot.languageKeyboard"), Markup.keyboard([[bookButtonText(chosen)]]).resize().persistent());
+  await ctx.reply(t(chosen, "bot.languageKeyboard"), clientKeyboard(chosen));
   const webAppUrl = getWebAppUrl();
   if (webAppUrl && ctx.chat) await setPersonalMenuButton(ctx.chat.id, t(chosen, "bot.menuBook"), webAppUrl);
 });

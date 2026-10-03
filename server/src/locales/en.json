@@ -70,7 +70,7 @@
   "bot": {
     "somethingWrong": "Something went wrong, please try again 🙏",
     "bookButton": "📅 Book in chat",
-    "welcome": "Hi! I'll help you book an appointment at the salon.\n\nTo book right here in the chat, tap the “{{button}}” button below — it's always at hand.",
+    "welcome": "Hi! I'll help you book an appointment at the salon.\n\nTo book right here in the chat, tap the “{{button}}” button below — it's always at hand. Our address, opening hours and answers to common questions are under “{{faq}}”.",
     "welcomeApp": "In the app you can browse all our specialists and services in more detail — with photos and descriptions.",
     "reschedUnavailable": "This booking can no longer be rescheduled — it has already passed or been cancelled.",
     "cancelFailed": "Couldn't cancel: {{error}}",
@@ -94,7 +94,9 @@
     "cmdBook": "Book in chat",
     "cmdServices": "Our services",
     "cmdMasters": "Our specialists",
-    "cmdLanguage": "Change language"
+    "cmdLanguage": "Change language",
+    "faqButton": "❓ FAQ",
+    "cmdFaq": "FAQ and address"
   },
   "book": {
     "restartHint": "Tap “{{button}}” to start over.",
@@ -124,5 +126,12 @@
     "bookFailed": "Couldn't book: {{error}}. Tap “{{button}}” to try again.",
     "booked": "✅ Done! I'll send the details in the next message.",
     "masterLabel": "{{name}} — {{rating}} ⭐"
+  },
+  "faq": {
+    "title": "❓ FAQ",
+    "pick": "Choose a question:",
+    "empty": "No questions yet — message us and we'll answer.",
+    "route": "📍 Get directions",
+    "back": "← All questions"
   }
 }
