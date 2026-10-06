@@ -8,3 +8,6 @@ build/
 *.sqlite
 *.tsbuildinfo
 .DS_Store
+
+# Скриншоты для презентации (не хранить в репозитории)
+presentation-screens/
